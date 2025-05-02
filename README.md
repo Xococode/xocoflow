@@ -1,4 +1,13 @@
-## Funcionamiento y flujo de trabajo
+## XOCOFLOW Funcionamiento y flujo de trabajo
+
+![XOCOFLOW](xocoflow.jpg)
+
+
+
+## Acceso Rápido a la Aplicación
+[XOCOFLOW - Demo en vivo](ttps://xococode.github.io/xocoflow/)
+
+Unicornio 3D CAD es una aplicación web que permite crear, editar y manipular modelos 3D de forma intuitiva y visual. Utiliza la librería Three.js para renderizado en 3D y ofrece herramientas avanzadas de modelado y dibujo en 2D y 3D.
 
 ### Paleta de nodos (sidebar izquierdo)
 - Buscador y lista de tipos de nodo disponibles: texto, concatenar, fetch, temporizadores, código JavaScript, carga/descarga de ficheros, etc. :contentReference[oaicite:0]{index=0}:contentReference[oaicite:1]{index=1}  
