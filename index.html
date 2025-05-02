@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Xocoflow | Editor Visual de Flujos</title>
+    <meta name="description" content="Xocoflow: Un editor visual basado en nodos para crear y automatizar flujos de datos y procesos.">
+    <meta name="keywords" content="drawflow, node editor, visual programming, workflow, automation, javascript, low-code">
+    <link rel="icon" href="favicon.ico" type="image/x-icon"> <!-- Optional: Add your favicon -->
+
+    <!-- === CSS Libraries === -->
+    <!-- Drawflow -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/drawflow@0.0.59/dist/drawflow.min.css">
+
+    <!-- Font Awesome Icons (Removed integrity/crossorigin for simplicity) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&family=Fira+Code&display=swap" rel="stylesheet">
+
+    <!-- CodeMirror (Removed integrity/crossorigin) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/codemirror.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/theme/material-darker.min.css" />
+
+    <!-- === Custom Stylesheet === -->
+    <link rel="stylesheet" type="text/css" href="beautiful.css" />
+
+    <!-- Helper class for visually hidden elements (Accessibility) -->
+    <style>.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0; white-space: nowrap; }</style>
+</head>
+<body>
+    <!-- Input oculto para cargar archivos JSON -->
+    <input type="file" id="file-input" accept=".json,application/json" style="display: none;" aria-hidden="true">
+
+    <div style="display: flex; align-items: center; margin-right: 2rem;">
+        <a href="https://xocostudio.com/" style="text-decoration: none;" title="Expertos en Maquetación Profesional para Tiendas PrestaShop | XocoStudio">
+            <div style="font-size: 1.8rem; font-weight: bold; color: #e20074;">XOCO</div>
+        </a>
+        <div style="font-size: 1.2rem; color: #333; margin-left: 1rem;">Xocoflow</div>
+    </div>
+
+
+
+    <div class="wrapper">
+        <!-- Columna Izquierda (Sidebar Nodos) -->
+        <aside class="col" aria-label="Paleta de Nodos">
+            <div class="node-search-container">
+                <label for="node-search" class="visually-hidden">Buscar Nodos</label>
+                <input type="text" id="node-search" placeholder="Buscar nodos..." aria-controls="nodes-list-region">
+            </div>
+            <div class="nodes-list" id="nodes-list-region" role="listbox" aria-label="Nodos disponibles">
+                <div style="padding: 20px; text-align: center; color: var(--text-light);">Cargando nodos...</div>
+            </div>
+        </aside>
+
+        <!-- Columna Derecha (Área Principal) -->
+        <main class="col-right" aria-label="Área de Edición Principal">
+            <!-- Menú Superior -->
+            <nav class="menu" aria-label="Menú Principal y Módulos">
+                <ul id="module-tabs" role="tablist" aria-label="Módulos del Proyecto"></ul>
+                <button type="button" class="btn btn-load" onclick="triggerLoad()" title="Cargar Proyecto (Ctrl+O)"><i class="fas fa-folder-open" aria-hidden="true"></i><span class="button-text"> Cargar</span></button>
+                <button type="button" class="btn btn-save" onclick="saveProject(currentProjectName)" title="Guardar Proyecto (Ctrl+S)"><i class="fas fa-save" aria-hidden="true"></i><span class="button-text"> Guardar</span></button>
+                <button type="button" class="btn btn-save-as" onclick="promptSaveAs()" title="Guardar Como... (Ctrl+Shift+S)"><i class="fas fa-file-export" aria-hidden="true"></i><span class="button-text"> Guardar Como...</span></button>
+                <button type="button" class="btn btn-export" onclick="exportRawJson()" title="Exportar JSON Crudo"><i class="fas fa-code" aria-hidden="true"></i><span class="button-text"> Exportar</span></button>
+                <button type="button" class="btn btn-clear" onclick="clearCurrentModule()" title="Limpiar Módulo Actual"><i class="fas fa-trash" aria-hidden="true"></i><span class="button-text"> Limpiar</span></button>
+            </nav>
+
+            <!-- Canvas Drawflow -->
+            <div id="drawflow" ondrop="drop(event)" ondragover="allowDrop(event)" role="application" aria-label="Canvas de edición de flujo">
+                <!-- Controles Inferiores Agrupados (Izquierda) -->
+                <div class="controls-container bottom-left">
+                    <div class="history-controls" role="toolbar" aria-label="Historial y Edición">
+                        <button type="button" class="btn btn-undo" id="undo-button" onclick="undo()" title="Deshacer (Ctrl+Z)" disabled aria-label="Deshacer"><i class="fas fa-undo" aria-hidden="true"></i></button>
+                        <button type="button" class="btn btn-redo" id="redo-button" onclick="redo()" title="Rehacer (Ctrl+Y)" disabled aria-label="Rehacer"><i class="fas fa-redo" aria-hidden="true"></i></button>
+                        <button type="button" class="btn btn-copy" id="copy-button" onclick="copySelectedNode()" title="Copiar Nodo (Ctrl+C)" disabled aria-label="Copiar Nodo"><i class="fas fa-copy" aria-hidden="true"></i></button>
+                        <button type="button" class="btn btn-paste" id="paste-button" onclick="pasteNode()" title="Pegar Nodo (Ctrl+V)" disabled aria-label="Pegar Nodo"><i class="fas fa-paste" aria-hidden="true"></i></button>
+                        <button type="button" class="btn btn-duplicate" id="duplicate-button" onclick="duplicateSelectedNode()" title="Duplicar Nodo (Ctrl+D)" disabled aria-label="Duplicar Nodo"><i class="fas fa-clone" aria-hidden="true"></i></button>
+                        <button type="button" class="btn btn-recalculate" id="recalculate-button" onclick="recalculateAllNodesInCurrentModule()" title="Recalcular Flujo (Ctrl+R)" aria-label="Recalcular Flujo" disabled><i class="fas fa-sync-alt" aria-hidden="true"></i></button>
+                    </div>
+                </div>
+                <!-- Controles Inferiores Agrupados (Derecha) -->
+                <div class="controls-container bottom-right">
+                    <div class="btn-lock" role="switch" aria-checked="false" aria-label="Bloquear Edición">
+                        <button type="button" id="lock-button" onclick="changeMode('lock')" title="Bloquear Edición (Editor Fijo)"><i class="fas fa-lock-open" aria-hidden="true"></i></button>
+                        <button type="button" id="unlock-button" onclick="changeMode('unlock')" style="display:none;" title="Desbloquear Edición (Modo Editar)"><i class="fas fa-lock" aria-hidden="true"></i></button>
+                    </div>
+                    <div class="bar-zoom" role="toolbar" aria-label="Controles de Zoom">
+                        <button type="button" onclick="editor.zoom_out()" title="Alejar Zoom (-)" aria-label="Alejar Zoom"><i class="fas fa-search-minus" aria-hidden="true"></i></button>
+                        <button type="button" onclick="editor.zoom_reset()" title="Restablecer Zoom (100%)" aria-label="Restablecer Zoom"><i class="fas fa-search" aria-hidden="true"></i></button>
+                        <button type="button" onclick="editor.zoom_in()" title="Acercar Zoom (+)" aria-label="Acercar Zoom"><i class="fas fa-search-plus" aria-hidden="true"></i></button>
+                    </div>
+                </div>
+                <!-- Barra de Estado -->
+                <div id="editor-status-bar" class="editor-status-bar" aria-live="polite">Zoom: <span id="zoom-level" title="Nivel de Zoom Actual">100%</span> | Pos: <span id="node-position" title="Posición del Nodo Seleccionado (X, Y)">X: -, Y: -</span></div>
+            </div><!-- end #drawflow -->
+        </main>
+
+        <!-- Sidebar Derecho para CodeMirror -->
+        <aside id="code-editor-sidebar" class="code-editor-sidebar" aria-label="Editor de Código" aria-hidden="true">
+            <div class="sidebar-header">
+                <h3><i class="fas fa-code" aria-hidden="true"></i> <span id="code-editor-title">Editar Código</span></h3>
+                <button type="button" id="close-code-sidebar-btn" title="Cerrar Editor (Guardará cambios)" aria-label="Cerrar Editor de Código"><i class="fas fa-times" aria-hidden="true"></i></button>
+            </div>
+            <div id="codemirror-container" role="textbox" aria-multiline="true" aria-label="Área de edición de código"></div>
+            <div class="sidebar-footer">
+                <div class="sidebar-info" aria-live="polite">Nodo ID: <strong id="editing-node-id">N/A</strong></div>
+                <button type="button" id="save-code-sidebar-btn" title="Guardar Cambios y Cerrar"><i class="fas fa-save" aria-hidden="true"></i> Guardar y Cerrar</button>
+            </div>
+        </aside>
+    </div> <!-- end .wrapper -->
+
+    <!-- Modal Creador de Nodos -->
+    <div id="modalBackdrop" style="display:none;" aria-hidden="true"></div>
+    <div id="nodeDefinitionModal" class="modal-content-base" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="nodeDefModalTitle" aria-describedby="nodeDefModalDesc">
+        <h3 id="nodeDefModalTitle">Definir Nuevo Tipo de Nodo</h3>
+        <p id="nodeDefModalDesc" class="visually-hidden">Formulario para crear nodo personalizado.</p>
+        <label for="newNodeTypeName">Nombre Tipo (a-z0-9_):</label>
+        <input type="text" id="newNodeTypeName" name="nodeTypeName" pattern="[a-z0-9_]+" required>
+        <label for="newNodeTypeTitle">Título Visible:</label>
+        <input type="text" id="newNodeTypeTitle" name="nodeTypeTitle">
+        <label for="newNodeInputs">Entradas:</label>
+        <input type="number" id="newNodeInputs" name="nodeInputs" value="1" min="0" required>
+        <label for="newNodeOutputs">Salidas:</label>
+        <input type="number" id="newNodeOutputs" name="nodeOutputs" value="1" min="0" required>
+        <label for="newNodeCssClass">Clase CSS (opcional):</label>
+        <input type="text" id="newNodeCssClass" name="nodeCssClass">
+        <label for="newNodeHtmlContent">HTML Interno:</label>
+        <textarea id="newNodeHtmlContent" name="nodeHtmlContent" rows="6" placeholder='<div>...' required></textarea>
+        <label for="newNodeInitialData">Datos Iniciales (JSON):</label>
+        <textarea id="newNodeInitialData" name="nodeInitialData" rows="3" placeholder='{ "mydata": "" }'></textarea>
+        <div class="modal-buttons">
+            <button type="button" class="save-button" onclick="saveNewNodeType()">Guardar Tipo</button>
+            <button type="button" class="cancel-button" onclick="closeNodeDefinitionModal()">Cancelar</button>
+        </div>
+    </div>
+
+    <!-- === JavaScript Libraries === -->
+    <!-- Drawflow (Removed integrity) -->
+    <script src="https://cdn.jsdelivr.net/npm/drawflow@0.0.59/dist/drawflow.min.js"></script>
+    <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <!-- CodeMirror (Removed integrity) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/mode/xml/xml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/mode/css/css.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/mode/htmlmixed/htmlmixed.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/addon/edit/matchbrackets.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/addon/edit/closebrackets.min.js"></script>
+
+    <!-- === Custom Application Logic === -->
+    <script src="xocoflow_logic.js" defer></script>
+
+</body>
+</html>

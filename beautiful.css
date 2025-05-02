@@ -1,0 +1,342 @@
+/* === START OF FILE beautiful.css === */
+/* Versión: 1.7.1 - Completa y Refinada */
+/* Autor: Xocoflow Development */
+/* Fecha: 2023-10-27 */
+
+/* --- Variables CSS Globales --- */
+:root {
+  /* Colores Principales y Acentos */
+  --primary-color: #4ea9ff;          /* Azul Drawflow Principal */
+  --primary-dark-color: #0e5ba3;     /* Azul Drawflow Oscuro */
+  --primary-light-color: #e3f2fd;   /* Azul Drawflow Muy Claro */
+  --accent-color: #ff9800;          /* Naranja para acentos */
+
+  /* Fondos */
+  --background-color: #ffffff;      /* Fondo principal canvas y nodos */
+  --background-light: #fcfcfc;    /* Fondo claro (ej: sidebar izquierda) */
+  --background-medium: #f5f5f5;    /* Fondo medio (ej: search, tabs inactivas) */
+  --background-dark: #263238;       /* Fondo oscuro (ej: sidebar CodeMirror) */
+  --background-header-footer-dark: #37474F; /* Cabecera/Pie Sidebar Oscuro */
+  --background-readonly: #f0f0f0;   /* Fondo inputs/textareas readonly */
+  --background-box-title: #f7f7f7; /* Fondo título nodo default */
+  --background-grid: #f1f1f1;       /* Color rejilla canvas */
+  --background-hover-light: #eef5ff; /* Hover sutil en elementos claros */
+
+  /* Bordes */
+  --border-color: #cacaca;          /* Bordes generales */
+  --border-light-color: #e0e0e0;    /* Bordes más suaves */
+  --border-dark-color: #455A64;     /* Borde sidebar oscuro */
+  --border-focus-color: var(--primary-color); /* Borde en foco */
+  --focus-shadow-color: rgba(78, 169, 255, 0.25); /* Sombra en foco */
+
+  /* Texto */
+  --text-dark: #333;                /* Texto oscuro principal */
+  --text-medium: #555;              /* Texto medio */
+  --text-light: #777;               /* Texto claro (ayuda, placeholders) */
+  --text-on-primary: #ffffff;       /* Texto sobre fondo primario */
+  --text-on-dark: #eee;             /* Texto sobre fondos oscuros */
+  --text-link-color: #0b7dda;       /* Color enlaces/info especial */
+  --text-placeholder-color: #aaa;   /* Color placeholders */
+  --text-disabled-color: #9e9e9e;   /* Color texto deshabilitado */
+
+  /* Colores Semánticos */
+  --danger-color: #fc4538;
+  --danger-dark-color: #ff4444;
+  --danger-light-color: #ffebee;
+  --success-color: #4CAF50;
+  --success-dark-color: #388E3C;
+  --success-light-color: #e8f5e9;
+  --warning-color: var(--accent-color);
+  --warning-dark-color: #c67602;
+  --warning-light-color: #fff3e0;
+  --info-color: #03A9F4;
+  --info-dark-color: #0288D1;
+  --info-light-color: #e1f5fe;
+
+  /* Botones y UI */
+  --button-bg-light: #f0f0f0;
+  --button-hover-bg-light: #e0e0e0;
+  --button-bg-dark: #607D8B;        /* Gris azulado (Undo/Redo) */
+  --button-hover-bg-dark: #546E7A;
+  --button-disabled-bg: #bdbdbd;    /* Gris claro deshabilitado */
+  --button-disabled-border: #9e9e9e;
+  --button-disabled-text: var(--text-disabled-color);
+
+  /* Tipografía */
+  --font-family-base: 'Roboto', -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-family-code: 'Fira Code', Consolas, Menlo, Monaco, 'Courier New', monospace;
+  --font-size-base: 14px;
+  --font-size-small: 12px;
+  --font-size-xsmall: 11px;
+  --font-size-xxsmall: 10px;
+
+  /* Sombras y Transiciones */
+  --box-shadow-light: 0 1px 3px rgba(0,0,0,0.1);
+  --box-shadow-medium: 0 2px 8px rgba(0,0,0,0.15);
+  --transition-fast: 0.15s ease-in-out;
+  --transition-normal: 0.25s ease-in-out;
+}
+
+/* --- Reset Básico y Estilos Globales --- */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden;
+  font-family: var(--font-family-base); font-size: var(--font-size-base);
+  background-color: var(--background-light); color: var(--text-dark);
+  line-height: 1.5; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+}
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0; white-space: nowrap; }
+::placeholder { color: var(--text-placeholder-color); opacity: 1; }
+
+/* --- Header --- */
+header { height: 50px; border-bottom: 1px solid var(--border-color); padding: 0 20px; display: flex; align-items: center; background-color: var(--background-color); box-shadow: var(--box-shadow-light); position: relative; z-index: 20; }
+header h2 { margin: 0; line-height: 50px; font-size: 1.6em; font-weight: 700; color: var(--text-dark); }
+
+/* --- Layout Principal --- */
+.wrapper { width: 100%; height: calc(100vh - 50px); display: flex; position: relative; }
+
+/* --- Sidebar Izquierda --- */
+.col { display: flex; flex-direction: column; width: 260px; height: 100%; border-right: 1px solid var(--border-color); background-color: var(--background-light); flex-shrink: 0; transition: width var(--transition-normal); }
+.node-search-container { padding: 8px 10px; border-bottom: 1px solid var(--border-color); background-color: var(--background-medium); flex-shrink: 0; }
+#node-search { width: 100%; padding: 7px 10px; border: 1px solid var(--border-color); border-radius: 4px; font-size: var(--font-size-small); transition: border-color var(--transition-fast), box-shadow var(--transition-fast); }
+#node-search:focus { border-color: var(--border-focus-color); box-shadow: 0 0 0 3px var(--focus-shadow-color); outline: none; }
+.nodes-list { flex-grow: 1; overflow-y: auto; overflow-x: hidden; }
+.drag-drawflow { min-height: 40px; line-height: normal; padding: 8px 15px; border-bottom: 1px solid var(--border-light-color); cursor: move; user-select: none; font-size: var(--font-size-small); display: flex; align-items: center; gap: 10px; background-color: var(--background-color); transition: background-color var(--transition-fast); }
+.drag-drawflow:hover { background-color: var(--background-hover-light); }
+.drag-drawflow i { color: var(--text-medium); width: 18px; text-align: center; flex-shrink: 0; font-size: 1.1em; }
+.drag-drawflow span { flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dark); }
+.create-node-button { padding: 10px 15px; margin: 8px 5px; background-color: var(--info-light-color); border: 1px solid var(--info-color); border-radius: 4px; text-align: center; cursor: pointer; font-weight: bold; color: var(--info-dark-color); display: flex; align-items: center; justify-content: center; gap: 8px; transition: background-color var(--transition-fast); font-size: var(--font-size-small); }
+.create-node-button:hover { background-color: #b3e5fc; }
+.delete-node-type-btn { margin-left: auto; padding: 0; cursor: pointer; color: #aaa; font-size: 0.9em; opacity: 0.6; transition: color var(--transition-fast), opacity var(--transition-fast); flex-shrink: 0; background: none; border: none; line-height: 1; }
+.delete-node-type-btn:hover { color: var(--danger-color); opacity: 1; }
+
+/* --- Columna Derecha --- */
+.col-right { position: relative; flex-grow: 1; height: 100%; overflow: hidden; }
+
+/* --- Menú Superior --- */
+.menu { position: absolute; top: 0; left: 0; height: 40px; width: 100%; display: flex; align-items: center; background: var(--background-color); border-bottom: 1px solid var(--border-color); z-index: 10; padding: 0 10px; }
+#module-tabs { display: flex; align-items: stretch; height: 100%; margin: 0; padding: 0; list-style: none; margin-right: auto; }
+#module-tabs li { display: inline-flex; align-items: center; margin: 0; padding: 0 15px; line-height: 40px; cursor: pointer; border-right: 1px solid var(--border-light-color); font-size: var(--font-size-small); background-color: var(--background-medium); color: var(--text-medium); white-space: nowrap; transition: background-color var(--transition-fast), color var(--transition-fast); position: relative; }
+#module-tabs li:hover { background-color: #e8e8e8; }
+#module-tabs li.selected { font-weight: 700; color: var(--primary-dark-color); background-color: var(--background-color); border-bottom-color: var(--background-color); }
+#module-tabs li.selected::after { content: ''; position: absolute; bottom: -1px; left: 0; right: 0; height: 2px; background-color: var(--primary-color); }
+#module-tabs li button.close-tab-btn { margin-left: 8px; cursor: pointer; color: #999; font-weight: bold; padding: 0 4px; border-radius: 50%; font-size: 14px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; height: 18px; width: 18px; vertical-align: middle; transition: all var(--transition-fast); border: none; background: transparent; }
+#module-tabs li button.close-tab-btn:hover { color: var(--text-on-primary); background-color: var(--danger-color); }
+#module-tabs li button.add-tab-btn { cursor: pointer; border: none; background: transparent; padding: 0 5px; opacity: 0.7; transition: opacity var(--transition-fast); color: var(--text-medium); display: flex; align-items: center; height: 100%; font-size: 1.1em; }
+#module-tabs li button.add-tab-btn:hover { opacity: 1; }
+#module-tabs li:has(button.add-tab-btn) { border-right: none; background-color: transparent; margin-left: 5px; padding: 0; display:flex; align-items:center; }
+/* Botones Acción Menú */
+.menu .btn { margin-left: 8px; color: var(--text-on-primary); font-weight: 700; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: var(--font-size-xsmall); border: none; display: inline-flex; align-items: center; gap: 5px; transition: background-color var(--transition-fast), filter var(--transition-fast); box-shadow: var(--box-shadow-light); }
+.menu .btn:hover:not(:disabled) { filter: brightness(115%); }
+.menu .btn:active:not(:disabled) { filter: brightness(95%); }
+.menu .btn:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; background-color: var(--button-disabled-bg) !important; }
+.menu .btn i { margin-right: 3px; font-size: 0.95em; }
+.menu .btn .button-text { display: inline; }
+.menu .btn-load { margin-left: auto; background-color: var(--warning-color); }
+.menu .btn-save { background-color: var(--success-color); }
+.menu .btn-save-as { background-color: var(--info-color); }
+.menu .btn-export { background: var(--primary-color); }
+.menu .btn-clear { background: var(--danger-color); }
+
+/* --- Canvas Drawflow --- */
+#drawflow { position: absolute; top: 40px; left: 0; width: 100%; height: calc(100% - 40px); background-color: var(--background-color); background-size: 20px 20px; background-image: linear-gradient(to right, var(--background-grid) 1px, transparent 1px), linear-gradient(to bottom, var(--background-grid) 1px, transparent 1px); overflow: hidden; }
+#drawflow.drawflow-locked { cursor: not-allowed; }
+
+/* --- Controles Inferiores --- */
+.controls-container { position: absolute; z-index: 5; display: flex; align-items: center; gap: 12px; }
+.controls-container.bottom-left { bottom: 15px; left: 15px; }
+.controls-container.bottom-right { bottom: 15px; right: 15px; }
+/* Estilo base botones control */
+.controls-container button { background-color: rgba(50, 50, 50, 0.85); color: var(--text-on-dark); border: none; border-radius: 4px; padding: 6px 8px; font-size: var(--font-size-base); line-height: 1; cursor: pointer; transition: background-color var(--transition-fast), color var(--transition-fast), opacity var(--transition-fast), visibility var(--transition-fast), width var(--transition-fast), padding var(--transition-fast), margin var(--transition-fast); display: inline-flex; align-items: center; justify-content: center; box-shadow: var(--box-shadow-light); }
+.controls-container button:hover:not(:disabled) { background-color: rgba(80, 80, 80, 0.9); color: #fff; }
+.controls-container button:disabled { background-color: rgba(80, 80, 80, 0.5); cursor: not-allowed; opacity: 0.7; box-shadow: none; color: #aaa; }
+.controls-container button i { margin: 0; }
+/* Clase para ocultar botones */
+.controls-container button.hidden {
+    visibility: hidden; opacity: 0; pointer-events: none;
+    width: 0 !important; /* Importante para anular padding/width */
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    /* overflow: hidden; */ /* Puede ayudar en algunos casos */
+}
+/* Grupo Historial y Edición */
+.history-controls { display: flex; gap: 6px; }
+.history-controls .btn-recalculate { background-color: var(--info-color); }
+.history-controls .btn-recalculate:hover:not(:disabled) { background-color: var(--info-dark-color); }
+/* Grupo Lock */
+.btn-lock { display: flex; }
+.btn-lock button { background-color: #03A9F4; }
+.btn-lock button:hover:not(:disabled) { background-color: rgba(120, 120, 120, 0.9); }
+/* Grupo Zoom */
+.bar-zoom { display: flex; gap: 3px; background-color: rgba(50, 50, 50, 0.85); padding: 3px; border-radius: 4px; }
+.bar-zoom button { background: transparent; box-shadow: none; padding: 3px 5px; }
+.bar-zoom button:hover:not(:disabled) { background-color: rgba(255, 255, 255, 0.15); color: var(--primary-color); }
+
+/* Barra de Estado */
+.editor-status-bar { position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%); background-color: rgba(50, 50, 50, 0.75); color: var(--text-on-dark); padding: 4px 12px; border-radius: 4px; font-size: var(--font-size-xsmall); z-index: 4; white-space: nowrap; box-shadow: var(--box-shadow-light); }
+.editor-status-bar span { font-weight: bold; margin-left: 3px; min-width: 40px; display: inline-block; text-align: right; }
+#zoom-level { min-width: 45px; }
+#node-position { min-width: 100px; }
+
+/* --- Nodos Drawflow Base --- */
+.drawflow .drawflow-node { background: var(--background-color); border: 1px solid var(--border-color); box-shadow: var(--box-shadow-light); padding: 0; width: 220px; border-radius: 5px; transition: box-shadow var(--transition-fast), border-color var(--transition-fast); position: absolute; }
+.drawflow .drawflow-node.selected  { border-color: var(--primary-color); box-shadow: 0 0 0 3px var(--focus-shadow-color); }
+.drawflow .drawflow-node .input, .drawflow .drawflow-node .output { position: absolute; height: 16px; width: 16px; border: 2px solid var(--border-color); background: #fdfdfd; border-radius: 50%; cursor: crosshair; z-index: 10; transition: background-color var(--transition-fast), border-color var(--transition-fast); }
+.drawflow .drawflow-node .input { left: -9px; top: calc(50% - 8px); }
+.drawflow .drawflow-node .output { right: -9px; top: calc(50% - 8px); }
+.drawflow .drawflow-node .input:hover, .drawflow .drawflow-node .output:hover { background: var(--primary-color); border-color: var(--primary-dark-color); }
+.drawflow .connection .main-path { stroke: var(--primary-color); stroke-width: 2.5px; }
+.drawflow .connection .point { stroke: var(--primary-dark-color); stroke-width: 1.5; fill: white; r: 4.5; cursor: pointer; }
+.drawflow .connection .point:hover, .drawflow .connection .point.selected { fill: var(--primary-color); stroke: white; }
+.drawflow > .drawflow-delete { border: 2px solid var(--danger-dark-color); color: var(--danger-dark-color); background: white; box-shadow: 0 1px 5px rgba(244, 67, 54, 0.4); font-weight: bold; width: 22px; height: 22px; line-height: 18px; font-size: 15px; border-radius: 50%; }
+.drawflow > .drawflow-delete:hover { background-color: var(--danger-color); color: white; }
+
+/* --- Estructura Interna Nodos --- */
+.drawflow-node .title-box { min-height: 35px; line-height: normal; padding: 6px 10px; background: var(--background-box-title); border-bottom: 1px solid var(--border-light-color); border-radius: 4px 4px 0 0; font-size: var(--font-size-small); font-weight: 700; display: flex; align-items: center; gap: 8px; overflow: hidden; color: var(--text-dark); }
+.drawflow-node .title-box i { font-size: 1.1em; color: var(--primary-color); }
+.drawflow-node .title-box span { white-space: normal; text-overflow: initial; }
+.drawflow-node.selected .title-box { background-color: var(--primary-light-color); color: var(--primary-dark-color); border-bottom-color: var(--primary-color); }
+.drawflow-node.selected .title-box i { color: var(--primary-dark-color); }
+.drawflow-node .box { padding: 12px; font-size: var(--font-size-small); color: var(--text-dark); }
+.drawflow-node .box input[type="text"], .drawflow-node .box input[type="number"], .drawflow-node .box input[type="url"], .drawflow-node .box select, .drawflow-node .box textarea { width: 100%; font-size: var(--font-size-small); min-height: 30px; line-height: 1.4; padding: 5px 8px; margin-bottom: 8px; border-radius: 3px; border: 1px solid var(--border-color); color: var(--text-dark); box-sizing: border-box; display: block; background-color: var(--background-color); transition: border-color var(--transition-fast), box-shadow var(--transition-fast); }
+.drawflow-node .box textarea { min-height: 60px; resize: vertical; }
+.drawflow-node .box input:focus, .drawflow-node .box select:focus, .drawflow-node .box textarea:focus { border-color: var(--border-focus-color); box-shadow: 0 0 0 3px var(--focus-shadow-color); outline: none; }
+.drawflow-node .box input[readonly], .drawflow-node .box textarea[readonly] { background-color: var(--background-readonly); cursor: default; border-color: var(--border-light-color); }
+.drawflow-node .box label { font-size: var(--font-size-xsmall); display: block; margin-bottom: 4px; color: var(--text-medium); font-weight: 700; }
+.drawflow-node .box button { font-size: var(--font-size-xsmall); padding: 5px 10px; margin-top: 5px; border-radius: 3px; cursor: pointer; border: 1px solid #ccc; background-color: var(--button-bg-light); color: var(--text-dark); transition: background-color var(--transition-fast); }
+.drawflow-node .box button:hover:not(:disabled) { background-color: var(--button-hover-bg-light); }
+.drawflow-node .box button:disabled { opacity: 0.6; cursor: not-allowed; background-color: var(--button-disabled-bg); border-color: var(--button-disabled-border); color: var(--button-disabled-text); }
+.drawflow-node .box button i { margin-right: 5px; }
+.drawflow-node .box button.edit-code-btn { width: 100%; margin-top: 5px; margin-bottom: 10px; padding: 6px 8px; font-size: var(--font-size-xsmall); background-color: #e8eaf6; border: 1px solid #c5cae9; color: #3f51b5; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.drawflow-node .box button.edit-code-btn:hover { background-color: #dcdcff; }
+.drawflow-node .box button.edit-code-btn i { margin-right: 0; }
+.drawflow-node .box p, .drawflow-node .box .help-text { margin-top: 5px; margin-bottom: 8px; font-size: var(--font-size-xxsmall); color: var(--text-light); line-height: 1.4; }
+.drawflow-node .box span[df-filename] { font-style: italic; color: var(--text-link-color); margin-left: 5px; font-size: var(--font-size-xxsmall); }
+.drawflow-node .box img[df-previewsrc] { display: block; max-width: 100%; max-height: 80px; margin-top: 5px; border: 1px solid #eee; object-fit: contain; background-color: #f8f8f8; }
+.drawflow-node .box p[df-loadingMsg], .drawflow-node .box p[df-errorMsg] { font-weight: bold; margin-top: 5px; }
+.drawflow-node .box p[df-errorMsg] { color: var(--danger-dark-color); }
+
+/* --- Estilos Específicos Nodos --- */
+.drawflow-node.text-node { background-color: var(--primary-light-color); border-color: #90caf9; width: 230px; }
+.drawflow-node.text-node .title-box { background-color: #64b5f6; color: var(--text-on-primary); border-color: #42a5f5; }
+.drawflow-node.text-node .title-box i { color: var(--text-on-primary); }
+.drawflow-node.text-node textarea[df-content] { background-color: var(--background-readonly); cursor: default; resize: none; height: 80px; overflow: auto; white-space: pre-wrap; }
+.drawflow-node.concatenate-node { background-color: var(--primary-light-color); border-color: #90caf9; width: 230px; }
+.drawflow-node.concatenate-node .title-box { background-color: #64b5f6; color: var(--text-on-primary); border-color: #42a5f5; }
+.drawflow-node.concatenate-node .title-box i { color: var(--text-on-primary); }
+.drawflow-node.display-node { background-color: #fce4ec; border-color: #fc679b; width: 230px; }
+.drawflow-node.display-node .title-box { background-color: #fc6295; color: var(--text-on-primary); border-color: #f55288; }
+.drawflow-node.display-node .title-box i { color: var(--text-on-primary); }
+.drawflow-node.display-node textarea[df-result] { white-space: pre-wrap; height: 100px; background-color: var(--background-readonly); border: 1px solid #eee; font-size: 0.85em; }
+.drawflow-node.note-node { border-color: #ffe57f; width: 180px; /* Background aplicado por JS */ }
+.drawflow-node.note-node .title-box { background-color: #fff9c4; color: #5d4037; border-color: #fff59d; }
+.drawflow-node.note-node .title-box i { color: #f57f17; }
+.drawflow-node.note-node .box { transition: background-color 0.3s ease; }
+.drawflow-node.note-node .text-info { font-size: var(--font-size-xxsmall); color: var(--text-light); text-align: right; margin-top: 3px; }
+.drawflow-node.javascript-code-node { background-color: var(--warning-light-color); border-color: #ffe0b2; width: 260px; }
+.drawflow-node.javascript-code-node .title-box { background-color: var(--warning-color); border-bottom-color: var(--warning-dark-color); color: #424242; }
+.drawflow-node.javascript-code-node .title-box i { color: var(--warning-dark-color); }
+.drawflow-node.javascript-code-node textarea { font-family: var(--font-family-code); font-size: var(--font-size-xsmall); }
+.drawflow-node.javascript-code-node textarea[df-jscode] { height: 100px; background-color: var(--background-readonly); white-space: pre; cursor: default; }
+.drawflow-node.javascript-code-node .node-buttons { display: flex; gap: 5px; margin: 8px 0; }
+.drawflow-node.javascript-code-node .node-buttons button { flex-grow: 1; }
+.drawflow-node.javascript-code-node textarea[df-result] { height: 60px; background-color: #f9f9f9; }
+.drawflow-node.javascript-code-node textarea[df-result].error { background-color: var(--danger-light-color); color: var(--danger-dark-color); border-color: #ee8a8a; }
+.drawflow-node.static-code-node { background-color: var(--info-light-color); border-color: #b3e5fc; width: 260px; }
+.drawflow-node.static-code-node .title-box { background-color: var(--info-color); border-bottom-color: var(--info-dark-color); color: var(--text-on-primary); }
+.drawflow-node.static-code-node .title-box i { color: var(--text-on-primary); }
+.drawflow-node.static-code-node textarea[df-codecontent] { font-family: var(--font-family-code); font-size: var(--font-size-xsmall); height: 120px; background-color: var(--background-readonly); white-space: pre; cursor: default; }
+.drawflow-node.welcome-node { width: 280px; border-color: var(--success-dark-color); background-color: var(--success-light-color); }
+.welcome-node .title-box { background-color: var(--success-color) !important; color: white !important; border-bottom: 1px solid var(--success-dark-color) !important; }
+.welcome-node .title-box i { color: white !important; }
+.welcome-node .box { background-color: transparent; font-size: var(--font-size-small); line-height: 1.6; padding: 15px; }
+.welcome-node .box p { color: var(--text-dark); margin-bottom: 10px; }
+.welcome-node .box strong { color: var(--success-dark-color); }
+.welcome-node .box ul { margin-top: 5px; padding-left: 20px; margin-bottom: 0; list-style: none;}
+.welcome-node .box li { margin-bottom: 6px; display: flex; align-items: center; }
+.welcome-node .box li i:first-child { width: 20px; margin-right: 8px; text-align: center; flex-shrink: 0; }
+
+/* --- Modales --- */
+#modalBackdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 10000; }
+.modal-content-base { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--background-color); padding: 25px 30px; border: 1px solid var(--border-light-color); z-index: 10001; box-shadow: var(--box-shadow-medium); border-radius: 6px; width: 90%; max-width: 550px; max-height: 90vh; overflow-y: auto; }
+.modal-content-base h3 { margin-top: 0; margin-bottom: 20px; font-size: 1.3em; font-weight: 700; color: var(--text-dark); }
+.modal-content-base label { font-size: var(--font-size-small); margin-bottom: 5px; display: block; font-weight: 700; color: var(--text-medium); }
+.modal-content-base input[type="text"], .modal-content-base input[type="number"], .modal-content-base textarea { width: 100%; padding: 9px 12px; margin-bottom: 15px; border: 1px solid var(--border-color); border-radius: 4px; font-size: var(--font-size-small); box-sizing: border-box; transition: border-color var(--transition-fast), box-shadow var(--transition-fast); }
+.modal-content-base input:focus, .modal-content-base textarea:focus { border-color: var(--border-focus-color); box-shadow: 0 0 0 3px var(--focus-shadow-color); outline: none; }
+.modal-content-base textarea { min-height: 90px; resize: vertical; font-family: var(--font-family-code); }
+.modal-content-base .modal-buttons { margin-top: 25px; padding-top: 15px; border-top: 1px solid var(--border-light-color); text-align: right; display: flex; justify-content: flex-end; gap: 12px; }
+.modal-content-base button { padding: 9px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: var(--font-size-small); transition: filter var(--transition-fast), opacity var(--transition-fast); }
+.modal-content-base button:hover:not(:disabled) { filter: brightness(110%); }
+.modal-content-base button:active:not(:disabled) { filter: brightness(95%); }
+.modal-content-base button:disabled { opacity: 0.6; cursor: not-allowed; }
+/* Botones específicos Modal Crear Nodo */
+#nodeDefinitionModal button.save-button { background-color: var(--success-color); color: white; }
+#nodeDefinitionModal button.save-button:hover:not(:disabled) { background-color: var(--success-dark-color); }
+#nodeDefinitionModal button.cancel-button { background-color: var(--danger-color); color: white; }
+#nodeDefinitionModal button.cancel-button:hover:not(:disabled) { background-color: var(--danger-dark-color); }
+
+/* --- Sidebar CodeMirror --- */
+.code-editor-sidebar { position: fixed; top: 50px; right: -450px; width: 430px; height: calc(100vh - 50px); background-color: var(--background-dark); border-left: 1px solid var(--border-dark-color); box-shadow: -3px 0 8px rgba(0,0,0,0.15); z-index: 1001; transition: right 0.3s ease-in-out; display: flex; flex-direction: column; color: var(--text-on-dark); }
+.code-editor-sidebar.visible { right: 0; }
+.code-editor-sidebar .sidebar-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; background-color: var(--background-header-footer-dark); border-bottom: 1px solid var(--border-dark-color); flex-shrink: 0; }
+.code-editor-sidebar .sidebar-header h3 { margin: 0; font-size: 1.15em; display: flex; align-items: center; gap: 10px; }
+.code-editor-sidebar .sidebar-header h3 i { font-size: 1.1em; } /* Icono título CM */
+.code-editor-sidebar .sidebar-header button#close-code-sidebar-btn { background: none; border: none; color: #ccc; font-size: 1.4em; cursor: pointer; padding: 0 5px; line-height: 1; transition: color var(--transition-fast); }
+.code-editor-sidebar .sidebar-header button#close-code-sidebar-btn:hover { color: white; }
+#codemirror-container { flex-grow: 1; overflow: hidden; position: relative; }
+.CodeMirror { height: 100% !important; width: 100%; font-family: var(--font-family-code); font-size: 13px; line-height: 1.4; }
+.code-editor-sidebar .sidebar-footer { display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; background-color: var(--background-header-footer-dark); border-top: 1px solid var(--border-dark-color); flex-shrink: 0; }
+.code-editor-sidebar .sidebar-footer .sidebar-info { font-size: 0.85em; color: #aaa; }
+.code-editor-sidebar .sidebar-footer button#save-code-sidebar-btn { padding: 7px 15px; font-size: var(--font-size-small); background-color: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; display: inline-flex; align-items: center; gap: 6px; transition: background-color var(--transition-fast); }
+.code-editor-sidebar .sidebar-footer button#save-code-sidebar-btn:hover { background-color: var(--success-dark-color); }
+
+/* --- SweetAlert Ajustes --- */
+.swal2-popup { font-size: var(--font-size-base) !important; border-radius: 6px !important; }
+.swal2-title { font-size: 1.4em !important; }
+.swal2-html-container { font-size: 1em !important; }
+.swal2-html-container pre { text-align: left; max-height: 400px; overflow-y: auto; background-color: #f8f8f8; border: 1px solid #ddd; padding: 10px; border-radius: 4px; font-family: var(--font-family-code); font-size: 0.9em; }
+.swal2-input, .swal2-textarea { border-radius: 4px !important; border-color: #ccc !important; font-size: 1em !important; }
+.swal2-textarea { font-family: var(--font-family-code) !important; }
+.swal2-confirm, .swal2-cancel, .swal2-deny { border-radius: 4px !important; padding: .6em 1.5em !important; margin: 0 4px !important; }
+
+/* --- Media Queries (Responsivo) --- */
+@media only screen and (max-width: 768px) {
+  .col { width: 60px; }
+  .col .drag-drawflow span { display:none; }
+  .col .drag-drawflow i { margin: 0 auto; width: auto; }
+  .node-search-container { padding: 5px;}
+  #node-search { display: none; }
+  .delete-node-type-btn { display: none; }
+  .create-node-button span { display: none; }
+  .create-node-button i { margin-right: 0; }
+  .create-node-button { padding: 8px; margin: 5px 3px; }
+  .col-right { width: calc(100vw - 61px); }
+  .menu { padding: 0 5px; height: 45px; }
+  #module-tabs { display: none; }
+  .menu .btn { padding: 6px; margin-left: 5px; }
+  .menu .btn .button-text { display: none; }
+  .menu .btn i { font-size: 1.1em; margin: 0; }
+  .controls-container { gap: 8px; }
+  .controls-container.bottom-left { bottom: 10px; left: 10px; }
+  .controls-container.bottom-right { bottom: 10px; right: 10px; }
+  .history-controls { gap: 4px; }
+  .controls-container button { padding: 5px 7px; font-size: 0.95em; }
+  /* Ocultar botones individuales si se quiere ahorrar más espacio */
+  /* .controls-container button.btn-copy, .controls-container button.btn-paste { display: none; } */
+  .bar-zoom { padding: 2px 3px; gap: 2px; }
+  .bar-zoom button { padding: 3px 4px; }
+  .editor-status-bar { display: none; }
+  .modal-content-base { max-width: 95%; padding: 15px 20px; }
+  .modal-content-base h3 { font-size: 1.2em; margin-bottom: 15px;}
+  .modal-content-base .modal-buttons { flex-direction: column; gap: 8px; }
+  .modal-content-base button { width: 100%; padding: 10px; }
+  .code-editor-sidebar { width: 100%; right: -100%; border-left: none; z-index: 1005; }
+  .code-editor-sidebar.visible { right: 0; }
+}
+
+/* === END OF FILE beautiful.css === */
