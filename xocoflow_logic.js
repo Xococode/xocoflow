@@ -105,6 +105,302 @@ const baseNodeDefinitions = {
     },
     // --- END LOCAL IMAGE NODE ---
 
+// ————————————————————————————————————————————
+// ——— NODOS DE ENTRADA ADICIONALES ———————
+// ————————————————————————————————————————————
+
+'input_number': {
+    name: 'input_number',
+    inputs: 0,
+    outputs: 1,
+    html: `
+      <div>
+        <div class="title-box"><i class="fas fa-hashtag"></i> Número</div>
+        <div class="box">
+          <label>Valor numérico:</label>
+          <input type="number" df-number value="0" oninput="handleNodeDataChange(event)">
+        </div>
+      </div>`,
+    cssClass: 'number-input-node',
+    data: { number: 0 }
+},
+
+'input_text': {
+    name: 'input_text',
+    inputs: 0,
+    outputs: 1,
+    html: `
+      <div>
+        <div class="title-box"><i class="fas fa-font"></i> Texto</div>
+        <div class="box">
+          <label>Texto:</label>
+          <input type="text" df-text value="" placeholder="..." oninput="handleNodeDataChange(event)">
+        </div>
+      </div>`,
+    cssClass: 'text-input-node',
+    data: { text: '' }
+},
+
+'input_range': {
+    name: 'input_range',
+    inputs: 0,
+    outputs: 1,
+    html: `
+      <div>
+        <div class="title-box"><i class="fas fa-sliders-h"></i> Slider</div>
+        <div class="box">
+          <label>Valor:</label>
+          <input type="range" df-range min="0" max="100" value="50" oninput="handleNodeDataChange(event)">
+          <span df-rangeval>50</span>
+        </div>
+      </div>`,
+    cssClass: 'range-input-node',
+    data: { range: 50 }
+},
+
+'input_date': {
+    name: 'input_date',
+    inputs: 0,
+    outputs: 1,
+    html: `
+      <div>
+        <div class="title-box"><i class="fas fa-calendar-alt"></i> Fecha</div>
+        <div class="box">
+          <label>Selecciona fecha:</label>
+          <input type="date" df-date oninput="handleNodeDataChange(event)">
+        </div>
+      </div>`,
+    cssClass: 'date-input-node',
+    data: { date: '' }
+},
+
+'input_time': {
+    name: 'input_time',
+    inputs: 0,
+    outputs: 1,
+    html: `
+      <div>
+        <div class="title-box"><i class="fas fa-clock"></i> Hora</div>
+        <div class="box">
+          <label>Selecciona hora:</label>
+          <input type="time" df-time oninput="handleNodeDataChange(event)">
+        </div>
+      </div>`,
+    cssClass: 'time-input-node',
+    data: { time: '' }
+},
+
+'input_color': {
+    name: 'input_color',
+    inputs: 0,
+    outputs: 1,
+    html: `
+      <div>
+        <div class="title-box"><i class="fas fa-palette"></i> Color</div>
+        <div class="box">
+          <label>Elige color:</label>
+          <input type="color" df-color value="#ff0000" oninput="handleNodeDataChange(event)">
+        </div>
+      </div>`,
+    cssClass: 'color-input-node',
+    data: { color: '#ff0000' }
+},
+
+
+// ————————————————————————————————————————————
+// ——— NODOS DE TRANSFORMACIÓN DE TEXTO —————
+// ————————————————————————————————————————————
+
+'text_replace': {
+    name: 'text_replace',
+    inputs: 1,
+    outputs: 1,
+    html: `
+      <div>
+        <div class="title-box"><i class="fas fa-exchange-alt"></i> Reemplazar</div>
+        <div class="box">
+          <label>Buscar:</label>
+          <input type="text" df-find placeholder="texto a buscar">
+          <label>Reemplazar con:</label>
+          <input type="text" df-replace placeholder="nuevo texto">
+          <button type="button" onclick="applyTextReplace(event)">Ejecutar</button>
+          <textarea df-result readonly style="height: 60px;"></textarea>
+        </div>
+      </div>`,
+    cssClass: 'text-replace-node',
+    data: { find: '', replace: '', result: '' }
+},
+
+'text_split': {
+    name: 'text_split',
+    inputs: 1,
+    outputs: 1,
+    html: `
+      <div>
+        <div class="title-box"><i class="fas fa-cut"></i> Dividir</div>
+        <div class="box">
+          <label>Separador:</label>
+          <input type="text" df-separator placeholder=",">
+          <button type="button" onclick="applyTextSplit(event)">Ejecutar</button>
+          <textarea df-result readonly style="height: 60px;"></textarea>
+        </div>
+      </div>`,
+    cssClass: 'text-split-node',
+    data: { separator: '', result: '' }
+},
+
+'text_uppercase': {
+    name: 'text_uppercase',
+    inputs: 1,
+    outputs: 1,
+    html: `
+      <div>
+        <div class="title-box"><i class="fas fa-arrow-up"></i> Mayúsculas</div>
+        <div class="box">
+          <button type="button" onclick="applyTextCase(event, 'upper')">A → Z</button>
+          <textarea df-result readonly style="height: 60px;"></textarea>
+        </div>
+      </div>`,
+    cssClass: 'text-uppercase-node',
+    data: { result: '' }
+},
+
+'text_lowercase': {
+    name: 'text_lowercase',
+    inputs: 1,
+    outputs: 1,
+    html: `
+      <div>
+        <div class="title-box"><i class="fas fa-arrow-down"></i> Minúsculas</div>
+        <div class="box">
+          <button type="button" onclick="applyTextCase(event, 'lower')">a → z</button>
+          <textarea df-result readonly style="height: 60px;"></textarea>
+        </div>
+      </div>`,
+    cssClass: 'text-lowercase-node',
+    data: { result: '' }
+},
+
+'text_length': {
+    name: 'text_length',
+    inputs: 1,
+    outputs: 1,
+    html: `
+      <div>
+        <div class="title-box"><i class="fas fa-align-justify"></i> Longitud</div>
+        <div class="box">
+          <button type="button" onclick="applyTextLength(event)">Calcular</button>
+          <input type="number" df-result readonly>
+        </div>
+      </div>`,
+    cssClass: 'text-length-node',
+    data: { result: 0 }
+},
+
+'html_strip': {
+    name: 'html_strip',
+    inputs: 1,
+    outputs: 1,
+    html: `
+      <div>
+        <div class="title-box"><i class="fas fa-code"></i> Strip HTML</div>
+        <div class="box">
+          <button type="button" onclick="applyHtmlStrip(event)">Ejecutar</button>
+          <textarea df-result readonly style="height: 60px;"></textarea>
+        </div>
+      </div>`,
+    cssClass: 'html-strip-node',
+    data: { result: '' }
+},
+
+
+// ————————————————————————————————————————————
+// ——— NODO DE ENTRADA JSON GENÉRICA ————————
+// ————————————————————————————————————————————
+'input_json': {
+    name: 'input_json',
+    inputs: 0,
+    outputs: 1,
+    html: `
+      <div>
+        <div class="title-box"><i class="fas fa-database"></i> Input JSON</div>
+        <div class="box">
+          <label>Valor (JSON):</label>
+          <textarea
+            df-json
+            placeholder='{"clave": 123, "arr": [1,2,3] }'
+            style="width:100%; height:80px;"
+            oninput="handleJsonInputChange(event)"
+          ></textarea>
+        </div>
+      </div>`,
+    cssClass: 'json-input-node',
+    data: { json: '{}', lastInput: null }
+  },
+  
+  
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -126,7 +422,7 @@ function escapeHtml(unsafe) {
     .replace(/>/g, '&gt;');
 }
 
-    function showToast(icon, title, text = '', timer = 2000) { if (typeof Swal === 'undefined') { console.log(`Toast (${icon}): ${title} - ${text}`); return; } Swal.fire({ toast: true, position: 'bottom-end', icon: icon, title: title, text: text, showConfirmButton: false, timer: timer, timerProgressBar: true, didOpen: (toast) => { toast.addEventListener('mouseenter', Swal.stopTimer); toast.addEventListener('mouseleave', Swal.resumeTimer); } }); }
+function showToast(icon, title, text = '', timer = 2000) { if (typeof Swal === 'undefined') { console.log(`Toast (${icon}): ${title} - ${text}`); return; } Swal.fire({ toast: true, position: 'bottom-end', icon: icon, title: title, text: text, showConfirmButton: false, timer: timer, timerProgressBar: true, didOpen: (toast) => { toast.addEventListener('mouseenter', Swal.stopTimer); toast.addEventListener('mouseleave', Swal.resumeTimer); } }); }
 function getConnections(nodeId, ioType) { try { const node = editor?.getNodeFromId(nodeId); const ports = ioType === 'input' ? node?.inputs : node?.outputs; if (!ports) return []; let connections = []; Object.values(ports).forEach(portInfo => { if (portInfo?.connections) { connections = connections.concat(portInfo.connections); } }); return connections; } catch (e) { console.error(`Error getConnections ${ioType} for ${nodeId}:`, e); return []; } }
 function readField(nodeId, attr) { try { const node = editor?.getNodeFromId(nodeId); const dataKey = attr.startsWith('df-') ? attr.substring(3) : attr; if (node?.data && dataKey in node.data) return node.data[dataKey]; const element = document.getElementById(`node-${nodeId}`); if (element) { const inputElement = element.querySelector(`[${attr}]`); if (inputElement) return inputElement.value; } } catch (e) { /* ignore */ } return null; }
 function getMimeType(ext) { const m = { 'html': 'text/html;charset=utf-8','htm': 'text/html;charset=utf-8','css': 'text/css;charset=utf-8','js': 'application/javascript;charset=utf-8','json': 'application/json;charset=utf-8','xml': 'application/xml;charset=utf-8','txt': 'text/plain;charset=utf-8','csv': 'text/csv;charset=utf-8','md': 'text/markdown;charset=utf-8','jpg': 'image/jpeg','jpeg': 'image/jpeg','png': 'image/png','gif': 'image/gif','svg': 'image/svg+xml','pdf': 'application/pdf'}; return m[ext] || 'application/octet-stream'; }
@@ -182,6 +478,160 @@ function getNodeIdFromEvent(event) {
 // --- O EN LA SECCIÓN GENERAL DE "HELPER FUNCTIONS" ---
 
 
+function handleNodeDataChange(event) { if (!editor || !event?.target) return; const el = event.target; const nodeEl = el.closest('.drawflow-node'); if (!nodeEl) return; const id = nodeEl.id.split('-')[1]; const node = editor.getNodeFromId(id); if (!node) return; let key = null; for (const attr of el.attributes) if (attr.name.startsWith('df-')) { key = attr.name.substring(3); break; } if (!key) return; requestAnimationFrame(() => { try { const updatedNode = editor.getNodeFromId(id); if (!updatedNode?.data?.hasOwnProperty(key)) return; const val = updatedNode.data[key]; const name = updatedNode.name; if ((name === 'url_input' && key === 'url') || (name === 'cargarTexto' && key === 'filecontent')) { if(name === 'url_input') executeNode(id, val); else propagateData(id, name, key, val); } else if (name === 'imagen' && ['imgsrc', 'imgalt', 'imgwidth', 'imgheight'].includes(key)) handleImageInputChange(event); else if (name === 'nota' && key === 'notecontent') updateCharacterCount(event); else if ((name === 'timer_fetch' || name === 'timer_download' || name === 'loop') && key === 'interval') executeNode(id, null); else if (name === 'timer_fetch' && key === 'url') executeNode(id, null); saveHistoryState(); } catch (e) { console.error(`Error handleNodeDataChange (${id}/${key}):`, e); } }); }
+
+
+function applyTextReplace(event) {
+    const id = getNodeIdFromEvent(event);
+    const node = editor.getNodeFromId(id);
+    const txt = node.data.lastInput ?? '';
+    const find = node.data.find;
+    const replace = node.data.replace;
+    const res = txt.split(find).join(replace);
+    updateNodeResult(id, res);
+  }
+  
+  function applyTextSplit(event) {
+    const id = getNodeIdFromEvent(event);
+    const node = editor.getNodeFromId(id);
+    const txt = node.data.lastInput ?? '';
+    const sep = node.data.separator;
+    const res = txt.split(sep).join('\n');
+    updateNodeResult(id, res);
+  }
+  
+  function applyTextCase(event, mode) {
+    const id = getNodeIdFromEvent(event);
+    const node = editor.getNodeFromId(id);
+    const txt = node.data.lastInput ?? '';
+    const res = mode === 'upper' ? txt.toUpperCase() : txt.toLowerCase();
+    updateNodeResult(id, res);
+  }
+  
+  function applyTextLength(event) {
+    const id = getNodeIdFromEvent(event);
+    const node = editor.getNodeFromId(id);
+    const txt = node.data.lastInput ?? '';
+    updateNodeResult(id, txt.length);
+  }
+  
+  function applyHtmlStrip(event) {
+    const id = getNodeIdFromEvent(event);
+    const node = editor.getNodeFromId(id);
+    const txt = node.data.lastInput ?? '';
+    const res = txt.replace(/<[^>]*>/g, '');
+    updateNodeResult(id, res);
+  }
+  
+  function updateNodeResult(nodeId, result) {
+    // helper to set df-result and propagar
+    editor.updateNodeDataFromId(nodeId, { result });
+    const el = document.getElementById(`node-${nodeId}`);
+    const out = el.querySelector('[df-result]');
+    if (out.tagName === 'INPUT') out.value = result;
+    else out.value = result;
+    // propagar al siguiente
+    propagateData(nodeId, editor.getNodeFromId(nodeId).name, 'result', result);
+  }
+  
+
+  function handleJsonInputChange(event) {
+    const nodeId   = getNodeIdFromEvent(event);
+    const textarea = event.target;
+    const text     = textarea.value;
+    let parsed;
+  
+    // 1) parseo
+    try {
+      parsed = JSON.parse(text);
+      textarea.classList.remove('error');
+    } catch (e) {
+      textarea.classList.add('error');
+      return;
+    }
+  
+    // 2) actualizo estado interno
+    editor.updateNodeDataFromId(nodeId, {
+      json: text,
+      lastInput: parsed
+    });
+  
+    // 3) propago EJECUCIÓN (no datos) para que reciba y ejecute el nodo JS
+    propagateExecution(nodeId, parsed);
+  }
+  
+  
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -193,11 +643,320 @@ function cleanupNodeIntervals(nodeId) { if (nodeIntervals[nodeId]) { nodeInterva
 function cleanupAllModuleIntervals() { const keys = Object.keys(nodeIntervals); if (keys.length > 0) { console.log(`Cleaning intervals for ${keys.length} nodes...`); keys.forEach(cleanupNodeIntervals); nodeIntervals = {}; } }
 
 // --- Execution & Propagation Logic ---
-const EXECUTE_NODE_SYSTEM_TYPES = ['url_input', 'timer_fetch', 'fetch_html', 'display_text', 'loop', 'repeat', 'timer_download', 'download_file', 'extract_value'];
-async function executeNode(nodeId, payload) { let node; try { node = editor.getNodeFromId(nodeId); if (!node) { cleanupNodeIntervals(nodeId); return; } } catch (error) { console.error(`Err get node ${nodeId}:`, error); return; } const nName = node.name; let outP = payload; if (node._executing) return; node._executing = true; try { switch (nName) { case 'timer_fetch': case 'timer_download': case 'loop': { cleanupNodeIntervals(nodeId); let intMs = parseInt(readField(nodeId, 'df-interval') || node.data?.interval, 10); const defInt = nName==='loop'?1000:(nName==='timer_fetch'?60000:10000); if (isNaN(intMs)||intMs<100) intMs=defInt; const initP=payload; console.log(`Start ${nName} ${nodeId} every ${intMs} ms.`); const execInt = async () => { const currN = editor.getNodeFromId(nodeId); if (!currN) { cleanupNodeIntervals(nodeId); return; } if (nName === 'timer_fetch') { let url = readField(nodeId, 'df-url'); if (!url?.trim()) { const cs = getConnections(nodeId, 'input'); for (const c of cs) { const src = editor.getNodeFromId(c.node); if (src?.name === 'url_input') { url = readField(c.node, 'df-url'); if (url?.trim()) break; } } } if (url?.trim()) { url = url.trim(); if (!url.startsWith('http')) url = 'https://' + url; try { const r = await fetch(CORS_PROXY + encodeURIComponent(url)); if (!r.ok) throw new Error(`HTTP ${r.status}`); const d = await r.json(); propagateExecution(nodeId, d.contents); } catch (err) { console.error(`TFetch ${nodeId} err:`, err); propagateExecution(nodeId, `// ERR Fetch:\n// ${err.message}`); } } else propagateExecution(nodeId, '// ERR: No URL'); } else if (nName === 'loop') { propagateExecution(nodeId, initP); } else propagateExecution(nodeId, Date.now()); }; const intId = setInterval(execInt, intMs); if (!nodeIntervals[nodeId]) nodeIntervals[nodeId] = []; nodeIntervals[nodeId].push(intId); if (nName === 'timer_fetch') await execInt(); break; } case 'fetch_html': { let url = payload; if (typeof url !== 'string' || !url?.trim()){ propagateExecution(nodeId, '// ERR: Invalid URL'); return; } url = url.trim(); if (!url.startsWith('http')) url = 'https://' + url; try { const r = await fetch(CORS_PROXY + encodeURIComponent(url)); if (!r.ok) throw new Error(`HTTP ${r.status}`); const d = await r.json(); outP = d.contents; } catch (err) { console.error(`Fetch ${nodeId} err:`, err); outP = `// ERR Fetch:\n// ${err.message}`; } propagateExecution(nodeId, outP); break; } case 'display_text': { const txt = String(payload ?? '(null)'); editor.updateNodeDataFromId(nodeId, { display: txt }); const el = document.getElementById(`node-${nodeId}`); const ta = el?.querySelector('textarea[df-display]'); if (ta) ta.value = txt; outP = payload; propagateExecution(nodeId, outP); break; } case 'repeat': { let c = parseInt(readField(nodeId, 'df-count') || node.data?.count, 10); if (isNaN(c) || c <= 0) return; const p = payload; for (let i = 0; i < c; i++) setTimeout(() => propagateExecution(nodeId, p), 0); return; } case 'download_file': { if (payload === null || payload === undefined) return; const f = readField(nodeId, 'df-filename')?.trim() || 'd.txt'; const s = String(payload); editor.updateNodeDataFromId(nodeId, { contentfordownload: s, filename: f }); try { const sf = f.replace(/[^a-zA-Z0-9._-]/g, '_').trim() || "d.txt"; const m = getMimeType(sf.split('.').pop().toLowerCase()); const b = new Blob([s], { type: m }); const l = document.createElement('a'); l.href = URL.createObjectURL(b); l.download = sf; document.body.appendChild(l); l.click(); document.body.removeChild(l); URL.revokeObjectURL(l.href); } catch (err) { console.error(`Download ${nodeId} error:`, err); showToast('error', 'Error', 'Error descarga.'); } return; } case 'url_input': { const u = readField(nodeId, 'df-url'); outP = u; propagateExecution(nodeId, outP); break; } case 'extract_value': { const txt = String(payload ?? ''); const pat = readField(nodeId, 'df-selector_received') || ''; let val = null, res = '(Esperando)'; if (txt && pat) { try { const r = new RegExp(pat); const m = txt.match(r); if (m) { val = m[1] ?? m[0]; res = val; } else res = '(No encontrado)'; } catch (e) { res = '(Error Regex)'; } } else if (!pat) res = '(Esperando patrón)'; else res = '(Esperando texto)'; editor.updateNodeDataFromId(nodeId, { result: res }); const el = document.getElementById(`node-${nodeId}`); const rt = el?.querySelector('textarea[df-result]'); if (rt) rt.value = res; outP = val; propagateExecution(nodeId, outP); break; } default: { if (!baseNodeDefinitions[nName] || EXECUTE_NODE_SYSTEM_TYPES.includes(nName)) propagateExecution(nodeId, outP); } } } catch (error) { console.error(`Error executing ${nName} (${nodeId}):`, error); showToast('error', `Error ${nName}`, error.message.substring(0,50), 4000); } finally { if (node) node._executing = false; } }
-function propagateExecution(sourceNodeId, payload) { const conns = getConnections(sourceNodeId, 'output'); conns.forEach(conn => { const targetId = conn.node; const targetNode = editor.getNodeFromId(targetId); if (!targetNode) return; const targetPort = conn.output; if (EXECUTE_NODE_SYSTEM_TYPES.includes(targetNode.name)) { if (targetNode.name === 'extract_value') { if (targetPort === 'input_1') setTimeout(() => executeNode(targetId, payload), 0); else if (targetPort === 'input_2') { const s = String(payload ?? ''); editor.updateNodeDataFromId(targetId, { selector_received: s }); const el = document.getElementById(`node-${targetId}`); const i = el?.querySelector('input[df-selector_received]'); if (i) i.value = s; } } else { setTimeout(() => executeNode(targetId, payload), 0); } } else if (targetNode.name === 'javascript_code') { editor.updateNodeDataFromId(targetId, { lastInput: payload }); } else if (['mostrarPasar', 'guardarTexto', 'concatenar'].includes(targetNode.name)) { const val = String(payload ?? ''); if (targetPort === 'input_1') { if (targetNode.name === 'mostrarPasar') { editor.updateNodeDataFromId(targetId, { result: val }); const el = document.getElementById(`node-${targetId}`); const ta = el?.querySelector('textarea[df-result]'); if(ta) ta.value = val; setTimeout(() => propagateData(targetId, targetNode.name, 'result', val), 0); } else if (targetNode.name === 'guardarTexto') { editor.updateNodeDataFromId(targetId, { savecontent: val }); const el = document.getElementById(`node-${targetId}`); const ta = el?.querySelector('textarea[df-savecontent]'); if(ta) ta.value = val; } else if (targetNode.name === 'concatenar') { setTimeout(() => updateConcatenateNode(targetId), 0); } } } }); }
+const EXECUTE_NODE_SYSTEM_TYPES = [
+    'url_input', 'timer_fetch', 'fetch_html', 'display_text',
+    'loop', 'repeat', 'timer_download', 'download_file', 'extract_value'
+  ];
+  
+  async function executeNode(nodeId, payload) {
+    let node;
+    try {
+      node = editor.getNodeFromId(nodeId);
+      if (!node) {
+        cleanupNodeIntervals(nodeId);
+        return;
+      }
+    } catch (error) {
+      console.error(`Err get node ${nodeId}:`, error);
+      return;
+    }
+    const nName = node.name;
+    let outP = payload;
+    if (node._executing) return;
+    node._executing = true;
+  
+    try {
+      switch (nName) {
+        // —————————————————————————————————————————————
+        case 'timer_fetch':
+        case 'timer_download':
+        case 'loop': {
+          cleanupNodeIntervals(nodeId);
+          let intMs = parseInt(readField(nodeId, 'df-interval') || node.data?.interval, 10);
+          const defInt = nName === 'loop'
+            ? 1000
+            : (nName === 'timer_fetch' ? 60000 : 10000);
+          if (isNaN(intMs) || intMs < 100) intMs = defInt;
+          const initP = payload;
+          console.log(`Start ${nName} ${nodeId} every ${intMs} ms.`);
+          const execInt = async () => {
+            const currN = editor.getNodeFromId(nodeId);
+            if (!currN) { cleanupNodeIntervals(nodeId); return; }
+            if (nName === 'timer_fetch') {
+              let url = readField(nodeId, 'df-url');
+              if (!url?.trim()) {
+                const cs = getConnections(nodeId, 'input');
+                for (const c of cs) {
+                  const src = editor.getNodeFromId(c.node);
+                  if (src?.name === 'url_input') {
+                    url = readField(c.node, 'df-url');
+                    if (url?.trim()) break;
+                  }
+                }
+              }
+              if (url?.trim()) {
+                url = url.trim();
+                if (!url.startsWith('http')) url = 'https://' + url;
+                try {
+                  const r = await fetch(CORS_PROXY + encodeURIComponent(url));
+                  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                  const d = await r.json();
+                  propagateExecution(nodeId, d.contents);
+                } catch (err) {
+                  console.error(`TFetch ${nodeId} err:`, err);
+                  propagateExecution(nodeId, `// ERR Fetch:\n// ${err.message}`);
+                }
+              } else propagateExecution(nodeId, '// ERR: No URL');
+            }
+            else if (nName === 'loop') {
+              propagateExecution(nodeId, initP);
+            }
+            else {
+              propagateExecution(nodeId, Date.now());
+            }
+          };
+          const intId = setInterval(execInt, intMs);
+          nodeIntervals[nodeId] = nodeIntervals[nodeId] || [];
+          nodeIntervals[nodeId].push(intId);
+          if (nName === 'timer_fetch') await execInt();
+          break;
+        }
+  
+        // —————————————————————————————————————————————
+        case 'fetch_html': {
+          let url = payload;
+          if (typeof url !== 'string' || !url?.trim()) {
+            propagateExecution(nodeId, '// ERR: Invalid URL');
+            return;
+          }
+          url = url.trim();
+          if (!url.startsWith('http')) url = 'https://' + url;
+          try {
+            const r = await fetch(CORS_PROXY + encodeURIComponent(url));
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            const d = await r.json();
+            outP = d.contents;
+          } catch (err) {
+            console.error(`Fetch ${nodeId} err:`, err);
+            outP = `// ERR Fetch:\n// ${err.message}`;
+          }
+          propagateExecution(nodeId, outP);
+          break;
+        }
+  
+        // —————————————————————————————————————————————
+        case 'display_text': {
+          const txt = String(payload ?? '(null)');
+          editor.updateNodeDataFromId(nodeId, { display: txt });
+          const el = document.getElementById(`node-${nodeId}`);
+          const ta = el?.querySelector('textarea[df-display]');
+          if (ta) ta.value = txt;
+          outP = payload;
+          propagateExecution(nodeId, outP);
+          break;
+        }
+  
+        // —————————————————————————————————————————————
+        case 'repeat': {
+          let c = parseInt(readField(nodeId, 'df-count') || node.data?.count, 10);
+          if (isNaN(c) || c <= 0) return;
+          const p = payload;
+          for (let i = 0; i < c; i++) {
+            setTimeout(() => propagateExecution(nodeId, p), 0);
+          }
+          return;
+        }
+  
+        // —————————————————————————————————————————————
+        case 'download_file': {
+          if (payload == null) return;
+          const f = (readField(nodeId, 'df-filename')?.trim() || 'd.txt');
+          const s = String(payload);
+          editor.updateNodeDataFromId(nodeId, { contentfordownload: s, filename: f });
+          try {
+            const sf = f.replace(/[^a-zA-Z0-9._-]/g, '_') || 'd.txt';
+            const m  = getMimeType(sf.split('.').pop().toLowerCase());
+            const b  = new Blob([s], { type: m });
+            const l  = document.createElement('a');
+            l.href = URL.createObjectURL(b);
+            l.download = sf;
+            document.body.appendChild(l);
+            l.click();
+            document.body.removeChild(l);
+            URL.revokeObjectURL(l.href);
+          } catch (err) {
+            console.error(`Download ${nodeId} error:`, err);
+            showToast('error', 'Error', 'Error descarga.');
+          }
+          return;
+        }
+  
+        // —————————————————————————————————————————————
+        case 'url_input': {
+          const u = readField(nodeId, 'df-url');
+          outP = u;
+          propagateExecution(nodeId, outP);
+          break;
+        }
+  
+        // —————————————————————————————————————————————
+        case 'extract_value': {
+          const txt = String(payload ?? '');
+          const pat = readField(nodeId, 'df-selector_received') || '';
+          let val = null, res = '(Esperando)';
+          if (txt && pat) {
+            try {
+              const r = new RegExp(pat);
+              const m = txt.match(r);
+              if (m) { val = m[1] ?? m[0]; res = val; }
+              else res = '(No encontrado)';
+            } catch {
+              res = '(Error Regex)';
+            }
+          } else if (!pat) res = '(Esperando patrón)';
+          else res = '(Esperando texto)';
+  
+          editor.updateNodeDataFromId(nodeId, { result: res });
+          const el = document.getElementById(`node-${nodeId}`);
+          const rt = el?.querySelector('textarea[df-result]');
+          if (rt) rt.value = res;
+  
+          outP = val;
+          propagateExecution(nodeId, outP);
+          break;
+        }
+  
+        // —————————————————————————————————————————————
+        default: {
+          // en cualquier otro caso, si es nodo “de sistema” vuelve a propagar
+          if (!baseNodeDefinitions[nName] || EXECUTE_NODE_SYSTEM_TYPES.includes(nName)) {
+            propagateExecution(nodeId, outP);
+          }
+        }
+      }
+    } catch (error) {
+      console.error(`Error executing ${nName} (${nodeId}):`, error);
+      showToast('error', `Error ${nName}`, error.message.substring(0,50), 4000);
+    } finally {
+      if (node) node._executing = false;
+    }
+  }
+  
+  
+  function propagateExecution(sourceNodeId, payload) {
+    const conns = getConnections(sourceNodeId, 'output');
+    conns.forEach(conn => {
+      const targetId   = conn.node;
+      const targetNode = editor.getNodeFromId(targetId);
+      if (!targetNode) return;
+      const targetPort = conn.output;
+  
+      // — Nodos de sistema que disparan executeNode ——
+      if (EXECUTE_NODE_SYSTEM_TYPES.includes(targetNode.name)) {
+        if (targetNode.name === 'extract_value') {
+          if (targetPort === 'input_1') {
+            setTimeout(() => executeNode(targetId, payload), 0);
+          } else if (targetPort === 'input_2') {
+            const s = String(payload ?? '');
+            editor.updateNodeDataFromId(targetId, { selector_received: s });
+            const el = document.getElementById(`node-${targetId}`);
+            const i  = el?.querySelector('input[df-selector_received]');
+            if (i) i.value = s;
+          }
+        } else {
+          setTimeout(() => executeNode(targetId, payload), 0);
+        }
+  
+      // — Nodo JS: actualizamos lastInput y ejecutamos instantáneamente ——
+      } else if (targetNode.name === 'javascript_code') {
+        editor.updateNodeDataFromId(targetId, { lastInput: payload });
+        setTimeout(() => executeNode(targetId, payload), 0);
+  
+      // — Resto de nodos personalizados —————————
+      } else if (['mostrarPasar', 'guardarTexto', 'concatenar'].includes(targetNode.name)) {
+        const val = String(payload ?? '');
+        if (targetPort === 'input_1') {
+          // mostrarPasar
+          if (targetNode.name === 'mostrarPasar') {
+            editor.updateNodeDataFromId(targetId, { result: val });
+            const el = document.getElementById(`node-${targetId}`);
+            const ta = el?.querySelector('textarea[df-result]');
+            if (ta) ta.value = val;
+            setTimeout(() => propagateData(targetId, targetNode.name, 'result', val), 0);
+  
+          // guardarTexto
+          } else if (targetNode.name === 'guardarTexto') {
+            editor.updateNodeDataFromId(targetId, { savecontent: val });
+            const el = document.getElementById(`node-${targetId}`);
+            const ta = el?.querySelector('textarea[df-savecontent]');
+            if (ta) ta.value = val;
+  
+          // concatenar
+          } else if (targetNode.name === 'concatenar') {
+            setTimeout(() => updateConcatenateNode(targetId), 0);
+          }
+        }
+      }
+    });
+  }
 function handleNodeDataChange(event) { if (!editor || !event?.target) return; const el = event.target; const nodeEl = el.closest('.drawflow-node'); if (!nodeEl) return; const id = nodeEl.id.split('-')[1]; const node = editor.getNodeFromId(id); if (!node) return; let key = null; for (const attr of el.attributes) if (attr.name.startsWith('df-')) { key = attr.name.substring(3); break; } if (!key) return; requestAnimationFrame(() => { try { const updatedNode = editor.getNodeFromId(id); if (!updatedNode?.data?.hasOwnProperty(key)) return; const val = updatedNode.data[key]; const name = updatedNode.name; if ((name === 'url_input' && key === 'url') || (name === 'cargarTexto' && key === 'filecontent')) { if(name === 'url_input') executeNode(id, val); else propagateData(id, name, key, val); } else if (name === 'imagen' && ['imgsrc', 'imgalt', 'imgwidth', 'imgheight'].includes(key)) handleImageInputChange(event); else if (name === 'nota' && key === 'notecontent') updateCharacterCount(event); else if ((name === 'timer_fetch' || name === 'timer_download' || name === 'loop') && key === 'interval') executeNode(id, null); else if (name === 'timer_fetch' && key === 'url') executeNode(id, null); saveHistoryState(); } catch (e) { console.error(`Error handleNodeDataChange (${id}/${key}):`, e); } }); }
-function propagateData(sourceNodeId, sourceNodeName, changedKey, outputData) { const sourceNode = editor.getNodeFromId(sourceNodeId); const outputPort = sourceNode?.outputs?.output_1; if (!outputPort) return; const connections = outputPort.connections || []; connections.forEach(conn => { const targetId = conn.node; const targetNode = editor.getNodeFromId(targetId); if (!targetNode) return; const targetPort = conn.output; if (EXECUTE_NODE_SYSTEM_TYPES.includes(targetNode.name)) { if (targetNode.name === 'extract_value') { if (targetPort === 'input_1') setTimeout(() => executeNode(targetId, outputData), 0); else if (targetPort === 'input_2') { const s = String(outputData ?? ''); editor.updateNodeDataFromId(targetId, { selector_received: s }); const el = document.getElementById(`node-${targetId}`); const i = el?.querySelector('input[df-selector_received]'); if (i) i.value = s; } } else { setTimeout(() => executeNode(targetId, outputData), 0); } } else if (targetNode.name === 'javascript_code') { editor.updateNodeDataFromId(targetId, { lastInput: outputData }); } else if (targetNode.name === 'concatenar') { setTimeout(() => updateConcatenateNode(targetId), 0); } else if (targetNode.name === 'mostrarPasar') { if (targetPort === 'input_1') { const v = String(outputData ?? ''); editor.updateNodeDataFromId(targetId, { result: v }); const el = document.getElementById(`node-${targetId}`); const ta = el?.querySelector('textarea[df-result]'); if(ta) ta.value = v; setTimeout(() => propagateData(targetId, targetNode.name, 'result', outputData), 0); } } else if (targetNode.name === 'guardarTexto') { if (targetPort === 'input_1') { const v = String(outputData ?? ''); editor.updateNodeDataFromId(targetId, { savecontent: v }); const el = document.getElementById(`node-${targetId}`); const ta = el?.querySelector('textarea[df-savecontent]'); if(ta) ta.value = v; } } }); }
+function propagateData(sourceNodeId, sourceNodeName, changedKey, outputData) {
+    const sourceNode = editor.getNodeFromId(sourceNodeId);
+    const outputPort = sourceNode?.outputs?.output_1;
+    if (!outputPort) return;
+  
+    const connections = outputPort.connections || [];
+    connections.forEach(conn => {
+      const targetId   = conn.node;
+      const targetNode = editor.getNodeFromId(targetId);
+      if (!targetNode) return;
+      const targetPort = conn.output;
+  
+      // — Nodos de sistema que disparan executeNode ——
+      if (EXECUTE_NODE_SYSTEM_TYPES.includes(targetNode.name)) {
+        if (targetNode.name === 'extract_value') {
+          if (targetPort === 'input_1') {
+            setTimeout(() => executeNode(targetId, outputData), 0);
+          } else if (targetPort === 'input_2') {
+            const s = String(outputData ?? '');
+            editor.updateNodeDataFromId(targetId, { selector_received: s });
+            const el = document.getElementById(`node-${targetId}`);
+            const i  = el?.querySelector('input[df-selector_received]');
+            if (i) i.value = s;
+          }
+        } else {
+          setTimeout(() => executeNode(targetId, outputData), 0);
+        }
+  
+      // — Nodo JS: actualizamos lastInput y ejecutamos instantáneamente ——
+      } else if (targetNode.name === 'javascript_code') {
+        editor.updateNodeDataFromId(targetId, { lastInput: outputData });
+        setTimeout(() => executeNode(targetId, outputData), 0);
+  
+      // — concatenar ———————
+      } else if (targetNode.name === 'concatenar') {
+        setTimeout(() => updateConcatenateNode(targetId), 0);
+  
+      // — mostrarPasar —————
+      } else if (targetNode.name === 'mostrarPasar' && targetPort === 'input_1') {
+        const v = String(outputData ?? '');
+        editor.updateNodeDataFromId(targetId, { result: v });
+        const el = document.getElementById(`node-${targetId}`);
+        const ta = el?.querySelector('textarea[df-result]');
+        if (ta) ta.value = v;
+        setTimeout(() => propagateData(targetId, targetNode.name, 'result', outputData), 0);
+  
+      // — guardarTexto —————
+      } else if (targetNode.name === 'guardarTexto' && targetPort === 'input_1') {
+        const v = String(outputData ?? '');
+        editor.updateNodeDataFromId(targetId, { savecontent: v });
+        const el = document.getElementById(`node-${targetId}`);
+        const ta = el?.querySelector('textarea[df-savecontent]');
+        if (ta) ta.value = v;
+      }
+    });
+  }
+  
 function updateConcatenateNode(nodeId) { const n = editor.getNodeFromId(nodeId); if (!n || n.name !== 'concatenar' || !n.inputs?.input_1) return; const conns = (n.inputs.input_1.connections || []).slice().sort((a, b) => (editor.getNodeFromId(a.node)?.pos_y ?? 0) - (editor.getNodeFromId(b.node)?.pos_y ?? 0)); let str = ""; conns.forEach(c => { const sN = editor.getNodeFromId(c.node); if (!sN?.data) return; let dC = ''; const d = sN.data; const keys = ['result', 'content', 'codecontent', 'outputhtml', 'filecontent', 'display', 'url', 'jscode']; for(const k of keys){if(d.hasOwnProperty(k)){ dC = d[k]; break; }} if (dC === '' && Object.keys(d).length > 0) { const fk = Object.keys(d)[0]; if(!['lastInput', 'selector_received'].includes(fk)) dC = d[fk]; } str += String(dC ?? ''); }); if (n.data.result !== str) { editor.updateNodeDataFromId(nodeId, { result: str }); propagateData(nodeId, 'concatenar', 'result', str); saveHistoryState(); } }
 
 // --- Node Activation ---
@@ -1176,6 +1935,29 @@ function initializeApp() {
         showInitializationError(`Initialization failed: ${error.message}`);
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function addWelcomeNode(moduleName) { if (!editor || !moduleName || isLocked()) return; try { const exported = editor.export(); const existing = exported?.drawflow?.[moduleName]?.data ?? {}; if (Object.keys(existing).length > 0) return; const html = `<div><div class="title-box welcome-title"><i class="fas fa-rocket"></i> Welcome to ${escapeHtml(moduleName)}!</div><div class="box welcome-box"><p><strong>Quick Start:</strong></p><ul><li><i class="fas fa-mouse-pointer"></i> Drag nodes.</li><li><i class="fas fa-link"></i> Connect outputs <i class="fas fa-arrow-right"></i> to inputs <i class="fas fa-arrow-left"></i>.</li><li><i class="fas fa-edit"></i> Click "Edit Content/Code".</li><li><i class="fas fa-save"></i> Save work.</li><li><i class="fas fa-plus-circle"></i> Explore "Create Node Type".</li></ul></div></div>`; const w=280, h=210; const rect = editor.container.getBoundingClientRect(), z=editor.zoom||1; const cx=(rect.width/2-editor.canvas_x)/z, cy=(rect.height/2-editor.canvas_y)/z; const x=cx-w/2, y=cy-h/2; const name='xocoflow_welcome_info'; if (!customNodeTypes[name]) editor.registerNode(name, null , {}, {}); const id = editor.addNode(name, 0, 0, x, y, 'welcome-node', {}, html); console.log(`Welcome node ${id} added to ${moduleName}.`); } catch (e) { console.error(`Error adding welcome node:`, e); } }
 
 // Helper to display critical initialization errors
