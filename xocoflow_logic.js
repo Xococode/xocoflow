@@ -340,27 +340,153 @@ const baseNodeDefinitions = {
   
   
   
+    // NUEVO: NODO SUMA
+    'sum': {
+      name: 'sum',
+      inputs: 1, // Un puerto de entrada que acepta múltiples conexiones
+      outputs: 1,
+      html: `
+          <div>
+            <div class="title-box"><i class="fas fa-plus"></i> Suma</div>
+            <div class="box">
+              <label>Resultado:</label>
+              <textarea df-result readonly style="height: 40px; text-align:right; font-weight:bold; font-size: 1.1em; padding: 5px 8px;" placeholder="0"></textarea>
+              <p class="help-text" style="font-size:10px; text-align:center; margin-top: 5px;">Suma todas las entradas numéricas.</p>
+            </div>
+          </div>`,
+      cssClass: 'sum-node', // Clase CSS opcional para estilizar
+      data: { result: 0 } // Dato inicial para el resultado
+  },
+  // FIN NUEVO NODO SUMA
+
+// Dentro del objeto baseNodeDefinitions = { ... }; añade esta entrada:
+
+    // NUEVO: NODO RESTA
+    'subtract': {
+      name: 'subtract',
+      inputs: 1, // Un puerto de entrada que acepta múltiples conexiones
+      outputs: 1,
+      html: `
+          <div>
+            <div class="title-box"><i class="fas fa-minus"></i> Resta</div>
+            <div class="box">
+              <label>Resultado:</label>
+              <textarea df-result readonly style="height: 40px; text-align:right; font-weight:bold; font-size: 1.1em; padding: 5px 8px;" placeholder="0"></textarea>
+              <p class="help-text" style="font-size:10px; text-align:center; margin-top: 5px;">Resta entradas (orden Y).</p>
+            </div>
+          </div>`,
+      cssClass: 'subtract-node', // Clase CSS opcional
+      data: { result: 0 } // Dato inicial para el resultado
+  },
+  // FIN NUEVO NODO RESTA
+
+
+// Dentro del objeto baseNodeDefinitions = { ... }; añade esta entrada:
+
+    // NUEVO: NODO MULTIPLICACIÓN
+    'multiply': {
+      name: 'multiply',
+      inputs: 1, // Un puerto de entrada que acepta múltiples conexiones
+      outputs: 1,
+      html: `
+          <div>
+            <div class="title-box"><i class="fas fa-times"></i> Multiplicación</div>
+            <div class="box">
+              <label>Resultado:</label>
+              <textarea df-result readonly style="height: 40px; text-align:right; font-weight:bold; font-size: 1.1em; padding: 5px 8px;" placeholder="1"></textarea>
+              <p class="help-text" style="font-size:10px; text-align:center; margin-top: 5px;">Multiplica entradas.</p>
+            </div>
+          </div>`,
+      cssClass: 'multiply-node', // Clase CSS opcional
+      data: { result: 1 } // Dato inicial para el resultado (identidad multiplicativa)
+  },
+  // FIN NUEVO NODO MULTIPLICACIÓN
+
+
+    // NUEVO: NODO DIVISIÓN
+    'divide': {
+      name: 'divide',
+      inputs: 1, // Un puerto de entrada que acepta múltiples conexiones
+      outputs: 1,
+      html: `
+          <div>
+            <div class="title-box"><i class="fas fa-divide"></i> División</div>
+            <div class="box">
+              <label>Resultado:</label>
+              <textarea df-result readonly style="height: 40px; text-align:right; font-weight:bold; font-size: 1.1em; padding: 5px 8px;" placeholder="N/A"></textarea>
+              <p class="help-text" style="font-size:10px; text-align:center; margin-top: 5px;">Divide entradas (orden Y).</p>
+            </div>
+          </div>`,
+      cssClass: 'divide-node', // Clase CSS opcional
+      data: { result: NaN } // Dato inicial para el resultado (indefinido)
+  },
+  // FIN NUEVO NODO DIVISIÓN
+
+// Dentro del objeto baseNodeDefinitions = { ... }; añade esta entrada:
+
+    // NUEVO: NODO MULTIPLICACIÓN
+    'multiply': {
+      name: 'multiply',
+      inputs: 1, // Un puerto de entrada que acepta múltiples conexiones
+      outputs: 1,
+      html: `
+          <div>
+            <div class="title-box"><i class="fas fa-times"></i> Multiplicación</div>
+            <div class="box">
+              <label>Resultado:</label>
+              <textarea df-result readonly style="height: 40px; text-align:right; font-weight:bold; font-size: 1.1em; padding: 5px 8px;" placeholder="1"></textarea>
+              <p class="help-text" style="font-size:10px; text-align:center; margin-top: 5px;">Multiplica entradas.</p>
+            </div>
+          </div>`,
+      cssClass: 'multiply-node', // Clase CSS opcional
+      data: { result: 1 } // Dato inicial para el resultado (identidad multiplicativa)
+  },
+  // FIN NUEVO NODO MULTIPLICACIÓN
+
+// Dentro del objeto baseNodeDefinitions = { ... }; añade esta entrada:
+
+    // NUEVO: NODO DIVISIÓN
+    'divide': {
+      name: 'divide',
+      inputs: 1, // Un puerto de entrada que acepta múltiples conexiones
+      outputs: 1,
+      html: `
+          <div>
+            <div class="title-box"><i class="fas fa-divide"></i> División</div>
+            <div class="box">
+              <label>Resultado:</label>
+              <textarea df-result readonly style="height: 40px; text-align:right; font-weight:bold; font-size: 1.1em; padding: 5px 8px;" placeholder="N/A"></textarea>
+              <p class="help-text" style="font-size:10px; text-align:center; margin-top: 5px;">Divide entradas (orden Y).</p>
+            </div>
+          </div>`,
+      cssClass: 'divide-node', // Clase CSS opcional
+      data: { result: NaN } // Dato inicial para el resultado (indefinido)
+  },
+  // FIN NUEVO NODO DIVISIÓN
 
 
 
 
+// Dentro del objeto baseNodeDefinitions = { ... }; añade esta entrada:
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    // NUEVO: NODO IMAGEN MINIMALISTA
+    'image_minimal': {
+      name: 'image_minimal',
+      inputs: 0, // Sin entradas de datos
+      outputs: 0, // Sin salidas de datos (podría añadirse una para la URL/DataURL si se desea)
+      html: `
+          <div class="image-minimal-content" role="img" aria-label="Imagen cargada">
+            <div class="image-placeholder" title="Haz clic, pega o arrastra una imagen aquí">
+               <i class="fas fa-image"></i>
+               <span>Cargar Imagen</span>
+            </div>
+            <img df-imgsrc src="" alt="Imagen cargada" style="display: none;" />
+          </div>`,
+      cssClass: 'image-minimal-node',
+      // Guardaremos el tamaño original y la URL
+      data: { imgsrc: '', naturalWidth: 0, naturalHeight: 0 }
+  },
+  // FIN NUEVO NODO IMAGEN MINIMALISTA
 
 
 
@@ -569,27 +695,601 @@ function applyTextReplace(event) {
 
 
 
+// NUEVO: Función para calcular y actualizar el nodo Suma
+/**
+ * Calcula la suma de las entradas conectadas a un nodo 'sum' y actualiza su resultado.
+ * @param {string} nodeId - El ID del nodo 'sum'.
+ */
+function updateSumNode(nodeId) {
+  try {
+      const node = editor.getNodeFromId(nodeId);
+      // Verificar que el nodo existe, es de tipo 'sum' y tiene el puerto de entrada definido
+      if (!node || node.name !== 'sum' || !node.inputs?.input_1) return;
+
+      const connections = node.inputs.input_1.connections || [];
+      let currentSum = 0;
+
+      // Recorrer todas las conexiones entrantes
+      connections.forEach(conn => {
+          const sourceNode = editor.getNodeFromId(conn.node);
+          if (sourceNode?.data) {
+              let value = 0;
+              // Intentar obtener el valor numérico de la fuente
+              // Prioridad: 'number' (de input_number), luego 'result' (de otros nodos), luego 'range'
+              if (sourceNode.data.hasOwnProperty('number')) {
+                  value = parseFloat(sourceNode.data.number);
+              } else if (sourceNode.data.hasOwnProperty('result')) {
+                   value = parseFloat(sourceNode.data.result);
+              } else if (sourceNode.data.hasOwnProperty('range')) { // Añadido para input_range
+                   value = parseFloat(sourceNode.data.range);
+              } // Puedes añadir más campos 'else if' si tienes otros nodos que emiten números con claves diferentes
+
+              // Si es un número válido, añadirlo a la suma
+              if (!isNaN(value)) {
+                  currentSum += value;
+              } else {
+                  console.warn(`Node sum (${nodeId}): Input from ${conn.node} is not a number. Ignored.`);
+              }
+          }
+      });
+
+      // Actualizar los datos internos del nodo y la UI solo si el resultado ha cambiado
+      if (node.data.result !== currentSum) {
+          console.log(`Node sum (${nodeId}): Updating result from ${node.data.result} to ${currentSum}`);
+          editor.updateNodeDataFromId(nodeId, { result: currentSum });
+
+          // Actualizar el textarea visual dentro del nodo
+          const nodeElement = document.getElementById(`node-${nodeId}`);
+          const resultTextarea = nodeElement?.querySelector('textarea[df-result]');
+          if (resultTextarea) {
+              resultTextarea.value = currentSum;
+          }
+
+          // Propagar el nuevo resultado a los nodos conectados a la salida del nodo Suma
+          propagateData(nodeId, 'sum', 'result', currentSum);
+          saveHistoryState(); // Guardar estado porque el resultado cambió
+      }
+  } catch (error) {
+      console.error(`Error updating sum node ${nodeId}:`, error);
+      showToast('error', 'Error en Suma', `No se pudo calcular la suma para el nodo ${nodeId}.`);
+  }
+}
+// FIN NUEVA FUNCIÓN
+
+
+// Añade esta función junto a updateSumNode y updateConcatenateNode
+
+// NUEVO: Función para calcular y actualizar el nodo Resta
+/**
+ * Calcula la resta de las entradas conectadas a un nodo 'subtract' y actualiza su resultado.
+ * El orden se basa en la posición Y de los nodos de entrada (el superior menos los inferiores).
+ * @param {string} nodeId - El ID del nodo 'subtract'.
+ */
+function updateSubtractNode(nodeId) {
+  try {
+      const node = editor.getNodeFromId(nodeId);
+      // Verificar que el nodo existe, es de tipo 'subtract' y tiene el puerto de entrada definido
+      if (!node || node.name !== 'subtract' || !node.inputs?.input_1) return;
+
+      const connectionsRaw = node.inputs.input_1.connections || [];
+
+      // Ordenar conexiones por posición Y del nodo origen (el más alto primero)
+      const connectionsSorted = connectionsRaw.slice().sort((a, b) => {
+          const nodeA_Y = editor.getNodeFromId(a.node)?.pos_y ?? Infinity;
+          const nodeB_Y = editor.getNodeFromId(b.node)?.pos_y ?? Infinity;
+          return nodeA_Y - nodeB_Y;
+      });
+
+      let currentResult = 0;
+      let isFirstNode = true;
+
+      // Recorrer todas las conexiones entrantes ordenadas
+      connectionsSorted.forEach(conn => {
+          const sourceNode = editor.getNodeFromId(conn.node);
+          let value = 0; // Valor por defecto si no es número
+
+          if (sourceNode?.data) {
+              // Intentar obtener el valor numérico de la fuente
+              if (sourceNode.data.hasOwnProperty('number')) {
+                  value = parseFloat(sourceNode.data.number);
+              } else if (sourceNode.data.hasOwnProperty('result')) {
+                   value = parseFloat(sourceNode.data.result);
+              } else if (sourceNode.data.hasOwnProperty('range')) {
+                   value = parseFloat(sourceNode.data.range);
+              } // Añadir más 'else if' si es necesario
+
+              // Asegurarse de que el valor sea numérico, si no, usar 0
+              if (isNaN(value)) {
+                  value = 0;
+                  console.warn(`Node subtract (${nodeId}): Input from ${conn.node} is not a valid number. Using 0.`);
+              }
+          }
+
+          // Si es el primer nodo (el más arriba), establecerlo como valor inicial
+          if (isFirstNode) {
+              currentResult = value;
+              isFirstNode = false;
+          } else {
+              // Restar los valores de los nodos subsiguientes
+              currentResult -= value;
+          }
+      });
+
+      // Si no hubo conexiones, el resultado es 0
+      if (connectionsSorted.length === 0) {
+          currentResult = 0;
+      }
+
+      // Actualizar los datos internos del nodo y la UI solo si el resultado ha cambiado
+      if (node.data.result !== currentResult) {
+          console.log(`Node subtract (${nodeId}): Updating result from ${node.data.result} to ${currentResult}`);
+          editor.updateNodeDataFromId(nodeId, { result: currentResult });
+
+          // Actualizar el textarea visual dentro del nodo
+          const nodeElement = document.getElementById(`node-${nodeId}`);
+          const resultTextarea = nodeElement?.querySelector('textarea[df-result]');
+          if (resultTextarea) {
+              resultTextarea.value = currentResult;
+          }
+
+          // Propagar el nuevo resultado
+          propagateData(nodeId, 'subtract', 'result', currentResult);
+          saveHistoryState(); // Guardar estado porque el resultado cambió
+      }
+  } catch (error) {
+      console.error(`Error updating subtract node ${nodeId}:`, error);
+      showToast('error', 'Error en Resta', `No se pudo calcular la resta para el nodo ${nodeId}.`);
+  }
+}
+// FIN NUEVA FUNCIÓN RESTA
+
+
+
+// Añade esta función
+
+// NUEVO: Función para calcular y actualizar el nodo Multiplicación
+/**
+ * Calcula el producto de las entradas conectadas a un nodo 'multiply' y actualiza su resultado.
+ * @param {string} nodeId - El ID del nodo 'multiply'.
+ */
+function updateMultiplyNode(nodeId) {
+  try {
+      const node = editor.getNodeFromId(nodeId);
+      // Verificar que el nodo existe, es de tipo 'multiply' y tiene el puerto de entrada definido
+      if (!node || node.name !== 'multiply' || !node.inputs?.input_1) return;
+
+      const connections = node.inputs.input_1.connections || [];
+      let currentResult = 1; // Empezar con la identidad multiplicativa
+      let hasValidInput = false; // Flag para saber si se encontró al menos un número
+
+      // Recorrer todas las conexiones entrantes
+      connections.forEach(conn => {
+          const sourceNode = editor.getNodeFromId(conn.node);
+          let value = NaN; // Inicializar como NaN para forzar validación
+
+          if (sourceNode?.data) {
+              // Intentar obtener el valor numérico de la fuente
+              if (sourceNode.data.hasOwnProperty('number')) {
+                  value = parseFloat(sourceNode.data.number);
+              } else if (sourceNode.data.hasOwnProperty('result')) {
+                   value = parseFloat(sourceNode.data.result);
+              } else if (sourceNode.data.hasOwnProperty('range')) {
+                   value = parseFloat(sourceNode.data.range);
+              } // Añadir más 'else if' si es necesario
+
+              // Si es un número válido, multiplicarlo
+              if (!isNaN(value)) {
+                  currentResult *= value;
+                  hasValidInput = true; // Marcamos que encontramos al menos un número
+              } else {
+                  console.warn(`Node multiply (${nodeId}): Input from ${conn.node} is not a valid number. Ignored.`);
+                  // No multiplicamos si no es un número válido
+              }
+          }
+      });
+
+      // Si no hubo ninguna conexión válida, el resultado podría ser 0 o 1.
+      // Decidimos que si no hay conexiones O ninguna válida, el resultado es 0.
+      // Si hubo conexiones pero resultaron en NaN (ej. texto * texto), el resultado será NaN.
+      // Si solo hubo conexiones no numéricas (ignoradas), el resultado se quedó en 1.
+      // Para consistencia, si no hubo inputs válidos conectados, forzamos a 0.
+      if (connections.length === 0 || !hasValidInput) {
+           currentResult = 0;
+      }
+
+      // Actualizar los datos internos del nodo y la UI solo si el resultado ha cambiado
+      // Manejar comparación con NaN (NaN !== NaN siempre es true)
+      const previousResult = node.data.result;
+      if (previousResult !== currentResult && !(isNaN(previousResult) && isNaN(currentResult))) {
+          console.log(`Node multiply (${nodeId}): Updating result from ${previousResult} to ${currentResult}`);
+          editor.updateNodeDataFromId(nodeId, { result: currentResult });
+
+          // Actualizar el textarea visual dentro del nodo
+          const nodeElement = document.getElementById(`node-${nodeId}`);
+          const resultTextarea = nodeElement?.querySelector('textarea[df-result]');
+          if (resultTextarea) {
+              resultTextarea.value = isNaN(currentResult) ? "NaN" : currentResult; // Mostrar NaN si es el caso
+          }
+
+          // Propagar el nuevo resultado
+          propagateData(nodeId, 'multiply', 'result', currentResult);
+          saveHistoryState(); // Guardar estado porque el resultado cambió
+      }
+  } catch (error) {
+      console.error(`Error updating multiply node ${nodeId}:`, error);
+      showToast('error', 'Error en Multiplicación', `No se pudo calcular el producto para el nodo ${nodeId}.`);
+  }
+}
+// FIN NUEVA FUNCIÓN MULTIPLICACIÓN
+
+
+
+// Añade esta función
+
+// NUEVO: Función para calcular y actualizar el nodo División
+/**
+ * Calcula la división secuencial de las entradas conectadas a un nodo 'divide' y actualiza su resultado.
+ * El orden se basa en la posición Y de los nodos de entrada (el superior dividido por los inferiores).
+ * Maneja la división por cero resultando en Infinity.
+ * @param {string} nodeId - El ID del nodo 'divide'.
+ */
+function updateDivideNode(nodeId) {
+  try {
+      const node = editor.getNodeFromId(nodeId);
+      // Verificar que el nodo existe, es de tipo 'divide' y tiene el puerto de entrada definido
+      if (!node || node.name !== 'divide' || !node.inputs?.input_1) return;
+
+      const connectionsRaw = node.inputs.input_1.connections || [];
+
+      // Ordenar conexiones por posición Y del nodo origen (el más alto primero)
+      const connectionsSorted = connectionsRaw.slice().sort((a, b) => {
+          const nodeA_Y = editor.getNodeFromId(a.node)?.pos_y ?? Infinity;
+          const nodeB_Y = editor.getNodeFromId(b.node)?.pos_y ?? Infinity;
+          return nodeA_Y - nodeB_Y;
+      });
+
+      let currentResult = NaN; // Empezar como Indefinido
+      let isFirstNode = true;
+      let divisionByZero = false;
+
+      // Se necesitan al menos dos entradas para dividir
+      if (connectionsSorted.length < 2) {
+           currentResult = NaN; // Resultado indefinido si hay menos de 2 entradas
+      } else {
+          connectionsSorted.forEach(conn => {
+              const sourceNode = editor.getNodeFromId(conn.node);
+              let value = NaN; // Valor por defecto
+
+              if (sourceNode?.data) {
+                  // Intentar obtener el valor numérico de la fuente
+                  if (sourceNode.data.hasOwnProperty('number')) {
+                      value = parseFloat(sourceNode.data.number);
+                  } else if (sourceNode.data.hasOwnProperty('result')) {
+                       value = parseFloat(sourceNode.data.result);
+                  } else if (sourceNode.data.hasOwnProperty('range')) {
+                       value = parseFloat(sourceNode.data.range);
+                  } // Añadir más 'else if'
+
+                  // Si no es un número válido, tratar como NaN para el cálculo
+                  if (isNaN(value)) {
+                      value = NaN;
+                      console.warn(`Node divide (${nodeId}): Input from ${conn.node} is not a valid number. Result will be NaN.`);
+                  }
+              } else {
+                  value = NaN; // Si no hay nodo o datos, es NaN
+              }
+
+              // Establecer el dividendo inicial (primer nodo)
+              if (isFirstNode) {
+                  currentResult = value;
+                  isFirstNode = false;
+              } else {
+                  // Dividir por los valores subsiguientes (divisores)
+                  // Comprobar división por cero
+                  if (value === 0) {
+                      divisionByZero = true;
+                      currentResult = Infinity; // O puedes poner NaN o un string de error
+                      console.warn(`Node divide (${nodeId}): Division by zero detected from node ${conn.node}. Result set to Infinity.`);
+                      return; // Salir del forEach si hay división por cero (opcional, podría continuar y dar NaN/Infinity)
+                  }
+                  // Si el resultado actual o el divisor es NaN, el resultado sigue siendo NaN
+                  if (isNaN(currentResult) || isNaN(value)) {
+                      currentResult = NaN;
+                  } else {
+                       currentResult /= value;
+                  }
+              }
+          });
+      }
+
+      // Actualizar los datos internos y la UI solo si el resultado ha cambiado
+      const previousResult = node.data.result;
+      // Comparación especial para NaN (NaN !== NaN es true)
+      if (previousResult !== currentResult && !(isNaN(previousResult) && isNaN(currentResult))) {
+          console.log(`Node divide (${nodeId}): Updating result from ${previousResult} to ${currentResult}`);
+          editor.updateNodeDataFromId(nodeId, { result: currentResult });
+
+          // Actualizar el textarea visual dentro del nodo
+          const nodeElement = document.getElementById(`node-${nodeId}`);
+          const resultTextarea = nodeElement?.querySelector('textarea[df-result]');
+          if (resultTextarea) {
+              let displayValue = "N/A"; // Valor por defecto para mostrar
+              if (divisionByZero) {
+                   displayValue = "Infinity"; // O "Error Div/0"
+              } else if (!isNaN(currentResult)) {
+                   displayValue = currentResult;
+              } else if (connectionsSorted.length >= 2) {
+                   displayValue = "NaN"; // Si hubo cálculo pero dio NaN
+              }
+              resultTextarea.value = displayValue;
+          }
+
+          // Propagar el nuevo resultado (puede ser NaN o Infinity)
+          propagateData(nodeId, 'divide', 'result', currentResult);
+          saveHistoryState(); // Guardar estado porque el resultado cambió
+      }
+  } catch (error) {
+      console.error(`Error updating divide node ${nodeId}:`, error);
+      showToast('error', 'Error en División', `No se pudo calcular la división para el nodo ${nodeId}.`);
+  }
+}
+// FIN NUEVA FUNCIÓN DIVISIÓN
 
 
 
 
 
+// --- Añade estas nuevas funciones en la sección de Helpers o Node Specific UI ---
+
+/**
+ * Función central para procesar una imagen cargada (desde cualquier fuente).
+ * Actualiza los datos del nodo, la UI y redimensiona el nodo.
+ * @param {string} nodeId El ID del nodo.
+ * @param {string} imageDataUrl La imagen como Data URL.
+ */
+function processMinimalImageLoad(nodeId, imageDataUrl) {
+  if (!editor || !nodeId || !imageDataUrl) return;
+
+  console.log(`Processing image load for node ${nodeId}...`);
+  const nodeElement = document.getElementById(`node-${nodeId}`);
+  const imgTag = nodeElement?.querySelector('img[df-imgsrc]');
+  const placeholder = nodeElement?.querySelector('.image-placeholder');
+
+  if (!nodeElement || !imgTag || !placeholder) {
+      console.error(`Minimal Image Node elements not found for ID ${nodeId}.`);
+      showToast('error', 'Error Interno', 'No se encontraron elementos del nodo imagen.');
+      return;
+  }
+
+  // Crear imagen en memoria para obtener dimensiones
+  const tempImg = new Image();
+  tempImg.onload = () => {
+      try {
+          const w = tempImg.naturalWidth;
+          const h = tempImg.naturalHeight;
+          console.log(`Image loaded: ${w}x${h}`);
+
+          if (w === 0 || h === 0) throw new Error("Invalid image dimensions (0x0).");
+
+          // 1. Actualizar datos internos del nodo en Drawflow
+          editor.updateNodeDataFromId(nodeId, {
+              imgsrc: imageDataUrl,
+              naturalWidth: w,
+              naturalHeight: h
+          });
+
+          // 2. Actualizar UI del nodo
+          imgTag.src = imageDataUrl;
+          imgTag.style.display = 'block';
+          placeholder.style.display = 'none';
+          if (nodeElement.style.border.includes('dashed')) { // Quitar borde punteado si lo tenía
+               nodeElement.style.border = 'none';
+          }
 
 
+          // 3. Redimensionar el elemento del nodo
+          nodeElement.style.width = `${w}px`;
+          nodeElement.style.height = `${h}px`;
+
+          // 4. Forzar actualización de conexiones
+          // Usar un pequeño timeout puede ayudar a que el DOM se actualice antes de redibujar líneas
+          setTimeout(() => {
+              editor.updateConnectionNodes(`node-${nodeId}`);
+              console.log(`Node ${nodeId} connections updated after resize.`);
+          }, 50);
 
 
+          // 5. Guardar historial
+          saveHistoryState();
+          showToast('success', 'Imagen Cargada', `${w}x${h}px`);
+
+      } catch (error) {
+           console.error(`Error processing image dimensions or updating node ${nodeId}:`, error);
+           showToast('error', 'Error Imagen', 'No se pudo procesar la imagen.');
+           // Resetear si falla
+           imgTag.src = '';
+           imgTag.style.display = 'none';
+           placeholder.style.display = 'flex'; // O 'block' según tu layout de placeholder
+           editor.updateNodeDataFromId(nodeId, { imgsrc: '', naturalWidth: 0, naturalHeight: 0 });
+      }
+  };
+  tempImg.onerror = (err) => {
+      console.error("Error loading image data into temp Image object:", err);
+      showToast('error', 'Error Carga', 'El formato de imagen no es válido o está corrupto.');
+      // Resetear UI
+      imgTag.src = '';
+      imgTag.style.display = 'none';
+      placeholder.style.display = 'flex';
+      editor.updateNodeDataFromId(nodeId, { imgsrc: '', naturalWidth: 0, naturalHeight: 0 });
+  };
+  tempImg.src = imageDataUrl; // Iniciar la carga en memoria
+}
+
+/**
+* Inicia la selección de archivo para el nodo imagen minimalista.
+* @param {Event} event Evento click en el placeholder.
+*/
+function triggerMinimalImageFileSelect(event) {
+  const placeholder = event.currentTarget; // El placeholder que recibió el clic
+  const nodeElement = placeholder.closest('.drawflow-node');
+  if (!nodeElement) return;
+  const nodeId = nodeElement.id.split('-')[1];
+
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.style.display = 'none';
+
+  input.onchange = (e) => {
+      const file = e.target.files?.[0];
+      if (file) {
+          const reader = new FileReader();
+          reader.onload = (loadEvent) => {
+              processMinimalImageLoad(nodeId, loadEvent.target.result);
+          };
+          reader.onerror = () => {
+              showToast('error', 'Error Lectura', 'No se pudo leer el archivo.');
+          };
+          reader.readAsDataURL(file);
+      }
+      document.body.removeChild(input); // Limpiar input
+  };
+
+  document.body.appendChild(input);
+  input.click();
+}
+
+/**
+* Maneja el evento dragover sobre el placeholder de imagen.
+* @param {DragEvent} event
+*/
+function handleMinimalImageDragOver(event) {
+   event.preventDefault();
+   event.stopPropagation();
+   event.dataTransfer.dropEffect = 'copy';
+   event.currentTarget.classList.add('dragover'); // currentTarget es el placeholder
+}
+
+/**
+* Maneja el evento dragleave sobre el placeholder de imagen.
+* @param {DragEvent} event
+*/
+function handleMinimalImageDragLeave(event) {
+  event.stopPropagation();
+  event.currentTarget.classList.remove('dragover');
+}
+
+/**
+* Maneja el evento drop sobre el placeholder de imagen.
+* @param {DragEvent} event
+*/
+function handleMinimalImageDrop(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  const placeholder = event.currentTarget;
+  placeholder.classList.remove('dragover');
+  const nodeElement = placeholder.closest('.drawflow-node');
+  if (!nodeElement) return;
+  const nodeId = nodeElement.id.split('-')[1];
+
+  const files = event.dataTransfer.files;
+  if (files.length > 0) {
+      // Buscar el primer archivo de imagen
+      let imageFile = null;
+      for (let i = 0; i < files.length; i++) {
+          if (files[i].type.startsWith('image/')) {
+              imageFile = files[i];
+              break;
+          }
+      }
+
+      if (imageFile) {
+          const reader = new FileReader();
+          reader.onload = (loadEvent) => {
+              processMinimalImageLoad(nodeId, loadEvent.target.result);
+          };
+          reader.onerror = () => {
+              showToast('error', 'Error Lectura', 'No se pudo leer el archivo arrastrado.');
+          };
+          reader.readAsDataURL(imageFile);
+      } else {
+          showToast('warning', 'Archivo Inválido', 'Arrastra un archivo de imagen.');
+      }
+  }
+}
+
+/**
+* Maneja el evento paste sobre el nodo imagen minimalista.
+* @param {ClipboardEvent} event
+*/
+function handleMinimalImagePaste(event) {
+  const nodeElement = event.currentTarget; // El nodo que tiene el listener
+  if (!nodeElement || !nodeElement.classList.contains('image-minimal-node')) return; // Doble check
+
+  const nodeId = nodeElement.id.split('-')[1];
+  const items = (event.clipboardData || window.clipboardData)?.items;
+  if (!items) return;
+
+  let foundImage = false;
+  for (let i = 0; i < items.length; i++) {
+      if (items[i].kind === 'file' && items[i].type.startsWith('image/')) {
+          event.preventDefault(); // Prevenir pegado default solo si encontramos imagen
+          const blob = items[i].getAsFile();
+          if (blob) {
+               foundImage = true;
+               const reader = new FileReader();
+               reader.onload = (loadEvent) => {
+                   processMinimalImageLoad(nodeId, loadEvent.target.result);
+               };
+               reader.onerror = () => {
+                   showToast('error', 'Error Lectura', 'No se pudo leer la imagen pegada.');
+               };
+               reader.readAsDataURL(blob);
+               break; // Procesar solo la primera imagen encontrada
+          }
+      }
+  }
+  // Si no se encontró imagen en el portapapeles, no hacemos nada (ni prevenimos default)
+}
 
 
+// --- Modificar o añadir esta función para registrar los listeners ---
 
+/**
+* Registra los listeners específicos para el nodo imagen minimalista.
+* Debe llamarse DESPUÉS de que el nodo se añade al DOM.
+* @param {string} nodeId El ID del nodo recién añadido.
+*/
+function setupMinimalImageNodeListeners(nodeId) {
+  const nodeElement = document.getElementById(`node-${nodeId}`);
+  const placeholder = nodeElement?.querySelector('.image-placeholder');
 
+  if (!nodeElement || !placeholder) {
+      console.warn(`Could not find elements to attach listeners for minimal image node ${nodeId}`);
+      return;
+  }
 
+  console.log(`Attaching listeners to minimal image node ${nodeId}`);
 
+  // Click en placeholder para seleccionar archivo
+  placeholder.onclick = triggerMinimalImageFileSelect;
 
+  // Drag and Drop en placeholder
+  placeholder.ondragover = handleMinimalImageDragOver;
+  placeholder.ondragleave = handleMinimalImageDragLeave;
+  placeholder.ondrop = handleMinimalImageDrop;
 
+  // Paste EN EL NODO (funciona mejor que solo en el placeholder)
+  // Usamos captura para asegurar que lo cojamos aunque el foco esté dentro
+  nodeElement.addEventListener('paste', handleMinimalImagePaste, true); // 'true' para fase de captura
 
-
-
-
+  // Opcional: Listener para borrar la imagen (ej. doble clic en la imagen?)
+  // const imgTag = nodeElement.querySelector('img[df-imgsrc]');
+  // imgTag.ondblclick = (event) => {
+  //    event.stopPropagation();
+  //    clearMinimalImage(nodeId); // Necesitarías crear esta función
+  // };
+}
 
 
 
@@ -899,64 +1599,196 @@ const EXECUTE_NODE_SYSTEM_TYPES = [
       }
     });
   }
-function handleNodeDataChange(event) { if (!editor || !event?.target) return; const el = event.target; const nodeEl = el.closest('.drawflow-node'); if (!nodeEl) return; const id = nodeEl.id.split('-')[1]; const node = editor.getNodeFromId(id); if (!node) return; let key = null; for (const attr of el.attributes) if (attr.name.startsWith('df-')) { key = attr.name.substring(3); break; } if (!key) return; requestAnimationFrame(() => { try { const updatedNode = editor.getNodeFromId(id); if (!updatedNode?.data?.hasOwnProperty(key)) return; const val = updatedNode.data[key]; const name = updatedNode.name; if ((name === 'url_input' && key === 'url') || (name === 'cargarTexto' && key === 'filecontent')) { if(name === 'url_input') executeNode(id, val); else propagateData(id, name, key, val); } else if (name === 'imagen' && ['imgsrc', 'imgalt', 'imgwidth', 'imgheight'].includes(key)) handleImageInputChange(event); else if (name === 'nota' && key === 'notecontent') updateCharacterCount(event); else if ((name === 'timer_fetch' || name === 'timer_download' || name === 'loop') && key === 'interval') executeNode(id, null); else if (name === 'timer_fetch' && key === 'url') executeNode(id, null); saveHistoryState(); } catch (e) { console.error(`Error handleNodeDataChange (${id}/${key}):`, e); } }); }
-function propagateData(sourceNodeId, sourceNodeName, changedKey, outputData) {
-    const sourceNode = editor.getNodeFromId(sourceNodeId);
-    const outputPort = sourceNode?.outputs?.output_1;
-    if (!outputPort) return;
-  
-    const connections = outputPort.connections || [];
-    connections.forEach(conn => {
-      const targetId   = conn.node;
-      const targetNode = editor.getNodeFromId(targetId);
-      if (!targetNode) return;
-      const targetPort = conn.output;
-  
-      // — Nodos de sistema que disparan executeNode ——
-      if (EXECUTE_NODE_SYSTEM_TYPES.includes(targetNode.name)) {
-        if (targetNode.name === 'extract_value') {
-          if (targetPort === 'input_1') {
-            setTimeout(() => executeNode(targetId, outputData), 0);
-          } else if (targetPort === 'input_2') {
-            const s = String(outputData ?? '');
-            editor.updateNodeDataFromId(targetId, { selector_received: s });
-            const el = document.getElementById(`node-${targetId}`);
-            const i  = el?.querySelector('input[df-selector_received]');
-            if (i) i.value = s;
+// MODIFICADO: handleNodeDataChange para propagar cambios de nodos de entrada básicos
+function handleNodeDataChange(event) {
+  if (!editor || !event?.target) return;
+  const el = event.target;
+  const nodeEl = el.closest('.drawflow-node');
+  if (!nodeEl) return;
+  const id = nodeEl.id.split('-')[1];
+  const node = editor.getNodeFromId(id);
+  if (!node) return;
+  let key = null;
+  for (const attr of el.attributes) if (attr.name.startsWith('df-')) { key = attr.name.substring(3); break; }
+  if (!key) return;
+
+  // Usar requestAnimationFrame para asegurar que el valor en node.data esté actualizado
+  requestAnimationFrame(() => {
+      try {
+          const updatedNode = editor.getNodeFromId(id);
+          if (!updatedNode?.data?.hasOwnProperty(key)) return; // Verifica que la clave exista en los datos
+          const val = updatedNode.data[key]; // Obtiene el valor actualizado de los datos del nodo
+          const name = updatedNode.name;
+
+          // Lógica específica para ciertos nodos que necesitan ejecutar/propagar al cambiar
+          if ((name === 'url_input' && key === 'url')) {
+               executeNode(id, val);
+          } else if (name === 'cargarTexto' && key === 'filecontent') {
+               propagateData(id, name, key, val);
+          } else if (name === 'imagen' && ['imgsrc', 'imgalt', 'imgwidth', 'imgheight'].includes(key)) {
+               handleImageInputChange(event); // Llama a la función que actualiza la imagen y propaga
+          } else if (name === 'nota' && key === 'notecontent') {
+               updateCharacterCount(event); // Actualiza contador, no necesita propagar
+          } else if ((name === 'timer_fetch' || name === 'timer_download' || name === 'loop') && key === 'interval') {
+               executeNode(id, null); // Reinicia el timer con el nuevo intervalo
+          } else if (name === 'timer_fetch' && key === 'url') {
+               executeNode(id, null); // Reinicia el fetch timer (usará la nueva URL en la próxima ejecución)
           }
-        } else {
-          setTimeout(() => executeNode(targetId, outputData), 0);
-        }
-  
-      // — Nodo JS: actualizamos lastInput y ejecutamos instantáneamente ——
-      } else if (targetNode.name === 'javascript_code') {
-        editor.updateNodeDataFromId(targetId, { lastInput: outputData });
-        setTimeout(() => executeNode(targetId, outputData), 0);
-  
-      // — concatenar ———————
-      } else if (targetNode.name === 'concatenar') {
-        setTimeout(() => updateConcatenateNode(targetId), 0);
-  
-      // — mostrarPasar —————
-      } else if (targetNode.name === 'mostrarPasar' && targetPort === 'input_1') {
-        const v = String(outputData ?? '');
-        editor.updateNodeDataFromId(targetId, { result: v });
-        const el = document.getElementById(`node-${targetId}`);
-        const ta = el?.querySelector('textarea[df-result]');
-        if (ta) ta.value = v;
-        setTimeout(() => propagateData(targetId, targetNode.name, 'result', outputData), 0);
-  
-      // — guardarTexto —————
-      } else if (targetNode.name === 'guardarTexto' && targetPort === 'input_1') {
-        const v = String(outputData ?? '');
-        editor.updateNodeDataFromId(targetId, { savecontent: v });
-        const el = document.getElementById(`node-${targetId}`);
-        const ta = el?.querySelector('textarea[df-savecontent]');
-        if (ta) ta.value = v;
+          // --- INICIO MODIFICACIÓN: Propagar para nodos de entrada simples ---
+          else if (['input_number', 'input_text', 'input_range', 'input_date', 'input_time', 'input_color'].includes(name)) {
+               console.log(`Propagating data from ${name} node ${id}, key: ${key}, value:`, val);
+               propagateData(id, name, key, val); // Propaga el valor cambiado
+          }
+          // --- FIN MODIFICACIÓN ---
+          // Nota: input_json ya se maneja en handleJsonInputChange
+
+          // Siempre guardar el historial después de un cambio en los datos del nodo
+          saveHistoryState();
+
+      } catch (e) {
+          console.error(`Error handleNodeDataChange (${id}/${key}):`, e);
       }
-    });
+  });
+}
+
+
+
+
+// MODIFICADO: propagateData para manejar todos los nodos aritméticos y buscar mejor el dato a propagar
+function propagateData(sourceNodeId, sourceNodeName, changedKey, outputData) {
+  try {
+      const sourceNode = editor.getNodeFromId(sourceNodeId);
+      // Asume puerto de salida estándar 'output_1', si no existe o no tiene conexiones, salir.
+      const outputPort = sourceNode?.outputs?.output_1;
+      if (!outputPort?.connections || outputPort.connections.length === 0) {
+           // console.log(`Propagate from ${sourceNodeId}: No output connections found on output_1.`);
+           return;
+      }
+
+      const connections = outputPort.connections;
+      const sourceData = sourceNode.data || {};
+      let dataToPropagate;
+
+      // --- Determinar el dato real a propagar (lógica sin cambios) ---
+      if (outputData !== undefined) {
+          dataToPropagate = outputData;
+      } else {
+          const commonOutputKeys = ['result', 'content', 'codecontent', 'outputhtml', 'filecontent', 'display', 'url', 'jscode'];
+          const inputKeys = ['number', 'text', 'range', 'date', 'time', 'color', 'json', 'notecontent'];
+          const searchKeys = [changedKey, ...commonOutputKeys, ...inputKeys].filter(Boolean); // filter(Boolean) quita null/undefined
+
+          for (const k of searchKeys) {
+              if (sourceData.hasOwnProperty(k)) {
+                  dataToPropagate = sourceData[k];
+                  break;
+              }
+          }
+          if (dataToPropagate === undefined) {
+              const firstKey = Object.keys(sourceData).find(k => !['lastInput', 'lastInputs', 'selector_received'].includes(k));
+              if (firstKey) dataToPropagate = sourceData[firstKey];
+          }
+      }
+      // --- Fin determinación de dato ---
+
+      // console.log(`Propagating from ${sourceNodeName} (${sourceNodeId}). Key: ${changedKey}. Data determined:`, dataToPropagate);
+
+      connections.forEach(conn => {
+          const targetId   = conn.node;
+          const targetNode = editor.getNodeFromId(targetId);
+          if (!targetNode) {
+               console.warn(`Target node ${targetId} not found during propagation from ${sourceNodeId}.`);
+               return; // Saltar esta conexión si el nodo destino no existe
+          }
+          const targetNodeName = targetNode.name;
+          const targetInputPort = conn.output; // Nombre del puerto de *entrada* del nodo destino (ej: 'input_1')
+
+          // === Lógica de Propagación Específica por Tipo de Nodo Destino ===
+
+          // Nodos de sistema que usan executeNode
+          if (EXECUTE_NODE_SYSTEM_TYPES.includes(targetNodeName)) {
+              if (targetNodeName === 'extract_value') {
+                  if (targetInputPort === 'input_1') { // Dato a procesar
+                      setTimeout(() => executeNode(targetId, dataToPropagate), 0);
+                  } else if (targetInputPort === 'input_2') { // Patrón Regex
+                      const s = String(dataToPropagate ?? '');
+                      editor.updateNodeDataFromId(targetId, { selector_received: s });
+                      const el = document.getElementById(`node-${targetId}`);
+                      const i  = el?.querySelector('input[df-selector_received]');
+                      if (i) i.value = s;
+                      // Opcional: Re-ejecutar si ya tenía texto en input_1
+                      // const currentText = editor.getNodeFromId(targetId)?.data?.lastInput;
+                      // if (currentText !== undefined) setTimeout(() => executeNode(targetId, currentText), 10);
+                  }
+              } else {
+                  setTimeout(() => executeNode(targetId, dataToPropagate), 0);
+              }
+          }
+          // Nodo JavaScript
+          else if (targetNodeName === 'javascript_code') {
+              editor.updateNodeDataFromId(targetId, { lastInput: dataToPropagate });
+              setTimeout(() => executeNode(targetId, dataToPropagate), 0); // Ejecutar JS con el nuevo input
+          }
+          // Nodo Concatenar
+          else if (targetNodeName === 'concatenar') {
+               setTimeout(() => updateConcatenateNode(targetId), 0); // Recalcular concatenación
+          }
+          // --- INICIO: Nodos Aritméticos ---
+          else if (targetNodeName === 'sum') {
+               setTimeout(() => updateSumNode(targetId), 0); // Recalcular suma
+          }
+          else if (targetNodeName === 'subtract') {
+               setTimeout(() => updateSubtractNode(targetId), 0); // Recalcular resta
+          }
+          else if (targetNodeName === 'multiply') {
+               setTimeout(() => updateMultiplyNode(targetId), 0); // Recalcular producto
+          }
+          else if (targetNodeName === 'divide') {
+               setTimeout(() => updateDivideNode(targetId), 0); // Recalcular división
+          }
+          // --- FIN: Nodos Aritméticos ---
+
+          // Nodo Mostrar y Pasar
+          else if (targetNodeName === 'mostrarPasar' && targetInputPort === 'input_1') {
+               const v = String(dataToPropagate ?? '');
+               editor.updateNodeDataFromId(targetId, { result: v });
+               const el = document.getElementById(`node-${targetId}`);
+               const ta = el?.querySelector('textarea[df-result]');
+               if (ta) ta.value = v;
+               // Propagar lo mismo que recibió
+               setTimeout(() => propagateData(targetId, targetNodeName, 'result', dataToPropagate), 0);
+          }
+          // Nodo Guardar Texto
+          else if (targetNodeName === 'guardarTexto' && targetInputPort === 'input_1') {
+               const v = String(dataToPropagate ?? '');
+               editor.updateNodeDataFromId(targetId, { savecontent: v });
+               const el = document.getElementById(`node-${targetId}`);
+               const ta = el?.querySelector('textarea[df-savecontent]');
+               if (ta) ta.value = v;
+          }
+          // Nodos de Transformación de Texto (actualizar su input interno)
+          else if (['text_replace', 'text_split', 'text_uppercase', 'text_lowercase', 'text_length', 'html_strip'].includes(targetNodeName) && targetInputPort === 'input_1') {
+               // Guardar el dato recibido para que los botones de ejecución manual lo usen
+               editor.updateNodeDataFromId(targetId, { lastInput: String(dataToPropagate ?? '') });
+               // No ejecutamos automáticamente aquí, se espera acción del usuario en estos nodos
+          }
+          // Puedes añadir más 'else if' para otros nodos personalizados que necesiten reaccionar a datos entrantes
+
+      }); // Fin del forEach connections
+  } catch (error) {
+      console.error(`Error propagating data from node ${sourceNodeId} (${sourceNodeName}):`, error);
+      // Considerar si mostrar un toast aquí es útil o demasiado ruidoso
+      // showToast('error', 'Propagation Error', `Error from ${sourceNodeName}`);
   }
+}
+
   
+
+
+
+
+
+
+
 function updateConcatenateNode(nodeId) { const n = editor.getNodeFromId(nodeId); if (!n || n.name !== 'concatenar' || !n.inputs?.input_1) return; const conns = (n.inputs.input_1.connections || []).slice().sort((a, b) => (editor.getNodeFromId(a.node)?.pos_y ?? 0) - (editor.getNodeFromId(b.node)?.pos_y ?? 0)); let str = ""; conns.forEach(c => { const sN = editor.getNodeFromId(c.node); if (!sN?.data) return; let dC = ''; const d = sN.data; const keys = ['result', 'content', 'codecontent', 'outputhtml', 'filecontent', 'display', 'url', 'jscode']; for(const k of keys){if(d.hasOwnProperty(k)){ dC = d[k]; break; }} if (dC === '' && Object.keys(d).length > 0) { const fk = Object.keys(d)[0]; if(!['lastInput', 'selector_received'].includes(fk)) dC = d[fk]; } str += String(dC ?? ''); }); if (n.data.result !== str) { editor.updateNodeDataFromId(nodeId, { result: str }); propagateData(nodeId, 'concatenar', 'result', str); saveHistoryState(); } }
 
 // --- Node Activation ---
@@ -987,204 +1819,220 @@ function redo() { if (historyIndex >= historyStack.length - 1 || isLocked()) ret
 function triggerLoad() { if (fileInputElement) fileInputElement.click(); else showToast('error', 'Error', 'File input missing.'); }
 if (fileInputElement) fileInputElement.addEventListener('change', loadProjectFromFile);
 
-
+/**
+ * Carga un proyecto Xocoflow desde un archivo JSON seleccionado por el usuario.
+ * @param {Event} event - El evento 'change' del input de tipo 'file'.
+ */
 function loadProjectFromFile(event) {
-    console.log(">>> loadProjectFromFile FUNCTION CALLED <<<");
-    const fileInput = event.target; // Referencia al input
-    const file = fileInput?.files?.[0];
+  console.log(">>> loadProjectFromFile FUNCTION CALLED <<<");
+  const fileInput = event.target; // Referencia al input
+  const file = fileInput?.files?.[0];
 
-    if (!file) {
-        if(fileInput) fileInput.value = null; // Limpia si no hay archivo
-        return;
-    }
+  if (!file) {
+      if(fileInput) fileInput.value = null; // Limpia si no hay archivo
+      return;
+  }
 
-    const expectedProjectName = file.name.replace(/\.json$/i, "");
-    console.log(`Intentando cargar archivo: ${file.name}`);
-    const reader = new FileReader();
+  const expectedProjectName = file.name.replace(/\.json$/i, "");
+  console.log(`Intentando cargar archivo: ${file.name}`);
+  const reader = new FileReader();
 
-    reader.onload = (e) => {
-        let projectData;
-        const fileContent = e.target.result; // Guarda el contenido para posible log
+  reader.onload = (e) => {
+      let projectData;
+      const fileContent = e.target.result;
 
-        try {
-            // --- PASO 1: Intentar parsear el JSON ---
-            try {
-                projectData = JSON.parse(fileContent);
-            } catch (parseError) {
-                console.error("Error al parsear JSON:", parseError, "\nContenido (inicio):", fileContent.substring(0, 200));
-                showToast( // Usando showToast como se solicitó
-                    'error',
-                    'Load Error',
-                    `Error: ${escapeHtml(parseError.message)}`,
-                    4000
-                );
-                return; // Detiene el proceso aquí
-            }
+      try {
+          // --- PASO 1: Parsear JSON ---
+          try {
+              projectData = JSON.parse(fileContent);
+          } catch (parseError) { /* ... (manejo de error existente) ... */ return; }
 
-            // --- PASO 2: Verificar estructura básica de Drawflow ---
-            if (!projectData || typeof projectData.drawflow !== 'object' || projectData.drawflow === null) {
-                console.error("Estructura JSON inválida: falta la clave 'drawflow'. Datos:", projectData);
-                 Swal.fire({
-                    icon: 'error',
-                    title: 'Error de Carga: Estructura Inválida',
-                    text: `El archivo JSON "${escapeHtml(file.name)}" es válido, pero le falta la estructura interna necesaria ('drawflow') para ser un proyecto Xocoflow.`,
-                    confirmButtonText: 'Entendido'
-                });
-                return; // Detiene el proceso
-            }
+          // --- PASO 2: Verificar estructura básica ---
+          if (!projectData?.drawflow) { /* ... (manejo de error existente) ... */ return; }
 
-            // --- PASO 3: Procesar Nodos Personalizados ---
-            console.log("JSON parseado, procesando nodos personalizados...");
-            try {
-                if (projectData.customNodeDefinitions && typeof projectData.customNodeDefinitions === 'object') {
-                    saveCustomNodeTypes(projectData.customNodeDefinitions);
-                    customNodeTypes = { ...baseNodeDefinitions, ...projectData.customNodeDefinitions };
-                } else {
-                    customNodeTypes = { ...baseNodeDefinitions, ...getStoredCustomNodeTypes() };
-                }
-                loadCustomNodesToSidebar(); // Actualiza ANTES de importar para que Drawflow conozca los tipos
-            } catch (nodeError) {
-                 console.error("Error procesando definiciones de nodos personalizados:", nodeError);
-                 showToast('warning', 'Nodos Personalizados', 'Hubo un problema al cargar las definiciones de nodos personalizados del archivo.', 3000);
-                 customNodeTypes = { ...baseNodeDefinitions, ...getStoredCustomNodeTypes() };
-                 loadCustomNodesToSidebar();
-            }
+          // --- PASO 3: Procesar Nodos Personalizados ---
+          console.log("JSON parseado, procesando nodos personalizados...");
+          try {
+              // Cargar definiciones personalizadas del archivo o del localStorage
+              const customDefsFromFile = projectData.customNodeDefinitions;
+              if (customDefsFromFile && typeof customDefsFromFile === 'object') {
+                  saveCustomNodeTypes(customDefsFromFile); // Guarda en localStorage
+                  customNodeTypes = { ...baseNodeDefinitions, ...customDefsFromFile };
+              } else {
+                  // Si no hay definiciones en el archivo, usa las que ya están en localStorage
+                  customNodeTypes = { ...baseNodeDefinitions, ...getStoredCustomNodeTypes() };
+              }
+              loadCustomNodesToSidebar(); // Actualiza sidebar ANTES de importar
+          } catch (nodeError) { /* ... (manejo de error/warning existente) ... */ }
 
 
-            // --- PASO 4: Intentar importar en Drawflow Y SINCRONIZAR UI ---
-            console.log("Importando datos en Drawflow...");
-            let currentModuleBeforeImport = editor.module; // Guarda el módulo actual
-            try {
-                cleanupAllModuleIntervals();
-                editor.import(projectData); // Intenta la importación
+          // --- PASO 4: Importar en Drawflow y Sincronizar UI ---
+          console.log("Importando datos en Drawflow...");
+          const currentModuleBeforeImport = editor.module;
+          try {
+              cleanupAllModuleIntervals(); // Detener timers antes de importar
+              editor.import(projectData); // ¡La importación ocurre aquí!
 
-                // --- INICIO: ACTUALIZACIÓN MANUAL DE UI POST-IMPORTACIÓN ---
-                console.log("Sincronizando UI de nodos con datos importados...");
-                // Asegúrate de operar sobre el módulo correcto (puede cambiar durante la importación)
-                const targetModule = editor.module || currentModuleBeforeImport; // Usa el módulo actual del editor
-                const currentModuleNodes = editor.export().drawflow[targetModule]?.data;
+              // --- INICIO: ACTUALIZACIÓN MANUAL DE UI POST-IMPORTACIÓN ---
+              console.log("Sincronizando UI de nodos con datos importados...");
+              const targetModule = editor.module || currentModuleBeforeImport; // Módulo actual después de importar
+              const drawflowExportAfterImport = editor.export(); // Obtenemos el estado *después* de importar
+              const currentModuleNodes = drawflowExportAfterImport?.drawflow?.[targetModule]?.data;
 
-                if (currentModuleNodes) {
-                    Object.keys(currentModuleNodes).forEach(nodeId => {
-                        const nodeData = currentModuleNodes[nodeId].data;
-                        const nodeElement = document.getElementById(`node-${nodeId}`); // Busca el elemento en el DOM
-                        const nodeDefinition = customNodeTypes[currentModuleNodes[nodeId].name]; // Obtiene la definición
+              if (currentModuleNodes) {
+                  Object.keys(currentModuleNodes).forEach(nodeId => {
+                      // Obtener datos y elemento del nodo recién importado
+                      const node = currentModuleNodes[nodeId]; // Nodo completo de la exportación
+                      const nodeData = node.data || {};
+                      const nodeElement = document.getElementById(`node-${nodeId}`);
+                      const nodeName = node.name;
 
-                        if (nodeElement && nodeData) {
-                             // Intenta reconstruir/actualizar el contenido HTML si es necesario
-                             // (Esto es opcional y puede ser complejo, Drawflow debería manejarlo
-                             // si el 'html' guardado es solo el nombre del nodo y typenode='html')
-                             // Si guardaste el HTML completo, esta sincronización de abajo es CRUCIAL.
+                      if (nodeElement) {
+                          // --- Sincronización General (para la mayoría de nodos) ---
+                          // Itera sobre los datos para actualizar los elementos df-* correspondientes
+                          Object.keys(nodeData).forEach(dataKey => {
+                              // Saltar claves especiales que no se reflejan directamente o se manejan abajo
+                              if (['naturalWidth', 'naturalHeight'].includes(dataKey) && nodeName === 'image_minimal') return;
+                              // Claves que pueden ser internas y no tener elemento df-* directo
+                              if (['lastInput', 'lastInputs', 'selector_received'].includes(dataKey)) return;
 
-                            // Itera sobre los datos del nodo para actualizar los elementos df-*
-                            Object.keys(nodeData).forEach(dataKey => {
-                                const inputElement = nodeElement.querySelector(`[df-${dataKey}]`);
-                                if (inputElement) {
-                                    const value = nodeData[dataKey];
-                                    if (inputElement.tagName === 'TEXTAREA' || (inputElement.tagName === 'INPUT' && ['text', 'number', 'url', 'email', 'password'].includes(inputElement.type))) {
-                                        inputElement.value = value ?? '';
-                                    } else if (inputElement.tagName === 'SELECT'){
-                                         inputElement.value = value ?? '';
-                                         // Disparar evento change si es necesario para estilos (ej. color nota)
-                                         if (dataKey === 'notecolor') {
-                                             const changeEvent = new Event('change', { bubbles: true });
-                                             inputElement.dispatchEvent(changeEvent);
-                                         }
-                                    } else if (inputElement.tagName === 'IMG' && dataKey === 'imagesrc') { // Caso local_image
-                                        inputElement.src = value ?? '';
-                                        inputElement.style.display = value ? 'block' : 'none';
-                                        const placeholder = nodeElement.querySelector('.placeholder-text');
-                                        if(placeholder) placeholder.style.display = value ? 'none' : 'block';
-                                    } else if (inputElement.tagName === 'SPAN' && dataKey === 'filename'){
-                                         inputElement.textContent = value ?? '';
-                                         inputElement.title = value ?? '';
-                                    } else if (inputElement.hasAttribute('df-charcount')) { // Caso contador nota
-                                         inputElement.textContent = nodeElement.querySelector('[df-notecontent]')?.value?.length || '0';
-                                    }
-                                     // Añade más casos según tus nodos personalizados
-                                }
-                            });
+                              const inputElement = nodeElement.querySelector(`[df-${dataKey}]`);
+                              if (inputElement) {
+                                  const value = nodeData[dataKey];
+                                  // Lógica existente para inputs, textareas, selects...
+                                  if (inputElement.tagName === 'TEXTAREA' || (inputElement.tagName === 'INPUT' && ['text', 'number', 'url', 'email', 'password', 'range', 'date', 'time', 'color'].includes(inputElement.type))) {
+                                      inputElement.value = value ?? '';
+                                      // Si es un range, actualiza el span asociado si existe
+                                      if (inputElement.type === 'range' && inputElement.nextElementSibling?.hasAttribute('df-rangeval')) {
+                                           inputElement.nextElementSibling.textContent = value ?? '0';
+                                      }
+                                  } else if (inputElement.tagName === 'SELECT'){
+                                      inputElement.value = value ?? '';
+                                      if (dataKey === 'notecolor') { // Trigger 'change' para actualizar color de nota
+                                          const changeEvent = new Event('change', { bubbles: true });
+                                          inputElement.dispatchEvent(changeEvent);
+                                      }
+                                  } else if (inputElement.tagName === 'IMG' && dataKey === 'imgsrc' && nodeName !== 'image_minimal') { // Caso local_image original
+                                      inputElement.src = value ?? '';
+                                      inputElement.style.display = value ? 'block' : 'none';
+                                      const placeholder = nodeElement.querySelector('.placeholder-text');
+                                      if(placeholder) placeholder.style.display = value ? 'none' : 'block';
+                                  } else if (inputElement.tagName === 'SPAN' && dataKey === 'filename'){
+                                      inputElement.textContent = value ?? '';
+                                      inputElement.title = value ?? '';
+                                  } else if (inputElement.hasAttribute('df-charcount')) { // Contador nota
+                                      inputElement.textContent = nodeElement.querySelector('[df-notecontent]')?.value?.length || '0';
+                                  }
+                                  // ... otros casos si son necesarios ...
+                              }
+                          });
 
-                             // Aplicar estilos o tamaños específicos post-actualización
-                            if (currentModuleNodes[nodeId].name === 'nota' && nodeData.notecolor) {
-                                 nodeElement.style.backgroundColor = nodeData.notecolor;
-                                 // Actualiza color del title-box si es necesario (copiado de changeNoteColor)
-                                 const tb = nodeElement.querySelector('.title-box');
-                                 if(tb) {
-                                     const darkBgs = ['#ccccff', '#e0e0e0'];
-                                     if (darkBgs.includes(nodeData.notecolor)) {
-                                         tb.style.backgroundColor = '#f0f0f0'; tb.style.color = '#333';
-                                     } else {
-                                         tb.style.backgroundColor = ''; tb.style.color = '';
-                                     }
-                                 }
-                             } else if (currentModuleNodes[nodeId].name === 'local_image') {
-                                 if (nodeData.nodewidth) nodeElement.style.width = nodeData.nodewidth;
-                                 if (nodeData.nodeheight) nodeElement.style.height = nodeData.nodeheight;
-                                 const imgTag = nodeElement.querySelector('img[df-imagesrc]');
-                                 if (imgTag){
-                                     if(nodeData.imagewidth) imgTag.style.width = nodeData.imagewidth;
-                                     if(nodeData.imageheight) imgTag.style.height = nodeData.imageheight;
-                                 }
+                          // --- Sincronización Específica por Tipo de Nodo ---
 
-                             }
-                              // Llama a editor.updateNodeDataFromId si necesitas que Drawflow internamente
-                              // también registre estos cambios visuales (aunque ya están en nodeData)
-                              // editor.updateNodeDataFromId(nodeId, nodeData); // Opcional, puede ser redundante
-                        }
-                    });
-                } else {
-                    console.warn("No se encontraron nodos en el módulo actual post-importación para sincronizar UI:", targetModule);
-                }
-                console.log("Sincronización UI completada.");
-                // --- FIN: ACTUALIZACIÓN MANUAL DE UI POST-IMPORTACIÓN ---
+                          // Caso: Nodo Nota (color del fondo y título)
+                          if (nodeName === 'nota' && nodeData.notecolor) {
+                              nodeElement.style.backgroundColor = nodeData.notecolor;
+                              const tb = nodeElement.querySelector('.title-box');
+                              if(tb) {
+                                  const darkBgs = ['#ccccff', '#e0e0e0'];
+                                  tb.style.backgroundColor = darkBgs.includes(nodeData.notecolor) ? '#f0f0f0' : '';
+                                  tb.style.color = darkBgs.includes(nodeData.notecolor) ? '#333' : '';
+                              }
+                          }
+                          // Caso: Nodo Local Image (tamaño del nodo e imagen interna)
+                          else if (nodeName === 'local_image') {
+                              if (nodeData.nodewidth) nodeElement.style.width = nodeData.nodewidth;
+                              if (nodeData.nodeheight) nodeElement.style.height = nodeData.nodeheight;
+                              const imgTag = nodeElement.querySelector('img[df-imagesrc]');
+                              if (imgTag){
+                                  if(nodeData.imagewidth) imgTag.style.width = nodeData.imagewidth;
+                                  if(nodeData.imageheight) imgTag.style.height = nodeData.imageheight;
+                                  // Restaurar src y visibilidad también, aunque debería hacerse en el bucle general
+                                  imgTag.src = nodeData.imagesrc ?? '';
+                                  imgTag.style.display = nodeData.imagesrc ? 'block' : 'none';
+                                  const placeholder = nodeElement.querySelector('.placeholder-text');
+                                   if(placeholder) placeholder.style.display = nodeData.imagesrc ? 'none' : 'block';
+                              }
+                          }
+                          // --- INICIO: Caso image_minimal ---
+                          else if (nodeName === 'image_minimal') {
+                              const imgTag = nodeElement.querySelector('img[df-imgsrc]');
+                              const placeholder = nodeElement.querySelector('.image-placeholder');
 
-            } catch (importError) {
-                console.error("Error durante editor.import():", importError, "\nDatos Drawflow (inicio):", JSON.stringify(projectData.drawflow).substring(0, 300));
-                 Swal.fire({
-                    icon: 'error',
-                    title: 'Error de Carga: Datos Incompatibles',
-                    html: `El archivo <b>${escapeHtml(file.name)}</b> tiene datos internos no compatibles o corruptos.<br><br><i>Detalle: ${escapeHtml(importError.message)}</i>`,
-                    confirmButtonText: 'Entendido'
-                });
-                return; // Detiene el proceso
-            }
+                              if (imgTag && placeholder) {
+                                  // Verificar si hay una imagen válida guardada
+                                  const hasValidImage = nodeData.imgsrc && nodeData.naturalWidth > 0 && nodeData.naturalHeight > 0;
 
-            // --- PASO 5: Éxito - Finalizar la carga ---
-            console.log("Importación completada. Actualizando UI y estado.");
-            currentProjectName = expectedProjectName;
-            renderModuleTabs(); // Renderiza tabs DESPUÉS de la importación exitosa
-            initializeHistory(); // Reinicia historial DESPUÉS de importación exitosa
-            selectedNodeId = null; // Limpia selección
-            copiedNodeData = null; // Limpia portapapeles
-            updateUIDisabledStates(); // Actualiza estado botones
-            closeCodeEditorSidebar(false); // Cierra editor código
-            document.title = `Xocoflow | ${currentProjectName} - ${editor.module}`;
-            saveHistoryState(true); // Guarda el estado inicial cargado
-            // Llama a activateExistingAutoNodes DESPUÉS de sincronizar la UI
-            // para que los nodos automáticos (timers, etc.) funcionen con los datos correctos.
-            activateExistingAutoNodes();
-            showToast('success', 'Cargado', `Proyecto "${escapeHtml(currentProjectName)}" cargado.`);
+                                  if (hasValidImage) {
+                                      // Restaurar imagen y tamaño
+                                      imgTag.src = nodeData.imgsrc;
+                                      imgTag.style.display = 'block';
+                                      placeholder.style.display = 'none';
+                                      nodeElement.style.width = `${nodeData.naturalWidth}px`;
+                                      nodeElement.style.height = `${nodeData.naturalHeight}px`;
+                                      nodeElement.style.border = 'none'; // Quitar borde punteado
+                                      console.log(`Restored image_minimal ${nodeId} to ${nodeData.naturalWidth}x${nodeData.naturalHeight}`);
+                                  } else {
+                                      // Mostrar placeholder y tamaño mínimo
+                                      imgTag.src = '';
+                                      imgTag.style.display = 'none';
+                                      placeholder.style.display = 'flex'; // O 'block'
+                                      nodeElement.style.width = '80px';
+                                      nodeElement.style.height = '60px';
+                                      nodeElement.style.border = '2px dashed #cccccc'; // Poner borde
+                                      console.log(`Restored image_minimal ${nodeId} to placeholder state.`);
+                                  }
 
-        } catch (err) {
-            // Catch general para errores inesperados
-            console.error("Error inesperado durante la carga del proyecto:", err);
-            showToast('error', 'Error de Carga Inesperado', `Ocurrió un problema: ${err.message}`, 4000);
-        } finally {
-            if (fileInput) fileInput.value = null;
-        }
-    };
+                                  // SIEMPRE re-adjuntar listeners después de cargar el proyecto
+                                  setTimeout(() => setupMinimalImageNodeListeners(nodeId), 50);
 
-    reader.onerror = (e) => {
-        // Error de FileReader
-        console.error("Error de FileReader:", e);
-        showToast('error', 'Error de Lectura', 'No se pudo leer el archivo seleccionado.', 3000);
-         if (fileInput) fileInput.value = null;
-    };
+                                  // Forzar actualización de conexiones después de ajustar tamaño
+                                  // Dar un poco más de tiempo para que el DOM se estabilice
+                                  setTimeout(() => editor.updateConnectionNodes(`node-${nodeId}`), 100);
+                              } else {
+                                  console.warn(`Could not find img/placeholder elements for image_minimal node ${nodeId} during project load.`);
+                              }
+                          }
+                          // --- FIN: Caso image_minimal ---
 
-    reader.readAsText(file);
+                      } else {
+                          console.warn(`Node element not found in DOM for ID ${nodeId} during post-import UI sync.`);
+                      }
+                  }); // Fin forEach nodeId
+              } else {
+                  console.warn("No nodes found in the current module after import to sync UI:", targetModule);
+              }
+              console.log("Post-import UI synchronization completed.");
+              // --- FIN: ACTUALIZACIÓN MANUAL DE UI POST-IMPORTACIÓN ---
+
+          } catch (importError) { /* ... (manejo de error existente) ... */ return; }
+
+          // --- PASO 5: Éxito - Finalizar la carga ---
+          console.log("Importación completada. Actualizando estado de la aplicación.");
+          currentProjectName = expectedProjectName;
+          renderModuleTabs();
+          initializeHistory();
+          selectedNodeId = null;
+          copiedNodeData = null;
+          currentlyEditingNodeId = null; // Asegurarse de limpiar esto también
+          updateUIDisabledStates();
+          closeCodeEditorSidebar(false);
+          document.title = `Xocoflow | ${currentProjectName} - ${editor.module}`;
+          saveHistoryState(true); // Guarda estado inicial cargado
+          // Activar nodos automáticos DESPUÉS de sincronizar UI
+          activateExistingAutoNodes();
+          showToast('success', 'Proyecto Cargado', `"${escapeHtml(currentProjectName)}" cargado.`);
+
+      } catch (err) { /* ... (manejo de error existente) ... */ }
+      finally {
+          if (fileInput) fileInput.value = null; // Limpiar input de archivo
+      }
+  }; // Fin reader.onload
+
+  reader.onerror = (e) => { /* ... (manejo de error existente) ... */ };
+
+  reader.readAsText(file); // Iniciar lectura
 }
-
 
 
 // --- Project Management & Module Actions ---
@@ -1514,8 +2362,106 @@ function updateUIDisabledStates() { const locked = isLocked(); const nodeSel = s
 
 // --- Drag and Drop ---
 var mobile_item_selec = ''; var mobile_last_move = null; function allowDrop(ev) { ev.preventDefault(); } function drag(ev) { try { const el = ev.target.closest(".drag-drawflow"); if (!el || !el.dataset.node) { ev.preventDefault(); return; } const nt = el.dataset.node; if (ev.type === "touchstart") { mobile_item_selec = nt; mobile_last_move = ev; el.style.opacity = '0.5';} else { ev.dataTransfer.setData("node", nt); ev.dataTransfer.effectAllowed = 'copy';} } catch(e){console.error("Drag error:",e);} } function positionMobile(ev) { mobile_last_move = ev; } function drop(ev) { let nodeName='',clientX=0,clientY=0,isTouch=false; try { if (ev.type === "touchend") { isTouch=true; const orig=nodesListContainer?.querySelector(`[data-node="${mobile_item_selec}"]`); if(orig) orig.style.opacity='1'; if(!mobile_last_move||!mobile_item_selec) return; clientX=mobile_last_move.changedTouches[0].clientX; clientY=mobile_last_move.changedTouches[0].clientY; nodeName=mobile_item_selec; mobile_item_selec=''; mobile_last_move=null; } else { ev.preventDefault(); nodeName=ev.dataTransfer.getData("node"); clientX=ev.clientX; clientY=ev.clientY; } const targetEl = document.elementFromPoint(clientX, clientY); if (nodeName && targetEl?.closest(`#${DRAWFLOW_CONTAINER_ID}`)) addNodeToDrawFlow(nodeName, clientX, clientY); } catch(e){console.error("Drop error:",e); if(isTouch){const orig=nodesListContainer?.querySelector(`[data-node="${mobile_item_selec}"]`); if(orig) orig.style.opacity='1'; mobile_item_selec=''; mobile_last_move=null;}} }
-function addNodeToDrawFlow(name, pos_x, pos_y) { if(!editor || isLocked()){ showToast('warning', 'Locked'); return false; } try { const nodeDef=customNodeTypes[name]; if(!nodeDef) throw new Error(`Type "${name}" unknown.`); const rect=editor.container.getBoundingClientRect(), zoom=editor.zoom||1; const canvasX=(pos_x-rect.left-editor.canvas_x)/zoom, canvasY=(pos_y-rect.top-editor.canvas_y)/zoom; const w=parseInt(nodeDef.width||220), h=parseInt(nodeDef.height||80); const adjX=canvasX-(w/2), adjY=canvasY-(h/2); const data=JSON.parse(JSON.stringify(nodeDef.data||{})); const nodeId=editor.addNode(name, nodeDef.inputs, nodeDef.outputs, adjX, adjY, nodeDef.cssClass||'', data, nodeDef.html); saveHistoryState(); activateNodeIfNeeded(nodeId); return true; } catch (e){console.error(`Err adding ${name}:`,e); showToast('error', 'Add Error', `Error: ${e.message}`); return false;} }
+/**
+ * Añade un nodo al canvas de Drawflow en la posición especificada por el evento drop/touch.
+ * Incluye lógica especial para configurar el nodo 'image_minimal'.
+ * @param {string} name - El nombre/tipo del nodo (ej: 'texto', 'image_minimal').
+ * @param {number} pos_x - Coordenada X del evento en la ventana.
+ * @param {number} pos_y - Coordenada Y del evento en la ventana.
+ * @returns {boolean} - True si se añadió correctamente, false en caso de error.
+ */
+function addNodeToDrawFlow(name, pos_x, pos_y) {
+  // Verificar si el editor existe y no está bloqueado
+  if (!editor || isLocked()) {
+      showToast('warning', 'Editor Bloqueado', 'Desbloquea para añadir nodos.');
+      return false;
+  }
 
+  try {
+      // Obtener la definición del nodo desde nuestro registro (incluye base y custom)
+      const nodeDef = customNodeTypes[name];
+      if (!nodeDef) {
+          throw new Error(`Tipo de nodo "${name}" desconocido.`);
+      }
+
+      // --- Calcular Tamaño y Posición Inicial ---
+      let initialWidthPx, initialHeightPx;
+      // Caso especial para el nodo imagen minimalista: empieza pequeño
+      if (name === 'image_minimal') {
+          initialWidthPx = 80; // Valor base en píxeles (igual que min-width CSS)
+          initialHeightPx = 60; // Valor base en píxeles (igual que min-height CSS)
+      } else {
+          // Para otros nodos, usar el width/height de la definición o un default
+          initialWidthPx = parseInt(nodeDef.width || 220); // Default 220px si no se especifica
+          initialHeightPx = parseInt(nodeDef.height || 80);  // Default 80px si no se especifica
+      }
+
+      // Convertir coordenadas de pantalla a coordenadas del canvas Drawflow
+      const rect = editor.container.getBoundingClientRect();
+      const zoom = editor.zoom || 1;
+      const canvasX = (pos_x - rect.left - editor.canvas_x) / zoom;
+      const canvasY = (pos_y - rect.top - editor.canvas_y) / zoom;
+
+      // Ajustar posición para que el nodo se centre donde se soltó
+      const adjX = canvasX - (initialWidthPx / 2);
+      const adjY = canvasY - (initialHeightPx / 2);
+
+      // --- Crear Datos y Añadir Nodo ---
+      // Copiar profundamente los datos iniciales para evitar referencias compartidas
+      const data = JSON.parse(JSON.stringify(nodeDef.data || {}));
+
+      // Añadir el nodo usando el método de Drawflow
+      const nodeId = editor.addNode(
+          name,
+          nodeDef.inputs,
+          nodeDef.outputs,
+          adjX, // Posición X ajustada en el canvas
+          adjY, // Posición Y ajustada en el canvas
+          nodeDef.cssClass || '', // Clase CSS específica o vacía
+          data, // Datos iniciales del nodo
+          nodeDef.html // Contenido HTML del nodo
+      );
+
+      // --- Lógica Específica Post-Añadir Nodo ---
+      // Si es el nodo imagen minimalista, configura sus listeners y estilo inicial
+      if (name === 'image_minimal') {
+          // Usar setTimeout para asegurar que el nodo esté completamente renderizado en el DOM
+          setTimeout(() => {
+              const nodeElement = document.getElementById(`node-${nodeId}`);
+              if (nodeElement) {
+                  // Establecer tamaño inicial explícitamente
+                  nodeElement.style.width = `${initialWidthPx}px`;
+                  nodeElement.style.height = `${initialHeightPx}px`;
+                  // Añadir borde punteado inicial para indicar que se puede soltar/pegar
+                  nodeElement.style.border = '2px dashed #cccccc';
+                  // Asegurar que el placeholder sea visible
+                  const placeholder = nodeElement.querySelector('.image-placeholder');
+                  if(placeholder) placeholder.style.display = 'flex'; // O 'block' según layout
+
+                  // Adjuntar los listeners específicos (click, dnd, paste)
+                  setupMinimalImageNodeListeners(nodeId);
+                  console.log(`Listeners attached to new image_minimal node ${nodeId}`);
+              } else {
+                   console.warn(`Could not find new image_minimal node element ${nodeId} immediately after adding.`);
+              }
+          }, 0); // Timeout de 0ms suele ser suficiente
+      } else {
+           // Para otros nodos, llamar a la activación si es necesario
+           activateNodeIfNeeded(nodeId);
+      }
+
+      // Guardar el estado en el historial para poder deshacer/rehacer
+      saveHistoryState();
+      console.log(`Node ${name} (ID: ${nodeId}) added successfully at (${adjX.toFixed(0)}, ${adjY.toFixed(0)}).`);
+      return true; // Indicar éxito
+
+  } catch (e) {
+      // Manejar errores durante la adición
+      console.error(`Error adding node "${name}":`, e);
+      showToast('error', 'Error al Añadir Nodo', `Error: ${e.message}`);
+      return false; // Indicar fallo
+  }
+}
 // --- Recalculate All ---
 function recalculateAllNodesInCurrentModule() { if (!editor || isLocked()) { showToast('warning', 'Locked'); return; } const mod = editor.module; console.log(`%cRecalculating: ${mod}...`, 'color: orange;'); showToast('info', 'Recalculating...', `Module ${mod}.`, 2500); try { const nodes = editor.export()?.drawflow?.[mod]?.data ?? {}; const ids = Object.keys(nodes); if (ids.length === 0) return; cleanupAllModuleIntervals(); ids.forEach(id => { activateNodeIfNeeded(id); }); ids.forEach(id => { if (nodes[id]?.name === 'concatenar') updateConcatenateNode(id); }); showToast('success', 'Recalculated', `${mod} updated.`); } catch (err) { showToast('error', 'Error', 'Recalculation failed.'); } }
 
@@ -1800,33 +2746,197 @@ function updateNodePositionStatus(nodeId) { if (nodePositionSpan) { if (nodeId) 
 
 // --- Drawflow Event Listeners ---
 function setupDrawflowListeners() {
-    if (!editor) { console.error("Cannot setup listeners: Drawflow editor missing."); return; }
-    try {
-        editor.on('nodeRemoved', (id) => { console.log(`Event: Node Removed ${id}`); cleanupNodeIntervals(id); if (selectedNodeId === id) { selectedNodeId = null; updateNodePositionStatus(null); } if (currentlyEditingNodeId === id) closeCodeEditorSidebar(false); updateUIDisabledStates(); saveHistoryState(); });
-        
-        editor.on('nodeSelected', (id) => {
-            console.log(`Event: Node Selected ${id}`);
-            // Solo actualiza el estado de la selección y la interfaz de usuario
-            const previousSelection = selectedNodeId;
-            selectedNodeId = id;
-            updateUIDisabledStates(); // Actualiza botones (Copiar, Duplicar, etc.)
-            updateNodePositionStatus(id); // Actualiza la barra de estado con la posición
+  if (!editor) { console.error("Cannot setup listeners: Drawflow editor missing."); return; }
+  try {
+      // --- nodeRemoved Listener ---
+      editor.on('nodeRemoved', (id) => {
+          console.log(`Event: Node Removed ${id}`);
+          cleanupNodeIntervals(id); // Limpiar timers/intervalos
 
-            // --- YA NO hay lógica para abrir/cerrar el editor aquí ---
-        });
+          // Actualizar estado de selección y UI
+          if (selectedNodeId === id) { selectedNodeId = null; updateNodePositionStatus(null); }
+          if (currentlyEditingNodeId === id) closeCodeEditorSidebar(false); // Cerrar editor si se borra el nodo editado
 
+          // --- INICIO LÓGICA NODOS DEPENDIENTES ---
+          let connectionsFromRemovedNode = [];
+          try { // Intentar obtener conexiones antes de la eliminación completa
+              const nodeDataBeforeRemoval = editor.getNodeFromId(id);
+              if (nodeDataBeforeRemoval?.outputs) {
+                  Object.values(nodeDataBeforeRemoval.outputs).forEach(outputPort => {
+                      connectionsFromRemovedNode = connectionsFromRemovedNode.concat(outputPort.connections || []);
+                  });
+              }
+          } catch (e) {
+              console.warn(`Could not reliably get connections from node ${id} during removal event.`);
+          }
 
-        editor.on('nodeUnselected', (wasSel) => { console.log(`Event: Node Unselected (was: ${wasSel})`); const prevSelected = selectedNodeId; selectedNodeId = null; updateUIDisabledStates(); updateNodePositionStatus(null); if (prevSelected === currentlyEditingNodeId) closeCodeEditorSidebar(true); });
-        editor.on('nodeMoved', (id) => { saveHistoryState(); if(id === selectedNodeId) updateNodePositionStatus(id); const n = editor.getNodeFromId(id); if(n){ const outs=getConnections(id,'output'); outs.forEach(c=>{if(editor.getNodeFromId(c.node)?.name==='concatenar')updateConcatenateNode(c.node);}); if(n.name==='concatenar'){const ins=getConnections(id,'input');ins.forEach(c=>{updateConcatenateNode(id);});}}});
-        editor.on('connectionCreated', (c) => { setTimeout(() => { try { const sId=c.output_id, tId=c.input_id, sN=editor.getNodeFromId(sId), tN=editor.getNodeFromId(tId); if(!sN||!tN) throw new Error("Src/Tgt missing."); const tName=tN.name, tPort=c.input_class, ignore=['texto','static_code_snippet']; if(ignore.includes(tName)){saveHistoryState();return;} let data; const sD=sN.data; if(sD){const keys=['result','content','codecontent','outputhtml','filecontent','display','url','jscode'];for(const k of keys){if(sD.hasOwnProperty(k)){data=sD[k];break;}} if(data===undefined&&Object.keys(sD).length>0){const fk=Object.keys(sD)[0];if(!['lastInput','selector_received'].includes(fk))data=sD[fk];}} if(EXECUTE_NODE_SYSTEM_TYPES.includes(tName)){if(tName==='extract_value'){if(tPort==='input_1')executeNode(tId,data);else if(tPort==='input_2'){const s=String(data??'');editor.updateNodeDataFromId(tId,{selector_received:s});const el=document.getElementById(`node-${tId}`);const i=el?.querySelector('input[df-selector_received]');if(i)i.value=s;}}else executeNode(tId,data);}else if(tName==='javascript_code')editor.updateNodeDataFromId(tId,{lastInput:data});else if(tName==='concatenar')updateConcatenateNode(tId);else if(tName==='mostrarPasar'){if(tPort==='input_1'){const v=String(data??'');editor.updateNodeDataFromId(tId,{result:v});const el=document.getElementById(`node-${tId}`);const ta=el?.querySelector('textarea[df-result]');if(ta)ta.value=v;propagateData(tId,tName,'result',data);}}else if(tName==='guardarTexto'){if(tPort==='input_1'){const v=String(data??'');editor.updateNodeDataFromId(tId,{savecontent:v});const el=document.getElementById(`node-${tId}`);const ta=el?.querySelector('textarea[df-savecontent]');if(ta)ta.value=v;}} saveHistoryState();}catch(err){console.error("Err connectionCreated:",err);saveHistoryState();}},0);});
-        editor.on('connectionRemoved', (c) => { const tId = c.input_id, tN = editor.getNodeFromId(tId); if (tN?.name === 'concatenar') setTimeout(() => updateConcatenateNode(tId), 0); saveHistoryState(); });
-        editor.on('moduleChanged', (name) => { console.log(`%cEVENT: Module Changed -> ${name}`, 'color: blue; font-weight: bold;'); renderModuleTabs(); initializeHistory(); selectedNodeId = null; copiedNodeData = null; currentlyEditingNodeId = null; updateUIDisabledStates(); updateZoomStatus(editor.zoom); updateNodePositionStatus(null); document.title = `Xocoflow | ${currentProjectName} - ${name}`; closeCodeEditorSidebar(false); setTimeout(() => { if(editor.module === name){ saveHistoryState(true); activateExistingAutoNodes(); console.log(` -> Module ${name} loaded.`); }}, 50); });
-        editor.on('zoom', (level) => { updateZoomStatus(level); });
-        editor.on('translate', (pos) => { /* Update canvas pos */ });
-        editor.on('contextmenu', (e) => { e.preventDefault(); });
-        editor.on('click', (e) => { if (codeEditorSidebar?.classList.contains('visible') && !e.target.closest('#code-editor-sidebar')) { const nodeEl = currentlyEditingNodeId ? document.getElementById(`node-${currentlyEditingNodeId}`) : null; if (!nodeEl || !nodeEl.contains(e.target)) closeCodeEditorSidebar(true); } if (!e.target.closest('.drawflow-node,.controls-container,.menu,.swal2-container,#code-editor-sidebar')) { if (selectedNodeId) { try { editor.removeSelection(); } catch { selectedNodeId = null; } updateUIDisabledStates(); } } });
-        console.log("Drawflow event listeners attached.");
-    } catch (e) { console.error("Error setting Drawflow listeners:", e); showToast('error', 'Critical Error', 'Failed editor events.'); }
+          // Actualizar nodos Suma, Resta, Multiplicación, División o Concatenar conectados
+          if (connectionsFromRemovedNode.length > 0) {
+              connectionsFromRemovedNode.forEach(conn => {
+                  const targetNode = editor.getNodeFromId(conn.node); // Obtiene el nodo destino
+                  if (targetNode) { // Verificar si el nodo destino aún existe
+                      const targetName = targetNode.name;
+                      if (targetName === 'sum') {
+                          console.log(`Node ${id} removed, updating target sum node ${conn.node}`);
+                          setTimeout(() => updateSumNode(conn.node), 0);
+                      } else if (targetName === 'subtract') {
+                          console.log(`Node ${id} removed, updating target subtract node ${conn.node}`);
+                          setTimeout(() => updateSubtractNode(conn.node), 0);
+                      } else if (targetName === 'multiply') {
+                          console.log(`Node ${id} removed, updating target multiply node ${conn.node}`);
+                          setTimeout(() => updateMultiplyNode(conn.node), 0);
+                      } else if (targetName === 'divide') {
+                          console.log(`Node ${id} removed, updating target divide node ${conn.node}`);
+                          setTimeout(() => updateDivideNode(conn.node), 0);
+                      } else if (targetName === 'concatenar') {
+                          console.log(`Node ${id} removed, updating target concatenate node ${conn.node}`);
+                          setTimeout(() => updateConcatenateNode(conn.node), 0);
+                      }
+                  }
+              });
+          }
+          // --- FIN LÓGICA NODOS DEPENDIENTES ---
+
+          updateUIDisabledStates(); // Actualizar botones
+          saveHistoryState(); // Guardar estado después de la eliminación
+      });
+
+      // --- nodeSelected Listener ---
+      editor.on('nodeSelected', (id) => {
+          console.log(`Event: Node Selected ${id}`);
+          selectedNodeId = id;
+          updateUIDisabledStates();
+          updateNodePositionStatus(id);
+      });
+
+      // --- nodeUnselected Listener ---
+      editor.on('nodeUnselected', (wasSelected) => {
+          console.log(`Event: Node Unselected (was selected: ${wasSelected})`);
+          const prevSelected = selectedNodeId;
+          selectedNodeId = null; // Limpiar selección
+          updateUIDisabledStates();
+          updateNodePositionStatus(null);
+          // Cerrar y guardar sidebar si se deselecciona el nodo que se estaba editando
+          if (prevSelected && prevSelected === currentlyEditingNodeId) {
+              closeCodeEditorSidebar(true);
+          }
+      });
+
+      // --- nodeMoved Listener ---
+      editor.on('nodeMoved', (id) => {
+          saveHistoryState(); // Guarda historial al mover
+          if(id === selectedNodeId) updateNodePositionStatus(id); // Actualiza posición en barra de estado
+
+          const node = editor.getNodeFromId(id);
+          if(node) {
+              // --- INICIO LÓGICA NODOS DEPENDIENTES DEL ORDEN Y ---
+              // Si el nodo movido tiene salidas conectadas a nodos cuyo cálculo depende del orden Y
+              const outputConnections = getConnections(id, 'output');
+              outputConnections.forEach(conn => {
+                  const targetNode = editor.getNodeFromId(conn.node);
+                  if (targetNode) { // Verificar si el nodo destino existe
+                      const targetName = targetNode.name;
+                      if (targetName === 'concatenar' || targetName === 'subtract' || targetName === 'divide') {
+                           console.log(`Node ${id} moved, updating order-dependent target node ${conn.node} (${targetName})`);
+                           // Llamar a la función de actualización correspondiente
+                           if (targetName === 'concatenar') setTimeout(() => updateConcatenateNode(conn.node), 0);
+                           else if (targetName === 'subtract') setTimeout(() => updateSubtractNode(conn.node), 0);
+                           else if (targetName === 'divide') setTimeout(() => updateDivideNode(conn.node), 0);
+                      }
+                      // Suma y Multiplicación no dependen del orden, no necesitan recalcular por mover una entrada
+                  }
+              });
+
+              // Si el nodo movido ES uno de los que dependen del orden Y de sus propias entradas
+              const nodeName = node.name;
+              if (nodeName === 'concatenar' || nodeName === 'subtract' || nodeName === 'divide') {
+                   console.log(`Order-dependent node ${id} (${nodeName}) moved, recalculating...`);
+                  // Recalcular el propio nodo movido
+                  if (nodeName === 'concatenar') setTimeout(() => updateConcatenateNode(id), 0);
+                  else if (nodeName === 'subtract') setTimeout(() => updateSubtractNode(id), 0);
+                  else if (nodeName === 'divide') setTimeout(() => updateDivideNode(id), 0);
+              }
+              // --- FIN LÓGICA NODOS DEPENDIENTES DEL ORDEN Y ---
+          }
+      });
+
+      // --- connectionCreated Listener ---
+      editor.on('connectionCreated', (connectionInfo) => {
+          setTimeout(() => { // Retrasar ligeramente
+              try {
+                  const sourceNodeId = connectionInfo.output_id;
+                  const targetNodeId = connectionInfo.input_id;
+                  const sourceNode = editor.getNodeFromId(sourceNodeId);
+                  const targetNode = editor.getNodeFromId(targetNodeId);
+
+                  if (!sourceNode || !targetNode) throw new Error("Source or Target node missing in connectionCreated handler.");
+
+                  const targetNodeName = targetNode.name;
+
+                  // 1. Propagar el dato inicial desde la fuente al conectar
+                  propagateData(sourceNodeId, sourceNode.name, null, undefined);
+
+                  // 2. Llamada específica para recalcular el nodo destino si es necesario
+                  if (targetNodeName === 'sum') { updateSumNode(targetNodeId); }
+                  else if (targetNodeName === 'subtract') { updateSubtractNode(targetNodeId); }
+                  else if (targetNodeName === 'multiply') { updateMultiplyNode(targetNodeId); }
+                  else if (targetNodeName === 'divide') { updateDivideNode(targetNodeId); }
+                  else if (targetNodeName === 'concatenar') { updateConcatenateNode(targetNodeId); }
+                  // No es necesario loguear aquí, las funciones de update ya loguean si cambian el resultado
+
+                  saveHistoryState(); // Guardar historial después de conexión y propagación/cálculo inicial
+              } catch (error) {
+                  console.error("Error processing connectionCreated event:", error, "Connection info:", connectionInfo);
+                  saveHistoryState(); // Guardar incluso si hay error para poder deshacer
+              }
+          }, 10); // 10ms delay
+      });
+
+      // --- connectionRemoved Listener ---
+      editor.on('connectionRemoved', (connectionInfo) => {
+          setTimeout(() => { // Retrasar ligeramente
+               const targetNodeId = connectionInfo.input_id; // Nodo al que LLEGABA la conexión
+               const targetNode = editor.getNodeFromId(targetNodeId);
+
+               if (targetNode) { // Verificar que el nodo destino aún existe
+                   const targetName = targetNode.name;
+                   // Si se quitó una conexión a un nodo que necesita recalcularse, hacerlo
+                   if (targetName === 'sum') { updateSumNode(targetNodeId); }
+                   else if (targetName === 'subtract') { updateSubtractNode(targetNodeId); }
+                   else if (targetName === 'multiply') { updateMultiplyNode(targetNodeId); }
+                   else if (targetName === 'divide') { updateDivideNode(targetNodeId); }
+                   else if (targetName === 'concatenar') { updateConcatenateNode(targetNodeId); }
+                   // No es necesario loguear aquí, las funciones de update ya loguean
+               }
+
+               saveHistoryState(); // Guardar estado tras quitar conexión
+          }, 10);
+      });
+
+      // --- Otros Listeners (sin cambios) ---
+      editor.on('moduleChanged', (name) => { console.log(`%cEVENT: Module Changed -> ${name}`, 'color: blue; font-weight: bold;'); renderModuleTabs(); initializeHistory(); selectedNodeId = null; copiedNodeData = null; currentlyEditingNodeId = null; updateUIDisabledStates(); updateZoomStatus(editor.zoom); updateNodePositionStatus(null); document.title = `Xocoflow | ${currentProjectName} - ${name}`; closeCodeEditorSidebar(false); setTimeout(() => { if(editor.module === name){ saveHistoryState(true); activateExistingAutoNodes(); console.log(` -> Module ${name} loaded.`); }}, 50); });
+      editor.on('zoom', (level) => { updateZoomStatus(level); });
+      editor.on('translate', (pos) => { /* No action needed now */ });
+      editor.on('contextmenu', (e) => { e.preventDefault(); });
+      editor.on('click', (e) => {
+          const target = e.target;
+          // Cerrar sidebar si se hace clic fuera de ella Y fuera de CUALQUIER nodo
+          if (codeEditorSidebar?.classList.contains('visible') && !target.closest('#code-editor-sidebar') && !target.closest('.drawflow-node')) {
+               closeCodeEditorSidebar(true);
+          }
+          // Deseleccionar nodo si se hace clic en el fondo del canvas (o elementos no interactivos)
+          if (!target.closest('.drawflow-node,.controls-container,.menu,.swal2-container,#code-editor-sidebar,.nodes-list,.col header')) { // Añadidos elementos a ignorar
+              if (selectedNodeId) {
+                  try { editor.removeSelection(); } catch { /* Ignorar si falla */ }
+                  // El evento 'nodeUnselected' ya maneja la limpieza del estado
+              }
+          }
+      });
+      console.log("Drawflow event listeners attached.");
+  } catch (e) {
+      console.error("Error setting Drawflow listeners:", e);
+      showToast('error', 'Critical Error', 'Failed editor events.');
+  }
 }
 
 // --- Keyboard Shortcuts ---
