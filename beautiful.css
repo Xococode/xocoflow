@@ -414,3 +414,88 @@ header h2 { margin: 0; line-height: 50px; font-size: 1.6em; font-weight: 700; co
   /* Opcional: añadir un borde sutil al seleccionar si se quitó el borde por defecto */
   border: 1px solid var(--primary-color);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* --- Drawing Canvas Styles --- */
+#drawingCanvas {
+  position: absolute;
+  top: 40px; /* Match #drawflow top */
+  left: 0;   /* Match #drawflow left */
+  width: 100%; /* Match #drawflow width */
+  height: calc(100% - 40px); /* Match #drawflow height */
+  pointer-events: none; /* Start inactive */
+  z-index: 3; /* Below buttons (z-index 6), above drawflow content (z-index 1/2) */
+  /* background-color: rgba(255, 0, 0, 0.1); */ /* Uncomment for debugging visibility */
+}
+#drawingCanvas.active {
+  pointer-events: auto; /* Enable drawing interaction */
+  cursor: crosshair;
+}
+
+/* --- New Button Styles (positioned relative to col-right) --- */
+.btn-draw, .btn-clear-drawing {
+  position: absolute;
+  bottom: 2px;
+  color: white;
+  font-weight: bold;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 24px; /* Match zoom bar icon size */
+  height: 25px; /* Match zoom bar height */
+  box-sizing: border-box;
+  background: #555;
+  z-index: 6; /* Ensure above canvas */
+}
+.btn-draw {
+  right: 215px; /* Adjust as needed */
+  border: 1px solid #0e5ba3;
+}
+.btn-draw.active { background: #4ea9ff; border: 1px solid #0c4a8a; }
+.btn-clear-drawing {
+  right: 300px; /* Adjust as needed */
+  border: 1px solid #96015b;
+}
+.btn-clear-drawing:hover { background: #e3195a; }
+
+/* Responsive Adjustments for new buttons */
+@media only screen and (max-width: 768px) {
+  .btn-draw { right: 165px; }
+  .btn-clear-drawing { right: 225px; }
+}
+@media only screen and (max-width: 480px) {
+  .btn-draw { right: 70px; bottom: 50px;}
+  .btn-clear-drawing { right: 125px; bottom: 50px;}
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

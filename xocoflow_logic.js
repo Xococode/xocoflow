@@ -211,6 +211,8 @@ const baseNodeDefinitions = {
 // ——— NODOS DE TRANSFORMACIÓN DE TEXTO —————
 // ————————————————————————————————————————————
 
+// Dentro de baseNodeDefinitions = { ... };
+
 'text_replace': {
     name: 'text_replace',
     inputs: 1,
@@ -220,16 +222,33 @@ const baseNodeDefinitions = {
         <div class="title-box"><i class="fas fa-exchange-alt"></i> Reemplazar</div>
         <div class="box">
           <label>Buscar:</label>
-          <input type="text" df-find placeholder="texto a buscar">
+          {/* oninput eliminado, handleNodeDataChange lo captura por df-find */}
+          <input type="text" df-find placeholder="texto a buscar"> 
+          
           <label>Reemplazar con:</label>
+          {/* oninput eliminado, handleNodeDataChange lo captura por df-replace */}
           <input type="text" df-replace placeholder="nuevo texto">
-          <button type="button" onclick="applyTextReplace(event)">Ejecutar</button>
-          <textarea df-result readonly style="height: 60px;"></textarea>
+          
+          {/* Botón manual opcional */}
+          <button type="button" onclick="applyTextReplace(event)" style="margin-top: 8px;">Ejecutar Manual</button> 
+          
+          <div style="margin-top:10px;"> {/* Cambiado para consistencia */}
+            <label>Resultado:</label>
+            <textarea df-result readonly style="height: 60px; width: 100%; background-color: var(--background-readonly);"></textarea>
+          </div>
         </div>
       </div>`,
     cssClass: 'text-replace-node',
-    data: { find: '', replace: '', result: '' }
+    data: { 
+        find: '',        // Texto a buscar
+        replace: '',     // Texto de reemplazo
+        lastInput: null, // Guardar el último texto recibido en la entrada
+        result: ''       // El resultado del reemplazo
+    }
+    // Ya no necesitamos onDataReceived aquí
 },
+
+// ... resto de tus definiciones ...
 
 'text_split': {
     name: 'text_split',
@@ -241,7 +260,7 @@ const baseNodeDefinitions = {
         <div class="box">
           <label>Separador:</label>
           <input type="text" df-separator placeholder=",">
-          <button type="button" onclick="applyTextSplit(event)">Ejecutar</button>
+ 
           <textarea df-result readonly style="height: 60px;"></textarea>
         </div>
       </div>`,
@@ -257,7 +276,7 @@ const baseNodeDefinitions = {
       <div>
         <div class="title-box"><i class="fas fa-arrow-up"></i> Mayúsculas</div>
         <div class="box">
-          <button type="button" onclick="applyTextCase(event, 'upper')">A → Z</button>
+          <button type="button" onclick="applyTextCase(event, 'upper')">a → Z</button>
           <textarea df-result readonly style="height: 60px;"></textarea>
         </div>
       </div>`,
@@ -273,7 +292,7 @@ const baseNodeDefinitions = {
       <div>
         <div class="title-box"><i class="fas fa-arrow-down"></i> Minúsculas</div>
         <div class="box">
-          <button type="button" onclick="applyTextCase(event, 'lower')">a → z</button>
+          <button type="button" onclick="applyTextCase(event, 'lower')">A → z</button>
           <textarea df-result readonly style="height: 60px;"></textarea>
         </div>
       </div>`,
@@ -305,7 +324,7 @@ const baseNodeDefinitions = {
       <div>
         <div class="title-box"><i class="fas fa-code"></i> Strip HTML</div>
         <div class="box">
-          <button type="button" onclick="applyHtmlStrip(event)">Ejecutar</button>
+          
           <textarea df-result readonly style="height: 60px;"></textarea>
         </div>
       </div>`,
@@ -489,6 +508,36 @@ const baseNodeDefinitions = {
   // FIN NUEVO NODO IMAGEN MINIMALISTA
 
 
+// --- NODO PLANTILLA ---
+'template_engine': {
+    name: 'template_engine', // Nombre interno
+    inputs: 1,          // Recibe el objeto JSON
+    outputs: 1,         // Emite el texto procesado
+    html: `
+      <div>
+        <div class="title-box"><i class="fas fa-file-invoice"></i> Plantilla</div>
+        <div class="box">
+          <p class="help-text" style="font-size: 10px; margin-bottom: 8px;">
+            Usa <code>{{variable}}</code> o <code>{{objeto.propiedad}}</code> para insertar
+            valores del JSON de entrada.
+          </p>
+          <label for="node-{{id}}-template">Plantilla:</label>
+          <textarea id="node-{{id}}-template" df-template style="height: 120px; font-family: var(--font-family-code); font-size: 12px;" placeholder="Hola {{nombre}}, \n\nTu pedido {{pedido.id}} está listo." oninput="handleNodeDataChange(event)"></textarea>
+          
+          <label for="node-{{id}}-result" style="margin-top:10px;">Resultado:</label>
+          <textarea id="node-{{id}}-result" df-result readonly style="height: 80px; font-size: 12px; background-color: var(--background-readonly);"></textarea>
+        </div>
+      </div>`,
+    cssClass: 'template-node', // Clase CSS opcional
+    data: {
+        template: '',      // La cadena de plantilla escrita por el usuario
+        lastInput: null,   // El último objeto JSON recibido
+        result: ''         // El resultado después de procesar la plantilla
+    }
+},
+// --- FIN NODO PLANTILLA ---
+
+
 
 
 
@@ -602,10 +651,104 @@ function getNodeIdFromEvent(event) {
 // --- PEGA ESTA FUNCIÓN ARRIBA DENTRO DE TU ARCHIVO xocoflow_logic.js ---
 // --- PUEDES PONERLA CERCA DE LAS OTRAS FUNCIONES DEL NODO LOCAL_IMAGE ---
 // --- O EN LA SECCIÓN GENERAL DE "HELPER FUNCTIONS" ---
+function handleNodeDataChange(event) {
+    if (!editor || !event?.target) return;
+    const el = event.target;
+    const nodeEl = el.closest('.drawflow-node');
+    if (!nodeEl) return;
+    const id = nodeEl.id.split('-')[1];
+    const node = editor.getNodeFromId(id);
+    if (!node) return;
+    let key = null;
+    for (const attr of el.attributes) if (attr.name.startsWith('df-')) { key = attr.name.substring(3); break; }
+    if (!key) return;
+
+    requestAnimationFrame(() => { // Usar requestAnimationFrame asegura que el valor en node.data se actualice antes de leerlo
+        try {
+            const updatedNode = editor.getNodeFromId(id);
+            // Verificar que el nodo y la clave aún existen y son válidos
+            if (!updatedNode?.data || !updatedNode.data.hasOwnProperty(key)) {
+                 console.warn(`handleNodeDataChange: Node ${id} or key ${key} no longer exists or data is invalid.`);
+                 return;
+            }
+            const val = updatedNode.data[key]; // Obtener el valor actualizado de los datos del nodo
+            const name = updatedNode.name;
+
+            // --- Lógica específica por tipo de nodo y clave cambiada ---
+            if ((name === 'url_input' && key === 'url')) {
+                 executeNode(id, val); // URL Input -> Ejecutar fetch/propagación
+            } else if (name === 'cargarTexto' && key === 'filecontent') {
+                 propagateData(id, name, key, val); // Cargar Texto -> Propagar contenido
+            } else if (name === 'imagen' && ['imgsrc', 'imgalt', 'imgwidth', 'imgheight'].includes(key)) {
+                 handleImageInputChange(event); // Nodo Imagen (original) -> Actualizar/Propagar HTML
+            } else if (name === 'nota' && key === 'notecontent') {
+                 updateCharacterCount(event); // Nodo Nota -> Actualizar contador
+            } else if ((name === 'timer_fetch' || name === 'timer_download' || name === 'loop') && key === 'interval') {
+                 executeNode(id, null); // Cambia intervalo de Timers -> Reiniciar timer
+            } else if (name === 'timer_fetch' && key === 'url') {
+                 executeNode(id, null); // Cambia URL de Timer Fetch -> Reiniciar timer
+            }
+            // --- INICIO: MANEJO INPUTS SIMPLES Y NODO PLANTILLA ---
+            else if (['input_number', 'input_text', 'input_range', 'input_date', 'input_time', 'input_color'].includes(name)) {
+                 // Nodos de entrada simples -> Propagar el valor cambiado
+                 propagateData(id, name, key, val);
+            }
+            else if (name === 'template_engine' && key === 'template') {
+                 // Cambió el texto de la plantilla -> Reprocesar con el último JSON
+                 console.log(`Template Node (${id}): Template changed by user. Reprocessing...`);
+                 processTemplateNode(id); // Llama a la función de procesamiento
+            }
+            // --- FIN: MANEJO INPUTS SIMPLES Y NODO PLANTILLA ---
+
+            // --- INICIO: MANEJO NODOS LOCAL IMAGE ---
+            else if (name === 'local_image') {
+                if (key === 'imagewidth' || key === 'imageheight') {
+                    updateLocalImageStyle(event);
+                } else if (key === 'nodewidth' || key === 'nodeheight') {
+                    updateLocalNodeSize(event);
+                }
+            }
+            else if (name === 'image_minimal') {
+                // No requiere acción aquí usualmente
+            }
+            // --- FIN: MANEJO NODOS LOCAL IMAGE ---
+
+             // --- INICIO: MANEJO NODOS DE TEXTO (ACTUALIZADO) ---
+             else if (name === 'text_replace' && (key === 'find' || key === 'replace')) {
+                if (updatedNode.data.lastInput !== null && updatedNode.data.lastInput !== undefined) { 
+                     console.log(`Text Replace (${id}): Input field ${key} changed. Reprocessing with lastInput...`); // <-- ¡Este log debe aparecer!
+                     setTimeout(() => executeTextReplace(id, updatedNode.data.lastInput), 0); 
+                } else {
+                     console.log(`Text Replace (${id}): Input field ${key} changed, but no lastInput to process yet.`);
+                }
+            }
+             else if (name === 'text_split' && key === 'separator') {
+                 // Similar para text_split: reprocesar si cambia el separador y hay texto.
+                 if (updatedNode.data.lastInput !== null && updatedNode.data.lastInput !== undefined) {
+                      console.log(`Text Split (${id}): Input field ${key} changed. Reprocessing with lastInput...`);
+                      setTimeout(() => executeTextSplit(id, updatedNode.data.lastInput), 0);
+                 } else {
+                      // console.log(`Text Split (${id}): Input field ${key} changed, but no lastInput to process yet.`); // Log opcional
+                 }
+             }
+             // --- FIN: MANEJO NODOS DE TEXTO ---
 
 
-function handleNodeDataChange(event) { if (!editor || !event?.target) return; const el = event.target; const nodeEl = el.closest('.drawflow-node'); if (!nodeEl) return; const id = nodeEl.id.split('-')[1]; const node = editor.getNodeFromId(id); if (!node) return; let key = null; for (const attr of el.attributes) if (attr.name.startsWith('df-')) { key = attr.name.substring(3); break; } if (!key) return; requestAnimationFrame(() => { try { const updatedNode = editor.getNodeFromId(id); if (!updatedNode?.data?.hasOwnProperty(key)) return; const val = updatedNode.data[key]; const name = updatedNode.name; if ((name === 'url_input' && key === 'url') || (name === 'cargarTexto' && key === 'filecontent')) { if(name === 'url_input') executeNode(id, val); else propagateData(id, name, key, val); } else if (name === 'imagen' && ['imgsrc', 'imgalt', 'imgwidth', 'imgheight'].includes(key)) handleImageInputChange(event); else if (name === 'nota' && key === 'notecontent') updateCharacterCount(event); else if ((name === 'timer_fetch' || name === 'timer_download' || name === 'loop') && key === 'interval') executeNode(id, null); else if (name === 'timer_fetch' && key === 'url') executeNode(id, null); saveHistoryState(); } catch (e) { console.error(`Error handleNodeDataChange (${id}/${key}):`, e); } }); }
+            // Guardar historial después de un cambio detectado Y procesado por las lógicas anteriores.
+            // Las funciones llamadas (executeNode, propagateData, processTemplateNode, etc.)
+            // ya llaman a saveHistoryState() internamente SIEMPRE que el resultado o estado relevante cambia.
+            // Llamar a saveHistoryState() aquí puede ser redundante en muchos casos,
+            // pero asegura que cambios simples (como en nota) o los cambios en find/replace/separator
+            // (que ahora disparan una ejecución que SÍ guardará si el resultado cambia) se capturen
+            // si hubiera algún caso no cubierto por las funciones internas. Es relativamente seguro dejarlo.
+            saveHistoryState();
 
+        } catch (e) {
+            console.error(`Error handleNodeDataChange (Node: ${id}, Key: ${key}):`, e);
+            // Podrías añadir un showToast aquí si fuera necesario
+        }
+    });
+}
 
 function applyTextReplace(event) {
     const id = getNodeIdFromEvent(event);
@@ -649,16 +792,47 @@ function applyTextReplace(event) {
     updateNodeResult(id, res);
   }
   
-  function updateNodeResult(nodeId, result) {
-    // helper to set df-result and propagar
-    editor.updateNodeDataFromId(nodeId, { result });
-    const el = document.getElementById(`node-${nodeId}`);
-    const out = el.querySelector('[df-result]');
-    if (out.tagName === 'INPUT') out.value = result;
-    else out.value = result;
-    // propagar al siguiente
-    propagateData(nodeId, editor.getNodeFromId(nodeId).name, 'result', result);
-  }
+/**
+ * Actualiza el resultado de un nodo (datos y UI), propaga y guarda historial.
+ * Usada por nodos como text_replace, text_split, etc.
+ * @param {string} nodeId - El ID del nodo.
+ * @param {*} resultValue - El valor del resultado a guardar y propagar.
+ */
+function updateNodeResult(nodeId, resultValue) {
+    const node = editor.getNodeFromId(nodeId);
+    if (!node) return;
+
+    // Solo actualizar si el resultado realmente cambió
+    if (node.data.result !== resultValue) {
+        console.log(`Node ${nodeId} (${node.name}): Updating result data.`);
+        // Actualizamos el dato en el modelo de Drawflow
+        editor.updateNodeDataFromId(nodeId, { result: resultValue });
+
+        // Actualizamos el elemento visual (textarea o input) en la UI
+        const nodeElement = document.getElementById(`node-${nodeId}`);
+        if (nodeElement) {
+            // Busca textarea o input con df-result
+            const resultElement = nodeElement.querySelector('textarea[df-result], input[df-result]');
+            if (resultElement) {
+                resultElement.value = resultValue; // Asignar valor
+            } else {
+                console.warn(`Node ${nodeId} (${node.name}): Result element (df-result) not found in UI.`);
+            }
+        } else {
+             console.warn(`Node ${nodeId} (${node.name}): Node element not found in DOM for UI update.`);
+        }
+
+        // Propagamos el nuevo resultado a los nodos conectados
+        // Usamos el nombre del nodo actual para la propagación
+        console.log(`Node ${nodeId} (${node.name}): Propagating new result.`);
+        propagateData(nodeId, node.name, 'result', resultValue);
+
+        // Guardamos el estado para deshacer/rehacer porque el resultado cambió
+        saveHistoryState();
+    } else {
+         console.log(`Node ${nodeId} (${node.name}): Result unchanged, no update needed.`);
+    }
+}
   
 
   function handleJsonInputChange(event) {
@@ -666,25 +840,43 @@ function applyTextReplace(event) {
     const textarea = event.target;
     const text     = textarea.value;
     let parsed;
-  
-    // 1) parseo
+    const nodeName = 'input_json'; // Nombre del nodo para propagateData
+
+    // 1) Parseo
     try {
-      parsed = JSON.parse(text);
-      textarea.classList.remove('error');
+        parsed = JSON.parse(text || '{}'); // Asegura que no sea vacío, parsea a objeto
+        textarea.classList.remove('error');
     } catch (e) {
-      textarea.classList.add('error');
-      return;
+        textarea.classList.add('error');
+        console.error(`Input JSON (${nodeId}) Parse Error:`, e);
+        // No propagar si hay error de parseo
+        // Podrías limpiar lastInput si quieres
+        // editor.updateNodeDataFromId(nodeId, { json: text, lastInput: null });
+        return;
     }
-  
-    // 2) actualizo estado interno
+
+    // 2) Actualizo estado interno
+    // Guardamos tanto el texto original como el objeto parseado
     editor.updateNodeDataFromId(nodeId, {
-      json: text,
-      lastInput: parsed
+        json: text,
+        lastInput: parsed // Guardamos el objeto parseado
     });
-  
-    // 3) propago EJECUCIÓN (no datos) para que reciba y ejecute el nodo JS
-    propagateExecution(nodeId, parsed);
-  }
+
+    // 3) ¡CAMBIO IMPORTANTE! Usar propagateData para enviar el OBJETO PARSEADO
+    // Esto activará la lógica que añadimos para 'template_engine' en propagateData.
+    // Usamos 'lastInput' como "changedKey" conceptual, y 'parsed' como el dato a enviar.
+    console.log(`Input JSON (${nodeId}): Propagating parsed data object...`, parsed);
+    propagateData(nodeId, nodeName, 'lastInput', parsed);
+
+    // Opcional: Si algún nodo necesita ser *ejecutado* específicamente
+    // por la llegada de este JSON (además de recibir los datos),
+    // podrías mantener la llamada a propagateExecution aquí también,
+    // pero para el nodo Plantilla, propagateData es la necesaria.
+    // propagateExecution(nodeId, parsed); // Podría ser redundante o innecesaria ahora
+
+    // Guardar historial porque el dato cambió y se propagó
+    saveHistoryState();
+}
   
   
   
@@ -1292,6 +1484,426 @@ function setupMinimalImageNodeListeners(nodeId) {
 }
 
 
+/**
+ * Ejecuta la transformación de mayúsculas/minúsculas directamente.
+ * @param {string} nodeId - ID del nodo.
+ * @param {string} inputValue - El texto de entrada.
+ * @param {'upper' | 'lower'} mode - 'upper' para mayúsculas, 'lower' para minúsculas.
+ */
+function executeTextCase(nodeId, inputValue, mode) {
+    console.log(`Executing Text Case: Node ${nodeId}, Mode: ${mode}`);
+    const inputText = String(inputValue ?? ''); // Asegurar que sea string
+    const result = mode === 'upper' ? inputText.toUpperCase() : inputText.toLowerCase();
+    updateNodeResult(nodeId, result); // Actualiza y propaga el resultado
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/**
+ * [Simplificado] Ejecuta el reemplazo de texto para un nodo.
+ * Realiza un reemplazo global y sensible a mayúsculas.
+ * @param {string} nodeId - El ID del nodo.
+ * @param {*}    inputText - Texto o dato a procesar.
+ */
+function executeTextReplace(nodeId, inputText) {
+    console.log(`--- [Simple] Executing Text Replace Node ${nodeId} ---`);
+
+    // 1. Validar el nodo
+    const node = editor.getNodeFromId(nodeId);
+    if (!node || node.name !== 'text_replace') {
+        console.error(`Text Replace (${nodeId}): Nodo inválido o tipo incorrecto.`);
+        return; // No continuar si el nodo no es válido
+    }
+
+    // 2. Obtener datos necesarios del nodo
+    // Lee directamente de node.data (asumiendo que handleNodeDataChange los actualiza)
+    const findText = node.data.find ?? '';         // Usar '' si no está definido
+    const replaceText = node.data.replace ?? '';   // Usar '' si no está definido
+    
+    // 3. Asegurar que el texto de entrada sea un string
+    const currentInputText = String(inputText ?? ''); 
+
+    console.log(`   Input: "${currentInputText}"`);
+    console.log(`   Find: "${findText}"`);
+    console.log(`   Replace: "${replaceText}"`);
+
+    // 4. Si el texto a buscar ('find') está vacío, no hacer nada y devolver el original
+    if (!findText) {
+        console.warn(`Text Replace (${nodeId}): Texto de búsqueda vacío. Devolviendo texto original.`);
+        // Llamamos a updateNodeResult para asegurar que la salida refleje la entrada actual
+        updateNodeResult(nodeId, currentInputText); 
+        console.log(`--- [Simple] Finished Text Replace Node ${nodeId} (No Find Text) ---`);
+        return; 
+    }
+
+    // 5. Realizar el reemplazo (global, case-sensitive)
+    let resultText;
+    try {
+        // El método split/join es eficiente para reemplazos literales globales
+        resultText = currentInputText.split(findText).join(replaceText);
+        console.log(`   Result: "${resultText}"`);
+    } catch (error) {
+        // Capturar errores inesperados durante el split/join
+        console.error(`Text Replace Node (${nodeId}): Error durante el reemplazo`, error);
+        resultText = `Error: ${error.message}`; // Establecer un mensaje de error como resultado
+    }
+
+    // 6. Actualizar el nodo con el resultado (o el mensaje de error)
+    // Esta función actualiza node.data.result, la UI, propaga y guarda historial
+    updateNodeResult(nodeId, resultText); 
+    
+    console.log(`--- [Simple] Finished Text Replace Node ${nodeId} ---`);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/**
+ * Escapa caracteres especiales para usar en expresiones regulares.
+ * @param {string} string - El string a escapar.
+ * @returns {string} - El string escapado.
+ */
+function escapeRegExp(string) {
+    // Escapar caracteres especiales para RegExp
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Trunca un texto largo para mostrarlo en logs.
+ * @param {string} text - El texto a truncar.
+ * @param {number} maxLength - Longitud máxima (por defecto 100).
+ * @returns {string} - El texto truncado.
+ */
+function truncateForLog(text, maxLength = 100) {
+    if (!text) return '';
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength) + '... [truncado]';
+}
+
+/**
+ * Ejecuta la división de texto directamente.
+ * @param {string} nodeId - ID del nodo.
+ * @param {string} inputValue - El texto de entrada.
+ */
+function executeTextSplit(nodeId, inputValue) {
+    console.log(`Executing Text Split: Node ${nodeId}`);
+    const nodeData = editor.getNodeFromId(nodeId)?.data;
+    if (!nodeData) return;
+    const inputText = String(inputValue ?? '');
+    const separator = nodeData.separator ?? ''; // Obtener 'separator'
+    // Si el separador está vacío, simplemente devuelve el texto original
+    // o decide un comportamiento (ej. dividir por caracter? Por ahora, original).
+    // Dividir y unir con salto de línea para mostrar en textarea.
+    const result = (separator === '') ? inputText : inputText.split(separator).join('\n');
+    // Nota: El dato propagado será un string con saltos de línea.
+    // Si necesitaras propagar un array, la lógica cambiaría aquí y en updateNodeResult.
+    updateNodeResult(nodeId, result);
+}
+
+/**
+ * Calcula la longitud del texto directamente.
+ * @param {string} nodeId - ID del nodo.
+ * @param {string} inputValue - El texto de entrada.
+ */
+function executeTextLength(nodeId, inputValue) {
+    console.log(`Executing Text Length: Node ${nodeId}`);
+    const inputText = String(inputValue ?? '');
+    const result = inputText.length; // El resultado es un número
+    updateNodeResult(nodeId, result); // Actualiza (mostrará número) y propaga (número)
+}
+
+/**
+ * Ejecuta la eliminación de etiquetas HTML directamente.
+ * @param {string} nodeId - ID del nodo.
+ * @param {string} inputValue - El texto de entrada (HTML).
+ */
+function executeHtmlStrip(nodeId, inputValue) {
+    console.log(`Executing HTML Strip: Node ${nodeId}`);
+    const inputText = String(inputValue ?? '');
+    const result = inputText.replace(/<[^>]*>/g, ''); // Regex para quitar etiquetas
+    updateNodeResult(nodeId, result);
+}
+
+
+/**
+ * Obtiene de forma segura un valor anidado de un objeto usando una cadena de ruta.
+ * Ejemplo: getValueFromJson(obj, 'user.address.city')
+ * @param {object|null} obj - El objeto fuente.
+ * @param {string} keyPath - La ruta de la clave (ej. 'nombre', 'pedido.id').
+ * @returns {*} El valor encontrado, o undefined si la ruta no existe o el objeto no es válido.
+ */
+function getValueFromJson(obj, keyPath) {
+    // Validaciones iniciales
+    if (!obj || typeof obj !== 'object' || obj === null || typeof keyPath !== 'string' || keyPath === '') {
+        return undefined;
+    }
+    const keys = keyPath.split('.'); // Dividir la ruta por puntos
+    let current = obj;
+    for (const key of keys) {
+        // Verificar si el nivel actual es un objeto válido antes de acceder
+        if (current === null || current === undefined || typeof current !== 'object') {
+            return undefined; // Ruta no encontrada
+        }
+        // Verificar si la clave existe en el nivel actual
+        if (!Object.prototype.hasOwnProperty.call(current, key)) {
+             return undefined; // Clave específica no encontrada
+        }
+        current = current[key]; // Moverse al siguiente nivel
+    }
+    // Devolver el valor final encontrado (puede ser null, string, number, etc.)
+    return current;
+}
+
+/**
+ * Procesa la plantilla de un nodo 'template_engine'.
+ * @param {string} nodeId - El ID del nodo a procesar.
+ * @param {object} [directInputJson] - (Opcional) El objeto JSON pasado directamente.
+ */
+function processTemplateNode(nodeId, directInputJson) {
+    const node = editor.getNodeFromId(nodeId);
+    if (!node || node.name !== 'template_engine') return;
+
+    const nodeElement = document.getElementById(`node-${nodeId}`);
+    if (!nodeElement) { console.error(`Template Node (${nodeId}): Element not found.`); return; }
+    const templateTextarea = nodeElement.querySelector('textarea[df-template]');
+    if (!templateTextarea) { console.error(`Template Node (${nodeId}): Template textarea not found.`); return; }
+    const currentTemplate = templateTextarea.value || '';
+
+    if (node.data.template !== currentTemplate) {
+         editor.updateNodeDataFromId(nodeId, { template: currentTemplate });
+    }
+
+    const nodeData = editor.getNodeFromId(nodeId).data;
+    let inputJson = directInputJson !== undefined ? directInputJson : nodeData.lastInput;
+
+    // Convertir inputJson de string a objeto si es necesario
+    if (typeof inputJson === 'string') {
+        try {
+            inputJson = JSON.parse(inputJson);
+        } catch (error) {
+            console.error(`Template Node (${nodeId}): Failed to parse JSON input`, error);
+            editor.updateNodeDataFromId(nodeId, { result: `Error: JSON inválido - ${error.message}` });
+            return;
+        }
+    }
+
+    // *** LOGS IMPORTANTES ***
+    console.log(`--- Processing Template Node ${nodeId} ---`);
+    console.log("   Template String (Read from UI):", JSON.stringify(currentTemplate));
+    console.log("   Input JSON (Effective):", inputJson ? JSON.stringify(inputJson) : inputJson);
+    // *** FIN LOGS IMPORTANTES ***
+
+    let processedTemplate = '';
+    let errorOccurred = false;
+
+    if (inputJson && typeof inputJson === 'object' && inputJson !== null) {
+        const regex = /{{\s*([\w.-]+)\s*}}/g;
+        try {
+            processedTemplate = currentTemplate.replace(regex, (match, key) => {
+                const cleanKey = key.trim();
+                const value = getValueFromJsonPath(inputJson, cleanKey);
+                // *** LOG IMPORTANTE ***
+                console.log(`   -> Replacing {{${cleanKey}}}: Found value:`, value, `(Type: ${typeof value})`);
+                // *** FIN LOG IMPORTANTE ***
+                if (value === undefined) { return match; } // Dejar sin cambiar
+                else if (value === null) { return ''; }
+                else if (typeof value === 'object') { return JSON.stringify(value); }
+                else { return String(value); }
+            });
+        } catch (error) {
+            console.error(`Template Node (${nodeId}): Error during replace`, error);
+            processedTemplate = `Error: ${error.message}`;
+            errorOccurred = true;
+        }
+    } else {
+        processedTemplate = currentTemplate;
+        console.warn(`Template Node (${nodeId}): No effective input JSON.`);
+    }
+
+    // *** LOG IMPORTANTE ***
+    console.log(`   Final Processed Template:`, JSON.stringify(processedTemplate));
+    // *** FIN LOG IMPORTANTE ***
+
+    if (nodeData.result !== processedTemplate || errorOccurred) {
+        console.log(`Template Node (${nodeId}): Updating result.`);
+        editor.updateNodeDataFromId(nodeId, { result: processedTemplate });
+
+        const resultTextarea = nodeElement.querySelector('textarea[df-result]');
+        if (resultTextarea) {
+            // *** LOG IMPORTANTE ***
+            console.log(`   Attempting to set UI textarea[df-result] value.`);
+            resultTextarea.value = processedTemplate;
+            console.log(`   UI textarea[df-result] value set.`);
+            // *** FIN LOG IMPORTANTE ***
+        } else {
+            // *** ERROR IMPORTANTE ***
+            console.error(`   CRITICAL: UI textarea[df-result] NOT FOUND for node ${nodeId}. Check HTML definition.`);
+            // *** FIN ERROR IMPORTANTE ***
+        }
+        // *** LOG IMPORTANTE ***
+        console.log(`   Attempting to propagate final result...`);
+        propagateData(nodeId, 'template_engine', 'result', processedTemplate);
+        console.log(`   Propagation called.`);
+        // *** FIN LOG IMPORTANTE ***
+        saveHistoryState();
+    } else {
+        console.log(`Template Node (${nodeId}): Result unchanged.`);
+    }
+    console.log(`--- Finished Processing Template Node ${nodeId} ---`);
+}
+
+/**
+ * Obtiene un valor de un objeto JSON usando una ruta de acceso con notación de punto.
+ * @param {object} json - El objeto JSON.
+ * @param {string} path - La ruta de acceso (ej: "usuario.direccion.calle").
+ * @returns {*} El valor encontrado o undefined si no existe.
+ */
+function getValueFromJsonPath(json, path) {
+    if (!json || !path) return undefined;
+    
+    const keys = path.split('.');
+    let current = json;
+    
+    for (const key of keys) {
+        if (current === null || typeof current !== 'object') {
+            return undefined;
+        }
+        current = current[key];
+        if (current === undefined) {
+            return undefined;
+        }
+    }
+    
+    return current;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1654,136 +2266,151 @@ function handleNodeDataChange(event) {
 
 
 
-// MODIFICADO: propagateData para manejar todos los nodos aritméticos y buscar mejor el dato a propagar
+// MODIFICADO: propagateData con manejo de nodos aritméticos, texto (auto) y PLANTILLA
+// ACTUALIZADO: propagateData con manejo de nodos aritméticos, texto (auto) y PLANTILLA (corregido)
 function propagateData(sourceNodeId, sourceNodeName, changedKey, outputData) {
-  try {
-      const sourceNode = editor.getNodeFromId(sourceNodeId);
-      // Asume puerto de salida estándar 'output_1', si no existe o no tiene conexiones, salir.
-      const outputPort = sourceNode?.outputs?.output_1;
-      if (!outputPort?.connections || outputPort.connections.length === 0) {
-           // console.log(`Propagate from ${sourceNodeId}: No output connections found on output_1.`);
-           return;
-      }
+    try {
+        const sourceNode = editor.getNodeFromId(sourceNodeId);
+        // Asume puerto de salida estándar 'output_1', si no existe o no tiene conexiones, salir.
+        const outputPort = sourceNode?.outputs?.output_1;
+        if (!outputPort?.connections || outputPort.connections.length === 0) {
+            // console.log(`Propagate from ${sourceNodeId}: No output connections found on output_1.`);
+            return;
+        }
 
-      const connections = outputPort.connections;
-      const sourceData = sourceNode.data || {};
-      let dataToPropagate;
+        const connections = outputPort.connections;
+        const sourceData = sourceNode.data || {};
+        let dataToPropagate;
 
-      // --- Determinar el dato real a propagar (lógica sin cambios) ---
-      if (outputData !== undefined) {
-          dataToPropagate = outputData;
-      } else {
-          const commonOutputKeys = ['result', 'content', 'codecontent', 'outputhtml', 'filecontent', 'display', 'url', 'jscode'];
-          const inputKeys = ['number', 'text', 'range', 'date', 'time', 'color', 'json', 'notecontent'];
-          const searchKeys = [changedKey, ...commonOutputKeys, ...inputKeys].filter(Boolean); // filter(Boolean) quita null/undefined
+        // --- Determinar el dato real a propagar ---
+        if (outputData !== undefined) {
+            dataToPropagate = outputData;
+        } else {
+            const commonOutputKeys = ['result', 'content', 'codecontent', 'outputhtml', 'filecontent', 'display', 'url', 'jscode'];
+            const inputKeys = ['number', 'text', 'range', 'date', 'time', 'color', 'json', 'notecontent'];
+            const searchKeys = [changedKey, ...commonOutputKeys, ...inputKeys].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i);
 
-          for (const k of searchKeys) {
-              if (sourceData.hasOwnProperty(k)) {
-                  dataToPropagate = sourceData[k];
-                  break;
-              }
-          }
-          if (dataToPropagate === undefined) {
-              const firstKey = Object.keys(sourceData).find(k => !['lastInput', 'lastInputs', 'selector_received'].includes(k));
-              if (firstKey) dataToPropagate = sourceData[firstKey];
-          }
-      }
-      // --- Fin determinación de dato ---
+            for (const k of searchKeys) {
+                if (sourceData.hasOwnProperty(k)) {
+                    dataToPropagate = sourceData[k];
+                    break;
+                }
+            }
+            if (dataToPropagate === undefined) {
+                const firstKey = Object.keys(sourceData).find(k => !['lastInput', 'lastInputs', 'selector_received'].includes(k));
+                if (firstKey) dataToPropagate = sourceData[firstKey];
+            }
+        }
+        // --- Fin determinación de dato ---
 
-      // console.log(`Propagating from ${sourceNodeName} (${sourceNodeId}). Key: ${changedKey}. Data determined:`, dataToPropagate);
+        connections.forEach(conn => {
+            const targetId   = conn.node;
+            const targetNode = editor.getNodeFromId(targetId);
+            if (!targetNode) {
+                console.warn(`Target node ${targetId} not found during propagation from ${sourceNodeId}.`);
+                return;
+            }
+            const targetNodeName = targetNode.name;
+            const targetInputPort = conn.output;
 
-      connections.forEach(conn => {
-          const targetId   = conn.node;
-          const targetNode = editor.getNodeFromId(targetId);
-          if (!targetNode) {
-               console.warn(`Target node ${targetId} not found during propagation from ${sourceNodeId}.`);
-               return; // Saltar esta conexión si el nodo destino no existe
-          }
-          const targetNodeName = targetNode.name;
-          const targetInputPort = conn.output; // Nombre del puerto de *entrada* del nodo destino (ej: 'input_1')
+            // === Lógica de Propagación Específica por Tipo de Nodo Destino ===
 
-          // === Lógica de Propagación Específica por Tipo de Nodo Destino ===
+            if (EXECUTE_NODE_SYSTEM_TYPES.includes(targetNodeName)) { // Nodos de sistema
+                if (targetNodeName === 'extract_value') {
+                    if (targetInputPort === 'input_1') {
+                        setTimeout(() => executeNode(targetId, dataToPropagate), 0);
+                    } else if (targetInputPort === 'input_2') {
+                        const s = String(dataToPropagate ?? '');
+                        editor.updateNodeDataFromId(targetId, { selector_received: s });
+                        const el = document.getElementById(`node-${targetId}`);
+                        const i  = el?.querySelector('input[df-selector_received]');
+                        if (i) i.value = s;
+                    }
+                } else {
+                    setTimeout(() => executeNode(targetId, dataToPropagate), 0);
+                }
+            }
+            else if (targetNodeName === 'javascript_code') { // Nodo JS
+                editor.updateNodeDataFromId(targetId, { lastInput: dataToPropagate });
+                setTimeout(() => executeNode(targetId, dataToPropagate), 0);
+            }
+            else if (targetNodeName === 'concatenar') { // Nodo Concatenar
+                setTimeout(() => updateConcatenateNode(targetId), 0);
+            }
+            else if (targetNodeName === 'sum') { // Nodos Aritméticos
+                setTimeout(() => updateSumNode(targetId), 0);
+            }
+            else if (targetNodeName === 'subtract') {
+                setTimeout(() => updateSubtractNode(targetId), 0);
+            }
+            else if (targetNodeName === 'multiply') {
+                setTimeout(() => updateMultiplyNode(targetId), 0);
+            }
+            else if (targetNodeName === 'divide') {
+                setTimeout(() => updateDivideNode(targetId), 0);
+            }
+            else if (targetNodeName === 'mostrarPasar' && targetInputPort === 'input_1') { // Mostrar y Pasar
+                const v = String(dataToPropagate ?? '');
+                editor.updateNodeDataFromId(targetId, { result: v });
+                const el = document.getElementById(`node-${targetId}`);
+                const ta = el?.querySelector('textarea[df-result]');
+                if (ta) ta.value = v;
+                setTimeout(() => propagateData(targetId, targetNodeName, 'result', dataToPropagate), 0);
+            }
+            else if (targetNodeName === 'guardarTexto' && targetInputPort === 'input_1') { // Guardar Texto
+                const v = String(dataToPropagate ?? '');
+                editor.updateNodeDataFromId(targetId, { savecontent: v });
+                const el = document.getElementById(`node-${targetId}`);
+                const ta = el?.querySelector('textarea[df-savecontent]');
+                if (ta) ta.value = v;
+            }
+            else if (['text_replace', 'text_split', 'text_uppercase', 'text_lowercase', 'text_length', 'html_strip'].includes(targetNodeName) && targetInputPort === 'input_1') { // Nodos Transformación Texto (Automático)
+                const inputText = String(dataToPropagate ?? '');
+                editor.updateNodeDataFromId(targetId, { lastInput: inputText });
+                setTimeout(() => {
+                    try {
+                        // console.log(`Auto-executing ${targetNodeName} (${targetId}) due to input change.`);
+                        switch (targetNodeName) {
+                            case 'text_uppercase': executeTextCase(targetId, inputText, 'upper'); break;
+                            case 'text_lowercase': executeTextCase(targetId, inputText, 'lower'); break;
+                            case 'text_replace': executeTextReplace(targetId, inputText); break;
+                            case 'text_split': executeTextSplit(targetId, inputText); break;
+                            case 'text_length': executeTextLength(targetId, inputText); break;
+                            case 'html_strip': executeHtmlStrip(targetId, inputText); break;
+                        }
+                    } catch (execError) {
+                        console.error(`Error during automatic execution of ${targetNodeName} (${targetId}):`, execError);
+                        const nodeElement = document.getElementById(`node-${targetId}`);
+                        const resultTextArea = nodeElement?.querySelector('textarea[df-result], input[df-result]');
+                        if(resultTextArea) resultTextArea.value = `Error: ${execError.message}`;
+                        editor.updateNodeDataFromId(targetId, { result: `Error: ${execError.message}` });
+                    }
+                }, 0);
+            }
+            // --- INICIO: BLOQUE CORREGIDO PARA NODO PLANTILLA ---
+            else if (targetNodeName === 'template_engine' && targetInputPort === 'input_1') {
+                // 1. Guardar el objeto JSON recibido en lastInput (útil para reprocesamiento si cambia la plantilla)
+                editor.updateNodeDataFromId(targetId, { lastInput: dataToPropagate });
+                // console.log(`Template Node (${targetId}): Stored input data for potential reprocessing.`, dataToPropagate);
 
-          // Nodos de sistema que usan executeNode
-          if (EXECUTE_NODE_SYSTEM_TYPES.includes(targetNodeName)) {
-              if (targetNodeName === 'extract_value') {
-                  if (targetInputPort === 'input_1') { // Dato a procesar
-                      setTimeout(() => executeNode(targetId, dataToPropagate), 0);
-                  } else if (targetInputPort === 'input_2') { // Patrón Regex
-                      const s = String(dataToPropagate ?? '');
-                      editor.updateNodeDataFromId(targetId, { selector_received: s });
-                      const el = document.getElementById(`node-${targetId}`);
-                      const i  = el?.querySelector('input[df-selector_received]');
-                      if (i) i.value = s;
-                      // Opcional: Re-ejecutar si ya tenía texto en input_1
-                      // const currentText = editor.getNodeFromId(targetId)?.data?.lastInput;
-                      // if (currentText !== undefined) setTimeout(() => executeNode(targetId, currentText), 10);
-                  }
-              } else {
-                  setTimeout(() => executeNode(targetId, dataToPropagate), 0);
-              }
-          }
-          // Nodo JavaScript
-          else if (targetNodeName === 'javascript_code') {
-              editor.updateNodeDataFromId(targetId, { lastInput: dataToPropagate });
-              setTimeout(() => executeNode(targetId, dataToPropagate), 0); // Ejecutar JS con el nuevo input
-          }
-          // Nodo Concatenar
-          else if (targetNodeName === 'concatenar') {
-               setTimeout(() => updateConcatenateNode(targetId), 0); // Recalcular concatenación
-          }
-          // --- INICIO: Nodos Aritméticos ---
-          else if (targetNodeName === 'sum') {
-               setTimeout(() => updateSumNode(targetId), 0); // Recalcular suma
-          }
-          else if (targetNodeName === 'subtract') {
-               setTimeout(() => updateSubtractNode(targetId), 0); // Recalcular resta
-          }
-          else if (targetNodeName === 'multiply') {
-               setTimeout(() => updateMultiplyNode(targetId), 0); // Recalcular producto
-          }
-          else if (targetNodeName === 'divide') {
-               setTimeout(() => updateDivideNode(targetId), 0); // Recalcular división
-          }
-          // --- FIN: Nodos Aritméticos ---
+                // 2. Llamar a la función de procesamiento PASANDO el dato directamente
+                //    Guardar en variable local para el closure del setTimeout
+                const jsonDataForTimeout = dataToPropagate;
+                setTimeout(() => {
+                    // Llama a processTemplateNode CON el dato como segundo argumento
+                    processTemplateNode(targetId, jsonDataForTimeout);
+                }, 0);
+            }
+            // --- FIN: BLOQUE CORREGIDO PARA NODO PLANTILLA ---
 
-          // Nodo Mostrar y Pasar
-          else if (targetNodeName === 'mostrarPasar' && targetInputPort === 'input_1') {
-               const v = String(dataToPropagate ?? '');
-               editor.updateNodeDataFromId(targetId, { result: v });
-               const el = document.getElementById(`node-${targetId}`);
-               const ta = el?.querySelector('textarea[df-result]');
-               if (ta) ta.value = v;
-               // Propagar lo mismo que recibió
-               setTimeout(() => propagateData(targetId, targetNodeName, 'result', dataToPropagate), 0);
-          }
-          // Nodo Guardar Texto
-          else if (targetNodeName === 'guardarTexto' && targetInputPort === 'input_1') {
-               const v = String(dataToPropagate ?? '');
-               editor.updateNodeDataFromId(targetId, { savecontent: v });
-               const el = document.getElementById(`node-${targetId}`);
-               const ta = el?.querySelector('textarea[df-savecontent]');
-               if (ta) ta.value = v;
-          }
-          // Nodos de Transformación de Texto (actualizar su input interno)
-          else if (['text_replace', 'text_split', 'text_uppercase', 'text_lowercase', 'text_length', 'html_strip'].includes(targetNodeName) && targetInputPort === 'input_1') {
-               // Guardar el dato recibido para que los botones de ejecución manual lo usen
-               editor.updateNodeDataFromId(targetId, { lastInput: String(dataToPropagate ?? '') });
-               // No ejecutamos automáticamente aquí, se espera acción del usuario en estos nodos
-          }
-          // Puedes añadir más 'else if' para otros nodos personalizados que necesiten reaccionar a datos entrantes
+            // Añade aquí más 'else if' si creas otros nodos personalizados que reaccionen a la entrada
 
-      }); // Fin del forEach connections
-  } catch (error) {
-      console.error(`Error propagating data from node ${sourceNodeId} (${sourceNodeName}):`, error);
-      // Considerar si mostrar un toast aquí es útil o demasiado ruidoso
-      // showToast('error', 'Propagation Error', `Error from ${sourceNodeName}`);
-  }
+        }); // Fin del forEach connections
+    } catch (error) {
+        console.error(`Error propagating data from node ${sourceNodeId} (${sourceNodeName}):`, error);
+        // showToast('error', 'Propagation Error', `Error from ${sourceNodeName}`);
+    }
 }
-
-  
-
-
 
 
 
