@@ -1,7 +1,7 @@
 /* === START OF FILE beautiful.css === */
-/* Versión: 1.7.1 - Completa y Refinada */
+/* Versión: 1.8.1 - Incluye Slider Grosor Pincel */
 /* Autor: Xocoflow Development */
-/* Fecha: 2023-10-27 */
+/* Fecha: 2023-10-29 */
 
 /* --- Variables CSS Globales --- */
 :root {
@@ -21,6 +21,11 @@
   --background-box-title: #f7f7f7; /* Fondo título nodo default */
   --background-grid: #f1f1f1;       /* Color rejilla canvas */
   --background-hover-light: #eef5ff; /* Hover sutil en elementos claros */
+  --control-bg-color: rgba(50, 50, 50, 0.85); /* Fondo botones control */
+  --control-hover-bg-color: rgba(80, 80, 80, 0.9);
+  --control-disabled-bg-color: rgba(80, 80, 80, 0.5);
+  --control-text-color: var(--text-on-dark);
+  --control-disabled-text-color: #aaa;
 
   /* Bordes */
   --border-color: #cacaca;          /* Bordes generales */
@@ -28,6 +33,7 @@
   --border-dark-color: #455A64;     /* Borde sidebar oscuro */
   --border-focus-color: var(--primary-color); /* Borde en foco */
   --focus-shadow-color: rgba(78, 169, 255, 0.25); /* Sombra en foco */
+  --control-border-color: #333;
 
   /* Texto */
   --text-dark: #333;                /* Texto oscuro principal */
@@ -61,6 +67,7 @@
   --button-disabled-bg: #bdbdbd;    /* Gris claro deshabilitado */
   --button-disabled-border: #9e9e9e;
   --button-disabled-text: var(--text-disabled-color);
+  --control-height: 28px; /* Altura base para botones de control */
 
   /* Tipografía */
   --font-family-base: 'Roboto', -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
@@ -78,16 +85,8 @@
 }
 
 /* --- Reset Básico y Estilos Globales --- */
-*, *::before, *::after {
-  box-sizing: border-box;
-}
-
-html, body {
-  margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden;
-  font-family: var(--font-family-base); font-size: var(--font-size-base);
-  background-color: var(--background-light); color: var(--text-dark);
-  line-height: 1.5; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
-}
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden; font-family: var(--font-family-base); font-size: var(--font-size-base); background-color: var(--background-light); color: var(--text-dark); line-height: 1.5; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0; white-space: nowrap; }
 ::placeholder { color: var(--text-placeholder-color); opacity: 1; }
 
@@ -108,26 +107,28 @@ header h2 { margin: 0; line-height: 50px; font-size: 1.6em; font-weight: 700; co
 .drag-drawflow:hover { background-color: var(--background-hover-light); }
 .drag-drawflow i { color: var(--text-medium); width: 18px; text-align: center; flex-shrink: 0; font-size: 1.1em; }
 .drag-drawflow span { flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dark); }
-.create-node-button { padding: 10px 15px; margin: 8px 5px; background-color: var(--info-light-color); border: 1px solid var(--info-color); border-radius: 4px; text-align: center; cursor: pointer; font-weight: bold; color: var(--info-dark-color); display: flex; align-items: center; justify-content: center; gap: 8px; transition: background-color var(--transition-fast); font-size: var(--font-size-small); }
+.create-node-button { padding: 10px 15px; margin: 8px 5px; background-color: var(--info-light-color); border: 1px solid var(--info-color); border-radius: 4px; text-align: center; cursor: pointer; font-weight: bold; color: var(--info-dark-color); display: block; align-items: center; justify-content: center; gap: 8px; transition: background-color var(--transition-fast); font-size: var(--font-size-small); }
 .create-node-button:hover { background-color: #b3e5fc; }
-.delete-node-type-btn { margin-left: auto; padding: 0; cursor: pointer; color: #aaa; font-size: 0.9em; opacity: 0.6; transition: color var(--transition-fast), opacity var(--transition-fast); flex-shrink: 0; background: none; border: none; line-height: 1; }
+.delete-node-type-btn { margin-left: auto; padding: 0 4px; cursor: pointer; color: #aaa; font-size: 0.9em; opacity: 0.6; transition: color var(--transition-fast), opacity var(--transition-fast); flex-shrink: 0; background: none; border: none; line-height: 1; vertical-align: middle; }
 .delete-node-type-btn:hover { color: var(--danger-color); opacity: 1; }
+.drag-drawflow:has(.delete-node-type-btn) { gap: 5px; }
+.drag-drawflow .delete-node-type-btn i { width: auto; }
 
 /* --- Columna Derecha --- */
 .col-right { position: relative; flex-grow: 1; height: 100%; overflow: hidden; }
 
 /* --- Menú Superior --- */
 .menu { position: absolute; top: 0; left: 0; height: 40px; width: 100%; display: flex; align-items: center; background: var(--background-color); border-bottom: 1px solid var(--border-color); z-index: 10; padding: 0 10px; }
-#module-tabs { display: flex; align-items: stretch; height: 100%; margin: 0; padding: 0; list-style: none; margin-right: auto; }
-#module-tabs li { display: inline-flex; align-items: center; margin: 0; padding: 0 15px; line-height: 40px; cursor: pointer; border-right: 1px solid var(--border-light-color); font-size: var(--font-size-small); background-color: var(--background-medium); color: var(--text-medium); white-space: nowrap; transition: background-color var(--transition-fast), color var(--transition-fast); position: relative; }
+#module-tabs { display: flex; align-items: stretch; height: 100%; margin: 0; padding: 0; list-style: none; margin-right: auto; flex-wrap: nowrap; overflow-x: auto; /* Scroll horizontal para pestañas */ /* Ocultar scrollbar visualmente */ -ms-overflow-style: none; scrollbar-width: none; }
+#module-tabs::-webkit-scrollbar { display: none; } /* Ocultar scrollbar en Webkit */
+#module-tabs li { display: inline-flex; align-items: center; margin: 0; padding: 0 15px; line-height: 40px; cursor: pointer; border-right: 1px solid var(--border-light-color); font-size: var(--font-size-small); background-color: var(--background-medium); color: var(--text-medium); white-space: nowrap; transition: background-color var(--transition-fast), color var(--transition-fast); position: relative; flex-shrink: 0; }
 #module-tabs li:hover { background-color: #e8e8e8; }
 #module-tabs li.selected { font-weight: 700; color: var(--primary-dark-color); background-color: var(--background-color); border-bottom-color: var(--background-color); }
 #module-tabs li.selected::after { content: ''; position: absolute; bottom: -1px; left: 0; right: 0; height: 2px; background-color: var(--primary-color); }
-#module-tabs li button.close-tab-btn { margin-left: 8px; cursor: pointer; color: #999; font-weight: bold; padding: 0 4px; border-radius: 50%; font-size: 14px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; height: 18px; width: 18px; vertical-align: middle; transition: all var(--transition-fast); border: none; background: transparent; }
-#module-tabs li button.close-tab-btn:hover { color: var(--text-on-primary); background-color: var(--danger-color); }
-#module-tabs li button.add-tab-btn { cursor: pointer; border: none; background: transparent; padding: 0 5px; opacity: 0.7; transition: opacity var(--transition-fast); color: var(--text-medium); display: flex; align-items: center; height: 100%; font-size: 1.1em; }
-#module-tabs li button.add-tab-btn:hover { opacity: 1; }
-#module-tabs li:has(button.add-tab-btn) { border-right: none; background-color: transparent; margin-left: 5px; padding: 0; display:flex; align-items:center; }
+#module-tabs li .close-tab-btn { margin-left: 8px; cursor: pointer; color: #999; font-weight: bold; padding: 0 4px; border-radius: 50%; font-size: 14px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; height: 18px; width: 18px; vertical-align: middle; transition: all var(--transition-fast); border: none; background: transparent; flex-shrink: 0; }
+#module-tabs li .close-tab-btn:hover { color: var(--text-on-primary); background-color: var(--danger-color); }
+#module-tabs li.add-tab-btn { cursor: pointer; border: none; background: transparent; padding: 0 10px; opacity: 0.7; transition: opacity var(--transition-fast); color: var(--text-medium); display: inline-flex; align-items: center; height: 100%; font-size: 1.1em; border-right: none; margin-left: 5px; flex-shrink: 0; }
+#module-tabs li.add-tab-btn:hover { opacity: 1; }
 /* Botones Acción Menú */
 .menu .btn { margin-left: 8px; color: var(--text-on-primary); font-weight: 700; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: var(--font-size-xsmall); border: none; display: inline-flex; align-items: center; gap: 5px; transition: background-color var(--transition-fast), filter var(--transition-fast); box-shadow: var(--box-shadow-light); }
 .menu .btn:hover:not(:disabled) { filter: brightness(115%); }
@@ -142,58 +143,82 @@ header h2 { margin: 0; line-height: 50px; font-size: 1.6em; font-weight: 700; co
 .menu .btn-clear { background: var(--danger-color); }
 
 /* --- Canvas Drawflow --- */
-#drawflow { position: absolute; top: 40px; left: 0; width: 100%; height: calc(100% - 40px); background-color: var(--background-color); background-size: 20px 20px; background-image: linear-gradient(to right, var(--background-grid) 1px, transparent 1px), linear-gradient(to bottom, var(--background-grid) 1px, transparent 1px); overflow: hidden; }
+#drawflow { position: absolute; top: 40px; left: 0; width: 100%; height: calc(100% - 40px); background-color: var(--background-color); background-size: 20px 20px; background-image: linear-gradient(to right, var(--background-grid) 1px, transparent 1px), linear-gradient(to bottom, var(--background-grid) 1px, transparent 1px); overflow: hidden; z-index: 1; }
 #drawflow.drawflow-locked { cursor: not-allowed; }
 
 /* --- Controles Inferiores --- */
-.controls-container { position: absolute; z-index: 5; display: flex; align-items: center; gap: 12px; }
+.controls-container { position: absolute; z-index: 5; display: flex; align-items: center; gap: 8px; /* Reduced gap slightly */ }
 .controls-container.bottom-left { bottom: 15px; left: 15px; }
 .controls-container.bottom-right { bottom: 15px; right: 15px; }
 /* Estilo base botones control */
-.controls-container button { background-color: rgba(50, 50, 50, 0.85); color: var(--text-on-dark); border: none; border-radius: 4px; padding: 6px 8px; font-size: var(--font-size-base); line-height: 1; cursor: pointer; transition: background-color var(--transition-fast), color var(--transition-fast), opacity var(--transition-fast), visibility var(--transition-fast), width var(--transition-fast), padding var(--transition-fast), margin var(--transition-fast); display: inline-flex; align-items: center; justify-content: center; box-shadow: var(--box-shadow-light); }
-.controls-container button:hover:not(:disabled) { background-color: rgba(80, 80, 80, 0.9); color: #fff; }
-.controls-container button:disabled { background-color: rgba(80, 80, 80, 0.5); cursor: not-allowed; opacity: 0.7; box-shadow: none; color: #aaa; }
-.controls-container button i { margin: 0; }
+.controls-container button { background-color: var(--control-bg-color); color: var(--control-text-color); border: 1px solid var(--control-border-color); border-radius: 4px; padding: 0; /* Padding handled by flex alignment */ font-size: var(--font-size-base); line-height: 1; cursor: pointer; transition: background-color var(--transition-fast), color var(--transition-fast), opacity var(--transition-fast), visibility var(--transition-fast), border-color var(--transition-fast); display: inline-flex; align-items: center; justify-content: center; box-shadow: var(--box-shadow-light); width: var(--control-height); height: var(--control-height); }
+.controls-container button:hover:not(:disabled) { background-color: var(--control-hover-bg-color); border-color: #555; color: #fff; }
+.controls-container button:disabled { background-color: var(--control-disabled-bg-color); cursor: not-allowed; opacity: 0.7; box-shadow: none; color: var(--control-disabled-text-color); border-color: #444; }
+.controls-container button i { margin: 0; font-size: 0.95em; }
 /* Clase para ocultar botones */
-.controls-container button.hidden {
-    visibility: hidden; opacity: 0; pointer-events: none;
-    width: 0 !important; /* Importante para anular padding/width */
-    padding-left: 0 !important;
-    padding-right: 0 !important;
-    margin-left: 0 !important;
-    margin-right: 0 !important;
-    /* overflow: hidden; */ /* Puede ayudar en algunos casos */
-}
+.controls-container button.hidden { visibility: hidden; opacity: 0; pointer-events: none; width: 0 !important; padding: 0 !important; margin: 0 !important; border: none !important; overflow: hidden; }
 /* Grupo Historial y Edición */
-.history-controls { display: flex; gap: 6px; }
+.history-controls { display: flex; gap: 4px; }
+.history-controls button { background-color: var(--button-bg-dark); }
+.history-controls button:hover:not(:disabled) { background-color: var(--button-hover-bg-dark); }
 .history-controls .btn-recalculate { background-color: var(--info-color); }
 .history-controls .btn-recalculate:hover:not(:disabled) { background-color: var(--info-dark-color); }
 /* Grupo Lock */
 .btn-lock { display: flex; }
-.btn-lock button { background-color: #03A9F4; }
-.btn-lock button:hover:not(:disabled) { background-color: rgba(120, 120, 120, 0.9); }
+.btn-lock button { background-color: var(--info-color); border-color: var(--info-dark-color); }
+.btn-lock button:hover:not(:disabled) { background-color: var(--info-dark-color); }
 /* Grupo Zoom */
-.bar-zoom { display: flex; gap: 3px; background-color: rgba(50, 50, 50, 0.85); padding: 3px; border-radius: 4px; }
-.bar-zoom button { background: transparent; box-shadow: none; padding: 3px 5px; }
+.bar-zoom { display: flex; gap: 3px; background-color: var(--control-bg-color); padding: 3px; border-radius: 4px; border: 1px solid var(--control-border-color); }
+.bar-zoom button { background: transparent; box-shadow: none; border: none; height: calc(var(--control-height) - 8px); /* Adjust for padding */ width: calc(var(--control-height) - 8px); }
 .bar-zoom button:hover:not(:disabled) { background-color: rgba(255, 255, 255, 0.15); color: var(--primary-color); }
 
-/* Barra de Estado */
+/* --- Drawing Canvas Styles --- */
+#drawingCanvas { position: absolute; top: 40px; left: 0; width: 100%; height: calc(100% - 40px); pointer-events: none; /* Start inactive */ z-index: 3; }
+#drawingCanvas.active { pointer-events: auto; /* Enable interaction */ /* cursor set by JS */ }
+
+/* --- Drawing Tool Controls Styles --- */
+#colorPicker { -webkit-appearance: none; -moz-appearance: none; appearance: none; width: var(--control-height); height: var(--control-height); padding: 0; border: 1px solid var(--control-border-color); border-radius: 4px; background-color: transparent; cursor: pointer; vertical-align: middle; transition: border-color var(--transition-fast); }
+#colorPicker::-webkit-color-swatch-wrapper { padding: 2px; border-radius: 3px; } /* Add padding */
+#colorPicker::-webkit-color-swatch { border: none; border-radius: 2px; }
+#colorPicker::-moz-color-swatch { border: none; border-radius: 3px; margin: 2px; /* Add margin for Firefox */ }
+#colorPicker:hover { border-color: #999; }
+#colorPicker:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 2px var(--focus-shadow-color); }
+
+
+/* Active states */
+.btn-draw.active { background: var(--primary-color); border-color: var(--primary-dark-color); }
+.btn-eraser.active { background: #f44336; border-color: #d32f2f; }
+.btn-clear-drawing:hover { background: #e3195a; border-color: #96015b; }
+
+/* Brush Size Slider Control */
+.brush-control { display: inline-flex; align-items: center; background-color: var(--control-bg-color); border: 1px solid var(--control-border-color); border-radius: 4px; padding: 0 8px; height: var(--control-height); box-shadow: var(--box-shadow-light); color: var(--control-text-color); }
+.brush-control i { margin-right: 6px; font-size: 0.9em; color: #ccc; }
+.brush-control input[type="range"] { -webkit-appearance: none; appearance: none; width: 70px; /* Adjust width as needed */ height: 6px; background: #555; border-radius: 3px; outline: none; opacity: 0.9; transition: opacity var(--transition-fast); cursor: pointer; vertical-align: middle; margin: 0 6px 0 0; }
+.brush-control input[type="range"]:hover { opacity: 1; }
+/* Slider Thumb (Chrome, Safari, Edge) */
+.brush-control input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; background: #ddd; border-radius: 50%; cursor: pointer; margin-top: -4px; /* Center thumb on track */ }
+/* Slider Thumb (Firefox) */
+.brush-control input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; background: #ddd; border-radius: 50%; cursor: pointer; border: none; }
+.brush-control #brushSizeValue { font-size: var(--font-size-xsmall); font-weight: bold; min-width: 18px; text-align: right; color: #eee; }
+
+* Barra de Estado */
 .editor-status-bar { position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%); background-color: rgba(50, 50, 50, 0.75); color: var(--text-on-dark); padding: 4px 12px; border-radius: 4px; font-size: var(--font-size-xsmall); z-index: 4; white-space: nowrap; box-shadow: var(--box-shadow-light); }
 .editor-status-bar span { font-weight: bold; margin-left: 3px; min-width: 40px; display: inline-block; text-align: right; }
 #zoom-level { min-width: 45px; }
 #node-position { min-width: 100px; }
 
 /* --- Nodos Drawflow Base --- */
-.drawflow .drawflow-node { background: var(--background-color); border: 1px solid var(--border-color); box-shadow: var(--box-shadow-light); padding: 0; width: 220px; border-radius: 5px; transition: box-shadow var(--transition-fast), border-color var(--transition-fast); position: absolute; }
-.drawflow .drawflow-node.selected  { border-color: var(--primary-color); box-shadow: 0 0 0 3px var(--focus-shadow-color); }
-.drawflow .drawflow-node .input, .drawflow .drawflow-node .output { position: absolute; height: 16px; width: 16px; border: 2px solid var(--border-color); background: #fdfdfd; border-radius: 50%; cursor: crosshair; z-index: 10; transition: background-color var(--transition-fast), border-color var(--transition-fast); }
+.drawflow .drawflow-node { background: var(--background-color); border: 1px solid var(--border-color); box-shadow: var(--box-shadow-light); padding: 0; width: 220px; border-radius: 5px; transition: box-shadow var(--transition-fast), border-color var(--transition-fast); position: absolute; z-index: 2; /* Above grid */ }
+.drawflow .drawflow-node.selected  { border-color: var(--primary-color); box-shadow: 0 0 0 3px var(--focus-shadow-color), var(--box-shadow-medium); z-index: 3; /* Selected nodes above others */ }
+.drawflow .drawflow-node .input, .drawflow .drawflow-node .output { position: absolute; height: 16px; width: 16px; border: 2px solid var(--border-color); background: #fdfdfd; border-radius: 50%; cursor: crosshair; z-index: 10; /* Above node content */ transition: background-color var(--transition-fast), border-color var(--transition-fast); }
 .drawflow .drawflow-node .input { left: -9px; top: calc(50% - 8px); }
 .drawflow .drawflow-node .output { right: -9px; top: calc(50% - 8px); }
 .drawflow .drawflow-node .input:hover, .drawflow .drawflow-node .output:hover { background: var(--primary-color); border-color: var(--primary-dark-color); }
+.drawflow .connection { z-index: 1; /* Connections below nodes */ }
 .drawflow .connection .main-path { stroke: var(--primary-color); stroke-width: 2.5px; }
 .drawflow .connection .point { stroke: var(--primary-dark-color); stroke-width: 1.5; fill: white; r: 4.5; cursor: pointer; }
 .drawflow .connection .point:hover, .drawflow .connection .point.selected { fill: var(--primary-color); stroke: white; }
-.drawflow > .drawflow-delete { border: 2px solid var(--danger-dark-color); color: var(--danger-dark-color); background: white; box-shadow: 0 1px 5px rgba(244, 67, 54, 0.4); font-weight: bold; width: 22px; height: 22px; line-height: 18px; font-size: 15px; border-radius: 50%; }
+.drawflow > .drawflow-delete { border: 2px solid var(--danger-dark-color); color: var(--danger-dark-color); background: white; box-shadow: 0 1px 5px rgba(244, 67, 54, 0.4); font-weight: bold; width: 22px; height: 22px; line-height: 18px; font-size: 15px; border-radius: 50%; z-index: 11; /* Above connection points */ }
 .drawflow > .drawflow-delete:hover { background-color: var(--danger-color); color: white; }
 
 /* --- Estructura Interna Nodos --- */
@@ -203,7 +228,7 @@ header h2 { margin: 0; line-height: 50px; font-size: 1.6em; font-weight: 700; co
 .drawflow-node.selected .title-box { background-color: var(--primary-light-color); color: var(--primary-dark-color); border-bottom-color: var(--primary-color); }
 .drawflow-node.selected .title-box i { color: var(--primary-dark-color); }
 .drawflow-node .box { padding: 12px; font-size: var(--font-size-small); color: var(--text-dark); }
-.drawflow-node .box input[type="text"], .drawflow-node .box input[type="number"], .drawflow-node .box input[type="url"], .drawflow-node .box select, .drawflow-node .box textarea { width: 100%; font-size: var(--font-size-small); min-height: 30px; line-height: 1.4; padding: 5px 8px; margin-bottom: 8px; border-radius: 3px; border: 1px solid var(--border-color); color: var(--text-dark); box-sizing: border-box; display: block; background-color: var(--background-color); transition: border-color var(--transition-fast), box-shadow var(--transition-fast); }
+.drawflow-node .box input[type="text"], .drawflow-node .box input[type="number"], .drawflow-node .box input[type="url"], .drawflow-node .box input[type="date"], .drawflow-node .box input[type="time"], .drawflow-node .box input[type="color"], .drawflow-node .box input[type="range"], .drawflow-node .box select, .drawflow-node .box textarea { width: 100%; font-size: var(--font-size-small); min-height: 30px; line-height: 1.4; padding: 5px 8px; margin-bottom: 8px; border-radius: 3px; border: 1px solid var(--border-color); color: var(--text-dark); box-sizing: border-box; display: block; background-color: var(--background-color); transition: border-color var(--transition-fast), box-shadow var(--transition-fast); }
 .drawflow-node .box textarea { min-height: 60px; resize: vertical; }
 .drawflow-node .box input:focus, .drawflow-node .box select:focus, .drawflow-node .box textarea:focus { border-color: var(--border-focus-color); box-shadow: 0 0 0 3px var(--focus-shadow-color); outline: none; }
 .drawflow-node .box input[readonly], .drawflow-node .box textarea[readonly] { background-color: var(--background-readonly); cursor: default; border-color: var(--border-light-color); }
@@ -220,8 +245,12 @@ header h2 { margin: 0; line-height: 50px; font-size: 1.6em; font-weight: 700; co
 .drawflow-node .box img[df-previewsrc] { display: block; max-width: 100%; max-height: 80px; margin-top: 5px; border: 1px solid #eee; object-fit: contain; background-color: #f8f8f8; }
 .drawflow-node .box p[df-loadingMsg], .drawflow-node .box p[df-errorMsg] { font-weight: bold; margin-top: 5px; }
 .drawflow-node .box p[df-errorMsg] { color: var(--danger-dark-color); }
+.drawflow-node .box textarea.error { border-color: var(--danger-color); background-color: var(--danger-light-color); } /* Style for JSON error */
+.drawflow-node .box span[df-rangeval] { display: inline-block; margin-left: 10px; font-weight: bold; min-width: 25px; text-align: right; } /* Slider value display */
+
 
 /* --- Estilos Específicos Nodos --- */
+/* (Existing node styles like text-node, concatenate-node, display-node, etc. remain here) */
 .drawflow-node.text-node { background-color: var(--primary-light-color); border-color: #90caf9; width: 230px; }
 .drawflow-node.text-node .title-box { background-color: #64b5f6; color: var(--text-on-primary); border-color: #42a5f5; }
 .drawflow-node.text-node .title-box i { color: var(--text-on-primary); }
@@ -238,6 +267,8 @@ header h2 { margin: 0; line-height: 50px; font-size: 1.6em; font-weight: 700; co
 .drawflow-node.note-node .title-box i { color: #f57f17; }
 .drawflow-node.note-node .box { transition: background-color 0.3s ease; }
 .drawflow-node.note-node .text-info { font-size: var(--font-size-xxsmall); color: var(--text-light); text-align: right; margin-top: 3px; }
+.drawflow-node.note-node select[df-notecolor] { padding: 3px 5px; margin-bottom: 8px; height: auto; font-size: var(--font-size-xxsmall); }
+.drawflow-node.note-node textarea[df-notecontent] { font-size: var(--font-size-small); }
 .drawflow-node.javascript-code-node { background-color: var(--warning-light-color); border-color: #ffe0b2; width: 260px; }
 .drawflow-node.javascript-code-node .title-box { background-color: var(--warning-color); border-bottom-color: var(--warning-dark-color); color: #424242; }
 .drawflow-node.javascript-code-node .title-box i { color: var(--warning-dark-color); }
@@ -260,6 +291,108 @@ header h2 { margin: 0; line-height: 50px; font-size: 1.6em; font-weight: 700; co
 .welcome-node .box ul { margin-top: 5px; padding-left: 20px; margin-bottom: 0; list-style: none;}
 .welcome-node .box li { margin-bottom: 6px; display: flex; align-items: center; }
 .welcome-node .box li i:first-child { width: 20px; margin-right: 8px; text-align: center; flex-shrink: 0; }
+.drawflow-node.local-image-node { width: 240px; /* Default width */ } /* Local Image Node */
+.drawflow-node.local-image-node .box { padding: 8px; }
+.drawflow-node.local-image-node .image-preview-container { min-height: 80px; margin-bottom: 8px; border: 1px dashed #ccc; display: flex; align-items: center; justify-content: center; background-color: #f9f9f9; overflow: hidden; position: relative;}
+.drawflow-node.local-image-node .image-preview-container img[df-imagesrc] { display: none; max-width: 100%; max-height: 150px; /* Limit preview height */ width:auto; height:auto; object-fit: contain; }
+.drawflow-node.local-image-node .image-preview-container .placeholder-text { color: #aaa; font-size: 11px; text-align: center; padding: 10px; position: absolute; }
+.drawflow-node.local-image-node img[df-imagesrc][src]:not([src=""]) { display: block !important; }
+.drawflow-node.local-image-node img[df-imagesrc][src]:not([src=""]) + .placeholder-text { display: none; }
+.drawflow-node.local-image-node span[df-filename] { font-size: 10px; color: #777; display: block; margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.drawflow-node.local-image-node details { margin-bottom: 8px; }
+.drawflow-node.local-image-node summary { font-size: 10px; cursor: pointer; color: #555; font-weight:bold; }
+.drawflow-node.local-image-node .details-content { display: flex; gap: 5px; margin-top: 5px; }
+.drawflow-node.local-image-node .details-content div { flex: 1; }
+.drawflow-node.local-image-node label { font-size: 10px !important; margin-bottom: 2px !important; }
+.drawflow-node.local-image-node input[type="text"] { font-size:11px !important; height: 24px !important; padding: 2px 4px !important; min-height: 24px !important; margin-bottom: 0 !important; }
+.drawflow-node.local-image-node .help-text { margin-top: 2px !important; font-size: 9px !important; }
+.drawflow-node.template-node textarea { font-family: var(--font-family-code); font-size: var(--font-size-xsmall); } /* Template Node */
+
+
+/* --- Estilos Nodo Imagen Minimalista --- */
+.drawflow-node.image-minimal-node {
+  padding: 0 !important; /* Sin padding interno */
+  border: 2px dashed #cccccc; /* Borde inicial para indicar dropzone */
+  background-color: #f8f8f8; /* Fondo inicial placeholder */
+  box-shadow: none; /* Sin sombra inicial */
+  overflow: hidden; /* Asegura que la imagen no se salga */
+  min-width: 80px;
+  min-height: 60px;
+  width: 80px; /* Tamaño inicial explícito */
+  height: 60px; /* Tamaño inicial explícito */
+  transition: width 0.1s ease-out, height 0.1s ease-out, box-shadow 0.2s, border-color 0.2s, background-color 0.2s;
+  position: relative; /* Needed for placeholder positioning */
+  display: flex; /* Center content */
+  align-items: center;
+  justify-content: center;
+}
+/* Cuando hay imagen, quitar borde/fondo y poner sombra */
+.drawflow-node.image-minimal-node:has(img[src]:not([src=""])) {
+    border: none;
+    background-color: transparent;
+    box-shadow: var(--box-shadow-light);
+}
+/* El contenedor interno debe llenar el nodo */
+.image-minimal-node .image-minimal-content {
+  width: 100%;
+  height: 100%;
+  position: relative; /* Para posicionar elementos internos si fuera necesario */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* Placeholder cuando no hay imagen */
+.image-minimal-node .image-placeholder {
+  /* position: absolute; */ /* No longer needed with flex parent */
+  /* inset: 0; */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  /* border: 2px dashed #cccccc; */ /* Border moved to parent */
+  /* background-color: #f8f8f8; */ /* Background moved to parent */
+  color: #aaaaaa;
+  font-size: 11px;
+  text-align: center;
+  cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+  padding: 5px;
+  width: 100%;
+  height: 100%;
+}
+.image-minimal-node .image-placeholder i { font-size: 1.5em; margin-bottom: 5px; }
+.image-minimal-node .image-placeholder:hover { color: #888888; }
+.image-minimal-node.dragover .image-placeholder, /* Apply dragover to parent */
+.image-minimal-node .image-placeholder.dragover { /* Keep original for safety */
+  color: var(--primary-dark-color);
+}
+/* Apply dragover style to the main node */
+.drawflow-node.image-minimal-node.dragover {
+  border-color: var(--primary-color);
+  background-color: #e0e0e0;
+}
+/* La imagen cargada */
+.image-minimal-node img[df-imgsrc] {
+  display: none; /* Hide initially */
+  width: 100%;
+  height: 100%;
+  object-fit: contain; /* Changed to contain by default */
+}
+/* Mostrar imagen si tiene src */
+.image-minimal-node img[df-imgsrc][src]:not([src=""]) {
+    display: block;
+}
+/* Ocultar placeholder si hay imagen */
+.image-minimal-node:has(img[src]:not([src=""])) .image-placeholder {
+    display: none;
+}
+/* Estilo cuando está seleccionado */
+.drawflow-node.image-minimal-node.selected {
+  box-shadow: 0 0 0 3px var(--focus-shadow-color), var(--box-shadow-medium); /* Sombra de foco + sombra normal */
+  /* Añadir un borde sutil al seleccionar */
+  border: 1px solid var(--primary-color);
+}
+
 
 /* --- Modales --- */
 #modalBackdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 10000; }
@@ -295,16 +428,8 @@ header h2 { margin: 0; line-height: 50px; font-size: 1.6em; font-weight: 700; co
 .code-editor-sidebar .sidebar-footer button#save-code-sidebar-btn { padding: 7px 15px; font-size: var(--font-size-small); background-color: var(--success-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; display: inline-flex; align-items: center; gap: 6px; transition: background-color var(--transition-fast); }
 .code-editor-sidebar .sidebar-footer button#save-code-sidebar-btn:hover { background-color: var(--success-dark-color); }
 
-/* --- SweetAlert Ajustes --- */
-.swal2-popup { font-size: var(--font-size-base) !important; border-radius: 6px !important; }
-.swal2-title { font-size: 1.4em !important; }
-.swal2-html-container { font-size: 1em !important; }
-.swal2-html-container pre { text-align: left; max-height: 400px; overflow-y: auto; background-color: #f8f8f8; border: 1px solid #ddd; padding: 10px; border-radius: 4px; font-family: var(--font-family-code); font-size: 0.9em; }
-.swal2-input, .swal2-textarea { border-radius: 4px !important; border-color: #ccc !important; font-size: 1em !important; }
-.swal2-textarea { font-family: var(--font-family-code) !important; }
-.swal2-confirm, .swal2-cancel, .swal2-deny { border-radius: 4px !important; padding: .6em 1.5em !important; margin: 0 4px !important; }
 
-/* --- Media Queries (Responsivo) --- */
+/* --- Media Queries (Responsivo - Incluye Drawing Tools) --- */
 @media only screen and (max-width: 768px) {
   .col { width: 60px; }
   .col .drag-drawflow span { display:none; }
@@ -316,20 +441,29 @@ header h2 { margin: 0; line-height: 50px; font-size: 1.6em; font-weight: 700; co
   .create-node-button i { margin-right: 0; }
   .create-node-button { padding: 8px; margin: 5px 3px; }
   .col-right { width: calc(100vw - 61px); }
-  .menu { padding: 0 5px; height: 45px; }
-  #module-tabs { display: none; }
-  .menu .btn { padding: 6px; margin-left: 5px; }
+  .menu { padding: 0 5px; height: 45px; flex-wrap: nowrap; overflow-x: auto;}
+  .menu .btn { padding: 6px; margin-left: 5px; flex-shrink: 0;}
   .menu .btn .button-text { display: none; }
   .menu .btn i { font-size: 1.1em; margin: 0; }
-  .controls-container { gap: 8px; }
+  .menu #module-tabs { max-width: calc(100% - 250px); }
+
+  .controls-container { gap: 5px; /* Tighter gap */ }
   .controls-container.bottom-left { bottom: 10px; left: 10px; }
-  .controls-container.bottom-right { bottom: 10px; right: 10px; }
-  .history-controls { gap: 4px; }
-  .controls-container button { padding: 5px 7px; font-size: 0.95em; }
-  /* Ocultar botones individuales si se quiere ahorrar más espacio */
-  /* .controls-container button.btn-copy, .controls-container button.btn-paste { display: none; } */
-  .bar-zoom { padding: 2px 3px; gap: 2px; }
-  .bar-zoom button { padding: 3px 4px; }
+  .controls-container.bottom-right { bottom: 10px; right: 10px; flex-wrap: wrap; justify-content: flex-end; max-width: 200px; /* Adjust max-width if needed */ }
+  .history-controls { gap: 3px; }
+  .controls-container button { height: 26px; width: 26px; font-size: 0.9em; }
+  /* Drawing tools responsive */
+  #colorPicker { width: 26px; height: 26px; margin-right: 3px;}
+  .btn-draw, .btn-eraser, .btn-clear-drawing { width: 26px; height: 26px; padding: 4px; font-size: 13px; }
+  /* Slider responsive */
+  .brush-control { height: 26px; padding: 0 6px; }
+  .brush-control i { margin-right: 4px; font-size: 0.8em; }
+  .brush-control input[type="range"] { width: 50px; }
+  .brush-control #brushSizeValue { min-width: 16px; font-size: 10px; }
+
+  .bar-zoom { padding: 2px; gap: 1px; }
+  .bar-zoom button { height: 22px; width: 22px; }
+
   .editor-status-bar { display: none; }
   .modal-content-base { max-width: 95%; padding: 15px 20px; }
   .modal-content-base h3 { font-size: 1.2em; margin-bottom: 15px;}
@@ -339,163 +473,15 @@ header h2 { margin: 0; line-height: 50px; font-size: 1.6em; font-weight: 700; co
   .code-editor-sidebar.visible { right: 0; }
 }
 
-/* === END OF FILE beautiful.css === */
-
-
-/* --- Estilos Nodo Imagen Minimalista --- */
-.drawflow-node.image-minimal-node {
-  padding: 0 !important; /* Sin padding interno */
-  border: none; /* Sin borde por defecto */
-  background-color: transparent; /* Fondo transparente */
-  box-shadow: var(--box-shadow-light); /* Una sombra sutil */
-  overflow: hidden; /* Asegura que la imagen no se salga */
-  /* Tamaño inicial pequeño para que sea seleccionable */
-  min-width: 80px;
-  min-height: 60px;
-  width: auto; /* Permitir que el JS ajuste el tamaño */
-  height: auto;
-  transition: width 0.1s ease-out, height 0.1s ease-out, box-shadow 0.2s; /* Transición suave */
-}
-
-/* El contenedor interno debe llenar el nodo */
-.image-minimal-node .image-minimal-content {
-  width: 100%;
-  height: 100%;
-  position: relative; /* Para posicionar elementos internos si fuera necesario */
-}
-
-/* Placeholder cuando no hay imagen */
-.image-minimal-node .image-placeholder {
-  position: absolute; /* Ocupa todo el espacio */
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  border: 2px dashed #cccccc;
-  background-color: #f8f8f8;
-  color: #aaaaaa;
-  font-size: 11px;
-  text-align: center;
-  cursor: pointer;
-  transition: background-color 0.2s, border-color 0.2s;
-  padding: 5px;
-}
-
-.image-minimal-node .image-placeholder i {
-  font-size: 1.5em;
-  margin-bottom: 5px;
-}
-
-.image-minimal-node .image-placeholder:hover {
-  background-color: #eeeeee;
-  border-color: #bbbbbb;
-  color: #888888;
-}
-
-.image-minimal-node .image-placeholder.dragover {
-  background-color: #e0e0e0;
-  border-color: var(--primary-color);
-  color: var(--primary-dark-color);
-}
-
-/* La imagen cargada */
-.image-minimal-node img[df-imgsrc] {
-  display: block; /* Importante para que ocupe espacio */
-  width: 100%;
-  height: 100%;
-  object-fit: cover; /* Cubre el área, puede recortar */
-  /* object-fit: contain; */ /* Muestra toda la imagen, puede dejar espacios */
-}
-
-/* Estilo cuando está seleccionado */
-.drawflow-node.image-minimal-node.selected {
-  box-shadow: 0 0 0 3px var(--focus-shadow-color), var(--box-shadow-medium); /* Sombra de foco + sombra normal */
-  /* Opcional: añadir un borde sutil al seleccionar si se quitó el borde por defecto */
-  border: 1px solid var(--primary-color);
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* --- Drawing Canvas Styles --- */
-#drawingCanvas {
-  position: absolute;
-  top: 40px; /* Match #drawflow top */
-  left: 0;   /* Match #drawflow left */
-  width: 100%; /* Match #drawflow width */
-  height: calc(100% - 40px); /* Match #drawflow height */
-  pointer-events: none; /* Start inactive */
-  z-index: 3; /* Below buttons (z-index 6), above drawflow content (z-index 1/2) */
-  /* background-color: rgba(255, 0, 0, 0.1); */ /* Uncomment for debugging visibility */
-}
-#drawingCanvas.active {
-  pointer-events: auto; /* Enable drawing interaction */
-  cursor: crosshair;
-}
-
-/* --- New Button Styles (positioned relative to col-right) --- */
-.btn-draw, .btn-clear-drawing {
-  position: absolute;
-  bottom: 2px;
-  color: white;
-  font-weight: bold;
-  padding: 5px 10px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  line-height: 24px; /* Match zoom bar icon size */
-  height: 25px; /* Match zoom bar height */
-  box-sizing: border-box;
-  background: #555;
-  z-index: 6; /* Ensure above canvas */
-}
-.btn-draw {
-  right: 215px; /* Adjust as needed */
-  border: 1px solid #0e5ba3;
-}
-.btn-draw.active { background: #4ea9ff; border: 1px solid #0c4a8a; }
-.btn-clear-drawing {
-  right: 300px; /* Adjust as needed */
-  border: 1px solid #96015b;
-}
-.btn-clear-drawing:hover { background: #e3195a; }
-
-/* Responsive Adjustments for new buttons */
-@media only screen and (max-width: 768px) {
-  .btn-draw { right: 165px; }
-  .btn-clear-drawing { right: 225px; }
-}
 @media only screen and (max-width: 480px) {
-  .btn-draw { right: 70px; bottom: 50px;}
-  .btn-clear-drawing { right: 125px; bottom: 50px;}
+    .controls-container.bottom-right { max-width: 160px; gap: 4px; }
+     .menu #module-tabs { max-width: calc(100% - 180px); }
+     .menu .btn { padding: 5px; margin-left: 3px; gap: 3px;}
+     .menu .btn i { font-size: 1em; }
+     /* Hide slider text value on very small screens */
+     .brush-control #brushSizeValue { display: none; }
+     .brush-control input[type="range"] { width: 40px; margin-right: 0;}
+     .brush-control { padding: 0 5px; }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* === END OF FILE beautiful.css === */

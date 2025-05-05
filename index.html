@@ -28,7 +28,6 @@
     <input type="file" id="file-input" accept=".json,application/json" style="display: none;" aria-hidden="true">
 
     <header role="banner">
-        <!-- ... Tu Header ... -->
          <div style="display: flex; align-items: center; margin-right: 2rem;">
             <a href="https://xocostudio.com/" style="text-decoration: none;" title="Expertos en Maquetación Profesional para Tiendas PrestaShop | XocoStudio">
                 <div style="font-size: 1.8rem; font-weight: bold; color: #e20074;">XOCO</div>
@@ -39,14 +38,16 @@
 
     <div class="wrapper">
         <aside class="col" aria-label="Paleta de Nodos">
-            <!-- ... Tu Sidebar Izquierda con Nodos Arrastrables ... -->
-            <div class="node-search-container"> <input type="text" id="node-search" placeholder="Buscar nodos..." aria-controls="nodes-list-region"> </div>
-            <div class="nodes-list" id="nodes-list-region" role="listbox" aria-label="Nodos disponibles"> <div style="padding: 20px; text-align: center; color: var(--text-light);">Cargando nodos...</div> </div>
+            <div class="node-search-container">
+                <input type="text" id="node-search" placeholder="Buscar nodos..." aria-controls="nodes-list-region">
+            </div>
+            <div class="nodes-list" id="nodes-list-region" role="listbox" aria-label="Nodos disponibles">
+                <div style="padding: 20px; text-align: center; color: var(--text-light);">Cargando nodos...</div>
+            </div>
         </aside>
 
         <main class="col-right" aria-label="Área de Edición Principal">
             <nav class="menu" aria-label="Menú Principal y Módulos">
-                <!-- ... Tu Menú Superior con Pestañas y Botones ... -->
                  <ul id="module-tabs" role="tablist" aria-label="Módulos del Proyecto"></ul>
                  <button type="button" class="btn btn-load" onclick="triggerLoad()" title="Cargar Proyecto (Ctrl+O)"><i class="fas fa-folder-open" aria-hidden="true"></i><span class="button-text"> Cargar</span></button>
                  <button type="button" class="btn btn-save" onclick="saveProject(currentProjectName)" title="Guardar Proyecto (Ctrl+S)"><i class="fas fa-save" aria-hidden="true"></i><span class="button-text"> Guardar</span></button>
@@ -55,17 +56,10 @@
                  <button type="button" class="btn btn-clear" onclick="clearCurrentModule()" title="Limpiar Módulo Actual"><i class="fas fa-trash" aria-hidden="true"></i><span class="button-text"> Limpiar</span></button>
             </nav>
 
-            <!-- Drawflow Container -->
-            <div id="drawflow" ondrop="drop(event)" ondragover="allowDrop(event)" role="application" aria-label="Canvas de edición de flujo">
-                <!-- Drawflow content will be generated here by xocoflow_logic.js -->
-            </div>
-
-            <!-- Drawing Canvas (Overlay) -->
+            <div id="drawflow" ondrop="drop(event)" ondragover="allowDrop(event)" role="application" aria-label="Canvas de edición de flujo"></div>
             <canvas id="drawingCanvas"></canvas>
 
-            <!-- UI Buttons (Positioned absolutely over col-right) -->
             <div class="controls-container bottom-left">
-                <!-- ... Tus controles bottom-left (Undo/Redo/Copy/Paste etc) ... -->
                 <div class="history-controls" role="toolbar" aria-label="Historial y Edición">
                      <button type="button" class="btn btn-undo" id="undo-button" onclick="undo()" title="Deshacer (Ctrl+Z)" disabled aria-label="Deshacer"><i class="fas fa-undo" aria-hidden="true"></i></button>
                      <button type="button" class="btn btn-redo" id="redo-button" onclick="redo()" title="Rehacer (Ctrl+Y)" disabled aria-label="Rehacer"><i class="fas fa-redo" aria-hidden="true"></i></button>
@@ -75,11 +69,23 @@
                      <button type="button" class="btn btn-recalculate" id="recalculate-button" onclick="recalculateAllNodesInCurrentModule()" title="Recalcular Flujo (Ctrl+R)" aria-label="Recalcular Flujo" disabled><i class="fas fa-sync-alt" aria-hidden="true"></i></button>
                 </div>
             </div>
+
+            <!-- Controles Inferior Derecho (CON SLIDER DE GROSOR) -->
             <div class="controls-container bottom-right">
-                <!-- *** ADDED/MODIFIED BUTTONS HERE *** -->
-                <button type="button" class="btn-clear-drawing" onclick="clearDrawing()" title="Borrar Dibujos"> <i class="fas fa-eraser"></i> </button>
-                <button type="button" class="btn-draw" id="btnDraw" onclick="toggleDrawingMode()" title="Activar/Desactivar Dibujo"> <i class="fas fa-pencil-alt"></i> </button>
-                <!-- ... Tus controles existentes (Lock/Zoom) ... -->
+                <!-- Drawing Tools -->
+                <input type="color" id="colorPicker" title="Seleccionar Color Dibujo" value="#ff0000">
+                <button type="button" class="btn-draw" id="btnDraw" onclick="selectTool('pen')" title="Activar Lápiz"> <i class="fas fa-pencil-alt"></i> </button>
+                <button type="button" class="btn-eraser" id="btnEraser" onclick="selectTool('eraser')" title="Activar Goma"> <i class="fas fa-eraser"></i> </button>
+                <!-- Brush Size Slider -->
+                <div class="brush-control" title="Grosor del Pincel/Goma">
+                     <i class="fas fa-paint-brush" aria-hidden="true"></i>
+                     <input type="range" id="brushSizeSlider" min="1" max="30" step="1" value="2">
+                     <span id="brushSizeValue">2</span>
+                </div>
+                <button type="button" class="btn-clear-drawing" onclick="clearDrawing()" title="Borrar Todos los Dibujos"> <i class="fas fa-trash-alt"></i> </button>
+                <!-- Separador -->
+                <div style="width: 1px; height: 20px; background-color: #666; margin: 0 5px;"></div>
+                <!-- Editor Controls -->
                  <div class="btn-lock" role="switch" aria-checked="false" aria-label="Bloquear Edición">
                     <button type="button" id="lock-button" onclick="changeMode('lock')" title="Bloquear Edición (Editor Fijo)"><i class="fas fa-lock-open" aria-hidden="true"></i></button>
                     <button type="button" id="unlock-button" onclick="changeMode('unlock')" style="display:none;" title="Desbloquear Edición (Modo Editar)"><i class="fas fa-lock" aria-hidden="true"></i></button>
@@ -90,20 +96,28 @@
                     <button type="button" onclick="editor.zoom_in()" title="Acercar Zoom (+)" aria-label="Acercar Zoom"><i class="fas fa-search-plus" aria-hidden="true"></i></button>
                 </div>
             </div>
-            <!-- Barra de Estado -->
+
             <div id="editor-status-bar" class="editor-status-bar" aria-live="polite">Zoom: <span id="zoom-level" title="Nivel de Zoom Actual">100%</span> | Pos: <span id="node-position" title="Posición del Nodo Seleccionado (X, Y)">X: -, Y: -</span></div>
         </main>
 
-        <!-- Sidebar Derecho para CodeMirror (Inicialmente oculto) -->
         <aside id="code-editor-sidebar" class="code-editor-sidebar" aria-label="Editor de Código" aria-hidden="true">
-            <!-- ... Contenido del sidebar CodeMirror ... -->
+            <div class="sidebar-header"> <h3 style="display: flex; align-items: center; gap: 8px;"> <i class="fas fa-code" aria-hidden="true"></i> <span id="code-editor-title">Editor de Código</span> </h3> <button id="close-code-sidebar-btn" title="Cerrar Editor (Guardará Cambios)" aria-label="Cerrar Editor de Código">×</button> </div>
+            <div id="codemirror-container"></div>
+            <div class="sidebar-footer"> <span class="sidebar-info">Nodo ID: <span id="editing-node-id">N/A</span></span> <button id="save-code-sidebar-btn" title="Guardar Cambios y Cerrar Editor"> <i class="fas fa-save" aria-hidden="true"></i> Guardar y Cerrar </button> </div>
         </aside>
+
     </div> <!-- end .wrapper -->
 
-    <!-- Modal Creador de Nodos (Inicialmente oculto) -->
     <div id="modalBackdrop" style="display:none;" aria-hidden="true"></div>
     <div id="nodeDefinitionModal" class="modal-content-base" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="nodeDefModalTitle" aria-describedby="nodeDefModalDesc">
-        <!-- ... Contenido del modal para crear nodos ... -->
+        <h3 id="nodeDefModalTitle">Crear Nuevo Tipo de Nodo</h3> <p id="nodeDefModalDesc" class="visually-hidden">Define las propiedades del nuevo tipo de nodo.</p>
+        <div><label for="newNodeTypeName">Nombre Interno (único, sin espacios, ej: 'my_node'):</label><input type="text" id="newNodeTypeName" required pattern="[a-z0-9_]+"></div>
+        <div><label for="newNodeTypeTitle">Título Visible (ej: 'Mi Nodo Genial'):</label><input type="text" id="newNodeTypeTitle"></div>
+        <div style="display: flex; gap: 15px; margin-bottom: 15px;"><div style="flex: 1;"><label for="newNodeInputs">Entradas (Número):</label><input type="number" id="newNodeInputs" value="1" min="0" required style="width: 100%;"></div><div style="flex: 1;"><label for="newNodeOutputs">Salidas (Número):</label><input type="number" id="newNodeOutputs" value="1" min="0" required style="width: 100%;"></div></div>
+        <div><label for="newNodeCssClass">Clase CSS Adicional (opcional, ej: 'special-node'):</label><input type="text" id="newNodeCssClass"></div>
+        <div><label for="newNodeHtmlContent">Contenido HTML (define la apariencia interna):</label><textarea id="newNodeHtmlContent" rows="8" placeholder="<div><div class='title-box'><i class='fas fa-cog'></i> Mi Título</div><div class='box'><input type='text' df-mydata></div></div>" required></textarea></div>
+        <div><label for="newNodeInitialData">Datos Iniciales (JSON, ej: {'mydata': 'valor'}):</label><textarea id="newNodeInitialData" rows="4" placeholder='{ "mydata": "" }'></textarea><small>Define los valores iniciales para los campos df-* en tu HTML.</small></div>
+        <div class="modal-buttons"><button type="button" class="cancel-button" onclick="closeNodeDefinitionModal()">Cancelar</button><button type="button" class="save-button" onclick="saveNewNodeType()">Guardar Tipo de Nodo</button></div>
     </div>
 
     <!-- === JavaScript Libraries === -->
@@ -117,54 +131,84 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/addon/edit/matchbrackets.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.14/addon/edit/closebrackets.min.js"></script>
 
-    <!-- === Custom Application Logic (Your existing xocoflow_logic.js content goes here) === -->
+    <!-- === Custom Application Logic === -->
     <script src="xocoflow_logic.js" defer></script>
 
-    <!-- === NEW SCRIPT BLOCK FOR DRAWING TOOL === -->
+    <!-- =========================================================== -->
+    <!-- == Drawing Tool Logic (CON SLIDER Y CORRECCIÓN COLOR) == -->
+    <!-- =========================================================== -->
     <script>
-        // Wrap drawing logic in a function to ensure 'editor' is available
         function initializeDrawingTool() {
             console.log("Attempting to initialize drawing tool...");
 
-            // Check if Drawflow editor instance is ready (global variable from xocoflow_logic.js)
             if (typeof editor === 'undefined' || !editor || !editor.container) {
                 console.log("Drawflow editor not ready yet, retrying drawing tool setup in 200ms...");
-                setTimeout(initializeDrawingTool, 200); // Retry after a short delay
+                setTimeout(initializeDrawingTool, 200);
                 return;
             }
              console.log("Drawflow editor found. Proceeding with drawing tool setup.");
 
-
             // --- Drawing Tool Variables & Setup ---
             const drawingCanvas = document.getElementById('drawingCanvas');
             const drawingCtx = drawingCanvas ? drawingCanvas.getContext('2d') : null;
-            const drawflowElement = document.getElementById("drawflow"); // Use the ID directly
+            const drawflowElement = document.getElementById("drawflow");
             const drawButton = document.getElementById('btnDraw');
-            let isDrawingMode = false;
+            const eraserButton = document.getElementById('btnEraser');
+            const colorPicker = document.getElementById('colorPicker');
+            const clearButton = document.querySelector('.btn-clear-drawing');
+            const brushSizeSlider = document.getElementById('brushSizeSlider'); // Nuevo Slider
+            const brushSizeValueSpan = document.getElementById('brushSizeValue'); // Nuevo Span
+
+            let isInteractionActive = false;
+            let currentTool = '';
             let isDrawing = false;
-            let drawPath = []; // Store current path points { x: scaledX, y: scaledY } relative to initial viewport
-            let savedPaths = []; // Store completed paths { points: [{x,y}...], color, width }
+            let drawPath = [];
+            let savedPaths = [];
             let drawColor = '#ff0000';
-            let drawLineWidth = 2;
+            let canvasBgColor = '#ffffff';
+            let drawLineWidth = 2; // Valor inicial (coincide con el slider)
+            let eraserWidth = 15; // Grosor inicial de la goma
             let lastCanvasX = 0;
             let lastCanvasY = 0;
 
-            // Function to get canvas elements (called within setup)
             function getDrawingElements() {
-                 if (!drawingCanvas || !drawingCtx || !drawflowElement || !drawButton) {
+                 if (!drawingCanvas || !drawingCtx || !drawflowElement || !drawButton || !eraserButton || !colorPicker || !clearButton || !brushSizeSlider || !brushSizeValueSpan) {
                     console.error("One or more drawing tool DOM elements are missing!");
                     return false;
                  }
+                 try {
+                    canvasBgColor = getComputedStyle(drawflowElement).backgroundColor || '#ffffff';
+                    if (canvasBgColor.startsWith('rgb')) {
+                         const rgbValues = canvasBgColor.match(/\d+/g);
+                         if (rgbValues && rgbValues.length >= 3) { canvasBgColor = `#${parseInt(rgbValues[0]).toString(16).padStart(2, '0')}${parseInt(rgbValues[1]).toString(16).padStart(2, '0')}${parseInt(rgbValues[2]).toString(16).padStart(2, '0')}`; }
+                         else { canvasBgColor = '#ffffff'; }
+                    } else if (canvasBgColor === 'transparent' || !canvasBgColor) {
+                         canvasBgColor = '#ffffff';
+                    }
+                    console.log("Canvas background color detected:", canvasBgColor);
+                 } catch (e) { canvasBgColor = '#ffffff'; console.warn("Could not detect background color.", e); }
                  return true;
             }
 
-            // Main setup function for drawing tool
             function setupDrawingCanvas() {
-                if (!getDrawingElements()) return; // Exit if elements missing
+                if (!getDrawingElements()) return;
 
-                resizeDrawingCanvas(); // Set initial size and position
+                colorPicker.value = drawColor;
+                colorPicker.addEventListener('change', handleColorChange);
 
-                // Event listeners
+                // Setup slider
+                brushSizeSlider.value = drawLineWidth; // Usar valor inicial correcto
+                eraserWidth = parseInt(brushSizeSlider.value, 10) || 15; // Sincronizar goma al inicio
+                brushSizeValueSpan.textContent = brushSizeSlider.value; // Mostrar valor inicial
+                brushSizeSlider.addEventListener('input', handleBrushSizeChange);
+
+                if(drawButton) drawButton.classList.remove('active');
+                if(eraserButton) eraserButton.classList.remove('active');
+                updateCanvasInteraction();
+
+                resizeDrawingCanvas();
+
+                // Add drawing event listeners
                 drawingCanvas.addEventListener('mousedown', startDrawing);
                 drawingCanvas.addEventListener('mousemove', drawSegment);
                 drawingCanvas.addEventListener('mouseup', stopDrawing);
@@ -175,38 +219,30 @@
                 drawingCanvas.addEventListener('touchcancel', stopDrawing);
 
                 window.addEventListener('resize', resizeDrawingCanvas);
-
-                 // Attach listeners to Drawflow events *here* after editor is confirmed available
                 editor.on('zoom', redrawAllDrawings);
-                // editor.on('translate', redrawAllDrawings); // REMOVED for "zoom only" sync
 
-                redrawAllDrawings(); // Initial draw
-                console.log("Drawing Canvas Setup Complete");
+                redrawAllDrawings();
+                console.log("Drawing Canvas Setup Complete (with Brush Size Slider)");
             }
 
-            // --- Coordinate Calculation (Simplified for Scale Only) ---
+            // --- Coordinate Calculation ---
             function getCanvasRelativeCoords(clientX, clientY) {
-                if (!drawingCanvas) return { x: 0, y: 0};
-                try {
-                    const canvasRect = drawingCanvas.getBoundingClientRect();
-                    return { x: clientX - canvasRect.left, y: clientY - canvasRect.top };
-                } catch (e) {
-                    console.error("Error in getCanvasRelativeCoords:", e);
-                    return { x: 0, y: 0 };
-                }
+                if (!drawingCanvas) return { x: 0, y: 0 };
+                try { const canvasRect = drawingCanvas.getBoundingClientRect(); return { x: clientX - canvasRect.left, y: clientY - canvasRect.top }; }
+                catch (e) { console.error("Error in getCanvasRelativeCoords:", e); return { x: 0, y: 0 }; }
             }
             function storeScaledCoords(canvasX, canvasY) {
-                if (editor.zoom === undefined || editor.zoom === 0) return { x: canvasX, y: canvasY };
+                if (typeof editor === 'undefined' || editor.zoom === undefined || editor.zoom === 0) return { x: canvasX, y: canvasY };
                 return { x: canvasX / editor.zoom, y: canvasY / editor.zoom };
             }
             function getZoomedCoords(scaledX, scaledY) {
-                if (editor.zoom === undefined) return { x: scaledX, y: scaledY };
+                if (typeof editor === 'undefined' || editor.zoom === undefined) return { x: scaledX, y: scaledY };
                 return { x: scaledX * editor.zoom, y: scaledY * editor.zoom };
             }
 
-            // --- Drawing Actions (Using Corrected Coords) ---
-             function startDrawing(e) {
-                if (!isDrawingMode || !drawingCtx) return;
+            // --- Drawing Actions ---
+            function startDrawing(e) {
+                if (!isInteractionActive || !drawingCtx) return;
                 e.preventDefault(); e.stopPropagation(); isDrawing = true;
                 const clientX = e.clientX ?? e.touches[0].clientX; const clientY = e.clientY ?? e.touches[0].clientY;
                 const canvasCoords = getCanvasRelativeCoords(clientX, clientY);
@@ -214,11 +250,19 @@
                 const scaledCoords = storeScaledCoords(lastCanvasX, lastCanvasY);
                 drawPath = [scaledCoords];
                 drawingCtx.beginPath(); drawingCtx.moveTo(lastCanvasX, lastCanvasY);
-                drawingCtx.strokeStyle = drawColor; drawingCtx.lineWidth = drawLineWidth;
                 drawingCtx.lineCap = 'round'; drawingCtx.lineJoin = 'round';
+                drawingCtx.globalCompositeOperation = 'source-over';
+                if (currentTool === 'pen') {
+                    drawingCtx.strokeStyle = drawColor;
+                    drawingCtx.lineWidth = drawLineWidth; // Usa la variable global actualizada
+                } else { // Eraser (cover-up)
+                    drawingCtx.strokeStyle = canvasBgColor;
+                    drawingCtx.lineWidth = eraserWidth; // Usa el grosor de la goma
+                }
             }
             function drawSegment(e) {
-                if (!isDrawing || !isDrawingMode || !drawingCtx) return; e.preventDefault(); e.stopPropagation();
+                if (!isDrawing || !isInteractionActive || !drawingCtx) return;
+                e.preventDefault(); e.stopPropagation();
                 const clientX = e.clientX ?? e.touches[0].clientX; const clientY = e.clientY ?? e.touches[0].clientY;
                 const canvasCoords = getCanvasRelativeCoords(clientX, clientY);
                 const canvasX = canvasCoords.x; const canvasY = canvasCoords.y;
@@ -228,39 +272,107 @@
                 [lastCanvasX, lastCanvasY] = [canvasX, canvasY];
             }
             function stopDrawing(e) {
-                if (!isDrawing || !isDrawingMode) return; isDrawing = false; e?.stopPropagation();
-                if (drawPath.length > 1) { savedPaths.push({ points: [...drawPath], color: drawColor, width: drawLineWidth }); }
+                if (!isDrawing || !isInteractionActive || !drawingCtx) return;
+                isDrawing = false;
+                e?.stopPropagation();
+                if (drawPath.length > 1) {
+                    const pathData = {
+                        type: currentTool,
+                        points: [...drawPath],
+                        color: (currentTool === 'pen') ? drawColor : canvasBgColor,
+                        width: (currentTool === 'pen') ? drawLineWidth : eraserWidth
+                    };
+                    savedPaths.push(pathData);
+                }
                 drawPath = [];
             }
+
+            // --- Redrawing ---
             function redrawAllDrawings() {
-                if (!drawingCtx || !drawingCanvas || editor.zoom === undefined) return;
-                const width = drawingCanvas.width; const height = drawingCanvas.height; drawingCtx.clearRect(0, 0, width, height);
-                savedPaths.forEach(path => { if (path.points.length < 2) return; drawingCtx.beginPath(); drawingCtx.strokeStyle = path.color; drawingCtx.lineWidth = path.width; drawingCtx.lineCap = 'round'; drawingCtx.lineJoin = 'round'; const sc = getZoomedCoords(path.points[0].x, path.points[0].y); drawingCtx.moveTo(sc.x, sc.y); for (let i = 1; i < path.points.length; i++) { const cc = getZoomedCoords(path.points[i].x, path.points[i].y); drawingCtx.lineTo(cc.x, cc.y); } drawingCtx.stroke(); });
-            }
-            // Make toggleDrawingMode globally accessible
-            window.toggleDrawingMode = function() {
-                isDrawingMode = !isDrawingMode;
-                if(drawingCanvas){drawingCanvas.style.pointerEvents=isDrawingMode?'auto':'none'; drawingCanvas.style.cursor=isDrawingMode?'crosshair':'';}
-                if(drawButton){drawButton.classList.toggle('active',isDrawingMode);}
-                if(typeof editor !== 'undefined') { // Check if editor exists
-                    editor.editor_mode=isDrawingMode?'fixed':'edit';
-                    // Check if changeMode exists before calling
-                    if (typeof changeMode === 'function') {
-                         changeMode(isDrawingMode?'lock':'unlock');
-                    } else {
-                         console.warn("changeMode function not found globally.");
+                if (!drawingCtx || !drawingCanvas || typeof editor === 'undefined' || editor.zoom === undefined) return;
+                const width = drawingCanvas.width; const height = drawingCanvas.height;
+                drawingCtx.clearRect(0, 0, width, height);
+                drawingCtx.globalCompositeOperation = 'source-over';
+                savedPaths.forEach(path => {
+                    if (path.points.length < 2) return;
+                    drawingCtx.beginPath();
+                    drawingCtx.strokeStyle = path.color;
+                    drawingCtx.lineWidth = path.width; // Usa el ancho guardado
+                    drawingCtx.lineCap = 'round'; drawingCtx.lineJoin = 'round';
+                    const startCoords = getZoomedCoords(path.points[0].x, path.points[0].y);
+                    drawingCtx.moveTo(startCoords.x, startCoords.y);
+                    for (let i = 1; i < path.points.length; i++) {
+                        const currentCoords = getZoomedCoords(path.points[i].x, path.points[i].y);
+                        drawingCtx.lineTo(currentCoords.x, currentCoords.y);
                     }
-                }
-                console.log("Drawing mode:",isDrawingMode?"ON":"OFF");
-                if(!isDrawingMode&&isDrawing)stopDrawing();
-            }
-             // Make clearDrawing globally accessible
-            window.clearDrawing = function() {
-                savedPaths = []; drawPath = [];
-                redrawAllDrawings(); // Clear visual canvas
-                console.log("Drawing cleared");
+                    drawingCtx.stroke();
+                });
             }
 
+            // --- Tool Selection & Mode Toggles ---
+            function handleColorChange(event) {
+                drawColor = event.target.value;
+                console.log("Draw color updated to:", drawColor);
+                // Actualizar el contexto si el pincel YA está activo
+                if (isInteractionActive && currentTool === 'pen' && drawingCtx) {
+                    drawingCtx.strokeStyle = drawColor;
+                    console.log("Context strokeStyle updated while pen is active.");
+                }
+                // NO llama a selectTool
+            }
+
+            // Handle Brush Size Change
+            function handleBrushSizeChange(event) {
+                const newValue = parseInt(event.target.value, 10);
+                if (!isNaN(newValue)) {
+                    drawLineWidth = newValue; // Actualiza grosor lápiz
+                    eraserWidth = newValue;   // Actualiza grosor goma (usan el mismo slider)
+                    if (brushSizeValueSpan) brushSizeValueSpan.textContent = newValue;
+                    console.log("Brush/Eraser size changed to:", newValue);
+
+                    // Actualiza contexto si herramienta está activa
+                    if (isInteractionActive && drawingCtx) {
+                         drawingCtx.lineWidth = (currentTool === 'pen') ? drawLineWidth : eraserWidth;
+                    }
+                }
+            }
+
+            window.selectTool = function(tool) {
+                if (!['pen', 'eraser'].includes(tool)) return;
+                if (!getDrawingElements()) return;
+                currentTool = tool;
+                isInteractionActive = true;
+                console.log(`Tool selected: ${currentTool}`);
+                drawButton.classList.toggle('active', tool === 'pen');
+                eraserButton.classList.toggle('active', tool === 'eraser');
+                updateCanvasInteraction(); // Actualiza clase/cursor
+                // Actualiza el grosor del contexto AHORA que la herramienta está activa
+                if (drawingCtx) {
+                    drawingCtx.lineWidth = (currentTool === 'pen') ? drawLineWidth : eraserWidth;
+                }
+                if (typeof editor !== 'undefined' && typeof changeMode === 'function') {
+                     changeMode('lock');
+                 } else {
+                     console.warn("Cannot lock editor - editor or changeMode not available.");
+                 }
+            }
+
+            // Update canvas class and cursor ONLY
+            function updateCanvasInteraction() {
+                 if(drawingCanvas){
+                    drawingCanvas.classList.toggle('active', isInteractionActive);
+                    drawingCanvas.style.cursor = isInteractionActive ? (currentTool === 'eraser' ? 'cell' : 'crosshair') : '';
+                 }
+            }
+
+            window.clearDrawing = function() {
+                savedPaths = [];
+                drawPath = [];
+                redrawAllDrawings();
+                console.log("All drawings cleared");
+            }
+
+            // --- Utility Functions ---
             function resizeDrawingCanvas() {
                 if (!drawflowElement || !drawingCanvas || !drawingCtx) return;
                 const newWidth = drawflowElement.clientWidth; const newHeight = drawflowElement.clientHeight;
@@ -268,43 +380,61 @@
                     drawingCanvas.width = newWidth; drawingCanvas.height = newHeight;
                     console.log(`Resized drawing canvas to ${newWidth}x${newHeight}`);
                     if(drawingCtx) { drawingCtx.lineCap = 'round'; drawingCtx.lineJoin = 'round'; }
-                    redrawAllDrawings(); // Redraw is essential
+                    redrawAllDrawings();
                 }
             }
-
-             // --- Add Drawing functions to global scope (needed because they are called from HTML onclick) ---
-            // Already done above for toggleDrawingMode and clearDrawing
 
             // --- Initial Setup Call ---
             setupDrawingCanvas();
 
-            // --- Modify existing drop function (if it's defined globally by xocoflow_logic.js) ---
-            // This assumes 'drop' function exists in the global scope after xocoflow_logic.js runs
-             if (typeof drop === 'function') {
-                const originalDrop = drop; // Store original function
-                window.drop = function(ev) { // Redefine globally
-                     if (isDrawingMode) {
-                         console.log("Node drop prevented in drawing mode.");
-                         if (ev.type === "touchend") mobile_item_selec = ''; // Reset mobile selection if needed
+            // --- Modify existing drop function ---
+            if (typeof drop === 'function') {
+                const originalDrop = drop;
+                window.drop = function(ev) {
+                     if (isInteractionActive) {
+                         console.log("Node drop prevented while drawing tool is active.");
+                         if (ev.type === "touchend" && typeof mobile_item_selec !== 'undefined') mobile_item_selec = '';
                          return;
                      }
-                     originalDrop.call(this, ev); // Call original drop logic
+                     originalDrop.call(this, ev);
                 }
-                console.log("Drop function overridden to prevent node drop in drawing mode.");
+                console.log("Drop function overridden to prevent node drop while drawing tool is active.");
              } else {
-                 console.warn("Original 'drop' function not found. Cannot prevent node drop in drawing mode.");
+                 console.warn("Original 'drop' function not found. Cannot prevent node drop.");
              }
 
+            // --- Make editor unlock when NOT using a drawing tool ---
+            if (typeof changeMode === 'function') {
+                 const originalChangeMode = changeMode;
+                 window.changeMode = function(option) {
+                      const unlocking = (option === 'unlock' || option === 'edit');
+                      originalChangeMode(option);
+                      if (unlocking && isInteractionActive) {
+                           isInteractionActive = false;
+                           currentTool = '';
+                           if (drawButton) drawButton.classList.remove('active');
+                           if (eraserButton) eraserButton.classList.remove('active');
+                           updateCanvasInteraction();
+                           console.log("Editor unlocked, drawing tools deactivated.");
+                      }
+                 }
+                 console.log("changeMode function overridden to handle drawing tool deactivation.");
+            } else {
+                 console.warn("Original 'changeMode' function not found. Cannot override for drawing tools.");
+            }
 
         } // End of initializeDrawingTool
 
-        // --- Wait for DOM and potentially Drawflow to be ready ---
+        // --- Wait for DOM ---
         if (document.readyState === 'complete' || document.readyState === 'interactive') {
-            initializeDrawingTool(); // Attempt init immediately if DOM ready
+            initializeDrawingTool();
         } else {
             document.addEventListener('DOMContentLoaded', initializeDrawingTool);
         }
-
     </script>
+    <!-- =========================================================== -->
+    <!-- == FIN Drawing Tool Logic == -->
+    <!-- =========================================================== -->
+
 </body>
 </html>
