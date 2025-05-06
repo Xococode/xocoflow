@@ -690,3 +690,71 @@ header h2 { margin: 0; line-height: 50px; font-size: 1.6em; font-weight: 700; co
 
 /* ... (resto de tus estilos) ... */
 /* === END OF FILE beautiful.css === */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* En beautiful.css */
+.drawflow-node .node-resizer {
+  position: absolute;
+  bottom: 5px;
+  right: 5px;
+  width: 18px; /* Ajusta tamaño */
+  height: 18px; /* Ajusta tamaño */
+  /* background-color: rgba(0,0,0,0.1); */ /* Opcional: un fondo sutil */
+  cursor: nwse-resize; /* Cursor para redimensionar desde esquina inferior derecha */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 15; /* Por encima del contenido del nodo pero debajo de los puertos si se superponen */
+  color: var(--text-light);
+  /* opacity: 0.5; */ /* Mostrarlo más sutilmente hasta el hover */
+  transition: color 0.2s, opacity 0.2s;
+}
+
+.drawflow-node:hover .node-resizer,
+.drawflow-node.selected .node-resizer {
+  /* opacity: 1; */
+  color: var(--primary-color);
+}
+
+.drawflow-node .node-resizer i {
+  font-size: 12px; /* Ajusta tamaño del icono */
+}
+
+/* Opcional: Ocultar el resizer si el editor general está bloqueado */
+.drawflow-locked .drawflow-node .node-resizer {
+  display: none !important;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+.drawflow-node.node-fixed-size {
+  width: 316px; /* Ancho del canvas + padding del nodo + bordes */
+}
+.drawflow-node.node-fixed-size .box {
+  min-height: 250px; /* Altura del canvas */
+}
