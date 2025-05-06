@@ -19,6 +19,7 @@ let historyIndex = -1;
 let customNodeTypes = {};
 let copiedNodeData = null;
 let nodeIntervals = {};
+let customContextMenu = null; // Reference to the currently visible custom context menu
 
 // --- CodeMirror State ---
 let codeMirrorEditor = null;
@@ -48,10 +49,194 @@ function checkElement(selector, isCritical = false, message = `Element "${select
     return el;
 }
 
+
+
+function getOrCreateLockIndicator(titleBoxElement) {
+    if (!titleBoxElement) return null;
+    let indicator = titleBoxElement.querySelector('.lock-indicator');
+    if (!indicator) {
+        indicator = document.createElement('span');
+        indicator.className = 'lock-indicator';
+        // Inserta el indicador antes que otros elementos si es necesario, o al final
+        // titleBoxElement.appendChild(indicator);
+        // Para asegurar que quede a la derecha, a veces es mejor añadirlo y dejar que CSS lo posicione.
+        // Si tienes otros elementos flotando a la derecha en title-box, puede necesitar ajuste.
+        // Por ahora, appendChild debería funcionar con el CSS 'margin-left: auto;'
+        titleBoxElement.appendChild(indicator);
+    }
+    return indicator;
+}
+
+function updateNodeVisualLockState(nodeId, isLocked) {
+    if (!editor) return;
+    try {
+        const nodeElement = document.getElementById(`node-${nodeId}`);
+        if (!nodeElement) return;
+
+        const titleBox = nodeElement.querySelector('.title-box');
+        if (!titleBox) return;
+
+        const indicator = getOrCreateLockIndicator(titleBox);
+        if (!indicator) return;
+
+        if (isLocked) {
+            indicator.innerHTML = '<i class="fas fa-lock"></i>';
+            indicator.title = 'Movimiento Bloqueado';
+            indicator.classList.add('locked');
+        } else {
+            indicator.innerHTML = '<i class="fas fa-lock-open"></i>';
+            indicator.title = 'Movimiento Desbloqueado';
+            indicator.classList.remove('locked');
+        }
+    } catch (error) {
+        console.error(`Error updating visual lock state for node ${nodeId}:`, error);
+    }
+}
+
+function setNodeMovementLock(nodeId, lockState) {
+    if (!editor || !nodeId) return;
+    try {
+        const node = editor.getNodeFromId(nodeId);
+        if (!node) {
+            console.error(`setNodeMovementLock: Node ${nodeId} not found.`);
+            return;
+        }
+
+        const currentData = node.data || {}; // Asegura que currentData sea un objeto
+        const currentLockState = currentData.isMovementLocked === true;
+
+        if (currentLockState === lockState) {
+            // console.log(`Node ${nodeId} movement lock state already ${lockState}. No change.`);
+            return; 
+        }
+
+        const newData = { ...currentData, isMovementLocked: lockState };
+        editor.updateNodeDataFromId(nodeId, newData);
+        
+        updateNodeVisualLockState(nodeId, lockState);
+        saveHistoryState();
+        console.log(`Node ${nodeId} movement ${lockState ? 'LOCKED' : 'UNLOCKED'}`);
+    } catch (error) {
+        console.error(`Error setting movement lock for node ${nodeId}:`, error);
+    }
+}
+
+function toggleNodeMovementLock(nodeId) {
+    if (!editor || !nodeId) return;
+    try {
+        const node = editor.getNodeFromId(nodeId);
+        if (!node) {
+            console.error(`toggleNodeMovementLock: Node ${nodeId} not found.`);
+            return;
+        }
+        const currentData = node.data || {};
+        const currentLockState = currentData.isMovementLocked === true;
+        setNodeMovementLock(nodeId, !currentLockState);
+    } catch (error) {
+        console.error(`Error toggling movement lock for node ${nodeId}:`, error);
+    }
+}
+
+function showCustomContextMenu(event, nodeId) {
+    event.preventDefault();
+    event.stopPropagation(); 
+    hideCustomContextMenu(); 
+
+    const node = editor.getNodeFromId(nodeId);
+    if (!node) return;
+    const currentData = node.data || {};
+    const isNodeLocked = currentData.isMovementLocked === true;
+
+    customContextMenu = document.createElement('div');
+    customContextMenu.className = 'custom-context-menu';
+    const ul = document.createElement('ul');
+
+    const lockLi = document.createElement('li');
+    lockLi.innerHTML = `<i class="fas ${isNodeLocked ? 'fa-lock-open' : 'fa-lock'}"></i> <span>${isNodeLocked ? 'Desbloquear Movimiento' : 'Bloquear Movimiento'}</span>`;
+    lockLi.onclick = (e) => {
+        e.stopPropagation(); 
+        toggleNodeMovementLock(nodeId);
+        hideCustomContextMenu();
+    };
+    ul.appendChild(lockLi);
+
+    const hr = document.createElement('hr');
+    ul.appendChild(hr);
+
+    const deleteLi = document.createElement('li');
+    deleteLi.innerHTML = '<i class="fas fa-trash-alt"></i> <span>Eliminar Nodo</span>';
+    deleteLi.onclick = (e) => {
+        e.stopPropagation();
+        // Asegurarse de que el editor general no esté bloqueado para eliminar
+        if (isLocked()) { 
+            showToast('warning', 'Editor Bloqueado', 'Desbloquea el editor para eliminar nodos.');
+            hideCustomContextMenu();
+            return;
+        }
+        editor.removeNodeId(`node-${nodeId}`);
+        hideCustomContextMenu();
+    };
+    ul.appendChild(deleteLi);
+
+    customContextMenu.appendChild(ul);
+    document.body.appendChild(customContextMenu);
+
+    const { clientX: mouseX, clientY: mouseY } = event;
+    const menuWidth = customContextMenu.offsetWidth;
+    const menuHeight = customContextMenu.offsetHeight;
+    const windowWidth = window.innerWidth;
+    const windowHeight = window.innerHeight;
+
+    let x = mouseX;
+    let y = mouseY;
+
+    if (mouseX + menuWidth > windowWidth) x = windowWidth - menuWidth - 5;
+    if (mouseY + menuHeight > windowHeight) y = windowHeight - menuHeight - 5;
+    if (x < 0) x = 5;
+    if (y < 0) y = 5;
+
+    customContextMenu.style.top = `${y}px`;
+    customContextMenu.style.left = `${x}px`;
+
+    setTimeout(() => {
+        document.addEventListener('click', handleClickOutsideContextMenu, true);
+        document.addEventListener('contextmenu', handleClickOutsideContextMenu, true); 
+    }, 0);
+}
+
+function hideCustomContextMenu() {
+    if (customContextMenu) {
+        customContextMenu.remove();
+        customContextMenu = null;
+        document.removeEventListener('click', handleClickOutsideContextMenu, true);
+        document.removeEventListener('contextmenu', handleClickOutsideContextMenu, true);
+    }
+}
+
+function handleClickOutsideContextMenu(event) {
+    if (customContextMenu && !customContextMenu.contains(event.target)) {
+        if (event.type === 'contextmenu' && event.target.closest('.drawflow-node')) {
+            return; 
+        }
+        hideCustomContextMenu();
+    }
+}
+
+
+
+
+
+
+
+
+
+
 // --- Base Node Definitions ---
 const baseNodeDefinitions = {
     'texto': { name: 'texto', inputs: 1, outputs: 1, html: `<div><div class="title-box"><i class="fas fa-paragraph"></i> Texto</div><div class="box"><label>Contenido:</label><textarea df-content readonly style="height: 80px;" placeholder="..."></textarea><button type="button" class="edit-code-btn" onclick="openEditorForNode(event)"><i class="fas fa-edit"></i> Editar Contenido</button><p class="help-text">Edita en panel lateral.</p></div></div>`, cssClass: 'text-node', data: { content: '' } },
+    
     'concatenar': { name: 'concatenar', inputs: 1, outputs: 1, html: `<div><div class="title-box"><i class="fas fa-link"></i> Concatenar</div><div class="box" style="text-align: center; font-size: 11px; color: #777; padding: 20px 5px;">Concatena entradas<br>(orden Y)<input type="hidden" df-result></div></div>`, cssClass: 'concatenate-node', data: { result: '' } },
+   
     'mostrarPasar': { name: 'mostrarPasar', inputs: 1, outputs: 1, html: `<div><div class="title-box"><i class="fas fa-eye"></i> Mostrar y Pasar</div><div class="box"><label>Resultado:</label><textarea df-result readonly style="height: 60px;"></textarea><button type="button" onclick="selectAllText(event)" style="margin-top: 5px;">Seleccionar Todo</button><p class="help-text">Muestra y pasa datos.</p></div></div>`, cssClass: 'display-node', data: { result: '' } },
     'nota': { name: 'nota', inputs: 0, outputs: 0, html: `<div> <div class="title-box"><i class="fas fa-sticky-note"></i> Nota</div> <div class="box"> <div class="color-picker"> <label for="note-color-select-${'id' + Math.random().toString(16).slice(2)}">Color:</label> <select id="note-color-select-${'id' + Math.random().toString(16).slice(2)}" df-notecolor onchange="changeNoteColor(event)"> <option value="#ffffcc">Amarillo</option> <option value="#ccffcc">Verde</option> <option value="#ffcccc">Rojo</option> <option value="#ccccff">Azul</option> <option value="#e0e0e0">Gris</option> </select> </div> <textarea df-notecontent oninput="handleNodeDataChange(event); updateCharacterCount(event)" style="height: 120px;" placeholder="Notas..."></textarea> <div class="text-info"> <span df-charcount>0</span> chars </div> </div> </div>`, cssClass: 'note-node', data: { notecontent: '', notecolor: '#ffffcc', charcount: '0' } },
     'imagen': { name: 'imagen', inputs: 0, outputs: 1, html: `<div><div class="title-box"><i class="fas fa-image"></i> Imagen HTML</div><div class="box"><div style="margin-bottom: 8px;"><button type="button" onclick="selectImageFile(event)">Seleccionar Local</button><span df-filename></span></div><img df-previewsrc src="" alt="Previa" style="display: none;"><label>URL:</label><input type="text" df-imgsrc oninput="handleImageInputChange(event)"><label>Alt:</label><input type="text" df-imgalt oninput="handleImageInputChange(event)"><label>Ancho:</label><input type="text" df-imgwidth oninput="handleImageInputChange(event)" placeholder="100px"><label>Alto:</label><input type="text" df-imgheight oninput="handleImageInputChange(event)"><p class="help-text">Salida: <img></p><input type="hidden" df-outputhtml></div></div>`, cssClass: 'image-node', data: { filename: '', previewsrc: '', imgsrc: '', imgalt: '', imgwidth: '', imgheight: '', outputhtml: '' } },
@@ -211,43 +396,38 @@ const baseNodeDefinitions = {
 // ——— NODOS DE TRANSFORMACIÓN DE TEXTO —————
 // ————————————————————————————————————————————
 
-// Dentro de baseNodeDefinitions = { ... };
-
-'text_replace': {
-    name: 'text_replace',
-    inputs: 1,
-    outputs: 1,
-    html: `
-      <div>
-        <div class="title-box"><i class="fas fa-exchange-alt"></i> Reemplazar</div>
-        <div class="box">
-          <label>Buscar:</label>
-          {/* oninput eliminado, handleNodeDataChange lo captura por df-find */}
-          <input type="text" df-find placeholder="texto a buscar"> 
-          
-          <label>Reemplazar con:</label>
-          {/* oninput eliminado, handleNodeDataChange lo captura por df-replace */}
-          <input type="text" df-replace placeholder="nuevo texto">
-          
-          {/* Botón manual opcional */}
-          <button type="button" onclick="applyTextReplace(event)" style="margin-top: 8px;">Ejecutar Manual</button> 
-          
-          <div style="margin-top:10px;"> {/* Cambiado para consistencia */}
-            <label>Resultado:</label>
-            <textarea df-result readonly style="height: 60px; width: 100%; background-color: var(--background-readonly);"></textarea>
-          </div>
-        </div>
-      </div>`,
-    cssClass: 'text-replace-node',
-    data: { 
-        find: '',        // Texto a buscar
-        replace: '',     // Texto de reemplazo
-        lastInput: null, // Guardar el último texto recibido en la entrada
-        result: ''       // El resultado del reemplazo
-    }
-    // Ya no necesitamos onDataReceived aquí
-},
-
+// DENTRO de baseNodeDefinitions = { ... };
+//'text_replace': {
+//    name: 'text_replace',
+//    inputs: 1,
+//    outputs: 1,
+//    html: `
+//      <div>
+//        <div class="title-box"><i class="fas fa-exchange-alt"></i> Reemplazar</div>
+//        <div class="box">
+//          <label>Buscar:</label>
+//          <input type="text" df-find placeholder="texto a buscar">
+//
+//          <label>Reemplazar con:</label>
+//          <input type="text" df-replace placeholder="nuevo texto">
+//
+//          <!-- BOTÓN MANUAL ELIMINADO -->
+//          <!-- <button type="button" onclick="applyTextReplace(event)" style="margin-top: 8px;">Ejecutar Manual</button> -->
+//
+//          <div style="margin-top:10px;">
+//            <label>Resultado:</label>
+//            <textarea df-result readonly style="height: 60px; width: 100%; background-color: var(--background-readonly);"></textarea>
+//          </div>
+//        </div>
+//      </div>`,
+//    cssClass: 'text-replace-node',
+//    data: {
+//        find: '',
+//        replace: '',
+//        lastInput: null,
+//        result: ''
+//    }
+//},
 // ... resto de tus definiciones ...
 
 'text_split': {
@@ -540,23 +720,172 @@ const baseNodeDefinitions = {
 
 
 
+// *** NUEVO NODO ***
+'manual_text_replace': {
+    name: 'manual_text_replace',
+    inputs: 0, // SIN entrada de datos automática
+    outputs: 1, // Salida para el resultado
+    html: `
+      <div>
+        <div class="title-box"><i class="fas fa-highlighter"></i> Reemplazo Manual</div>
+        <div class="box">
+          <label>Texto Original:</label>
+          <textarea df-original style="height: 80px;" placeholder="Pega o escribe el texto aquí..."></textarea>
+
+          <label>Buscar:</label>
+          <input type="text" df-find placeholder="Texto a buscar">
+
+          <label>Reemplazar con:</label>
+          <input type="text" df-replace placeholder="Nuevo texto">
+
+          <button type="button" onclick="executeManualReplace(event)" style="width: 100%; margin-top: 10px; padding: 8px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">
+             <i class="fas fa-check"></i> Aplicar Reemplazo y Ver Resultado
+          </button>
+
+          <div style="margin-top:10px;">
+            <label>Resultado:</label>
+            <textarea df-result readonly style="height: 60px; width: 100%; background-color: var(--background-readonly);"></textarea>
+          </div>
+        </div>
+      </div>`,
+    cssClass: 'manual-replace-node', // Nueva clase CSS si quieres
+    data: {
+        original: '', // Texto original que escribe el usuario
+        find: '',     // Texto a buscar
+        replace: '',  // Texto de reemplazo
+        result: ''    // Resultado calculado
+    }
+},
+// *** FIN NUEVO NODO ***
+
+
+
+// *** NUEVO NODO AUTOMÁTICO CON ENTRADA ***
+// DENTRO de baseNodeDefinitions = { ... };
+//'auto_text_replace': {
+//    name: 'auto_text_replace',
+//    inputs: 1,
+//    outputs: 1,
+//    html: `
+//      <div>
+//        <div class="title-box"><i class="fas fa-magic"></i> Reemplazo Automático</div>
+//        <div class="box">
+//          <!-- Input 1: Texto Original (ya no como <p>, sino como textarea) -->
+//          <label>Texto Original Recibido (Input 1):</label>
+//          <textarea df-lastInput readonly style="height: 45px; width: 100%; background-color: #e9ecef; color: #495057; font-size: 11px; margin-bottom: 8px;" placeholder="(Esperando texto)"></textarea>
+//
+//          <label>Buscar:</label>
+//          <input type="text" df-find placeholder="Texto a buscar">
+//
+//          <label>Reemplazar con:</label>
+//          <input type="text" df-replace placeholder="Nuevo texto">
+//
+//          <div style="margin-top:10px;">
+//            <label>Resultado:</label>
+//            <textarea df-result readonly style="height: 60px; width: 100%; background-color: var(--background-readonly);"></textarea>
+//          </div>
+//        </div>
+//      </div>`,
+//    cssClass: 'auto-replace-node',
+//    data: {
+//        find: '',
+//        replace: '',
+//        lastInput: '', // Inicializar como string vacío es mejor para textareas
+//        result: ''
+//    }
+//},
+// *** FIN NUEVO NODO AUTOMÁTICO ***
+
+
+
+// *** NUEVO NODO HÍBRIDO ***
+'hybrid_text_replace': {
+    name: 'hybrid_text_replace',
+    inputs: 1, // Acepta entrada por cable
+    outputs: 1, // Salida para el resultado
+    html: `
+      <div>
+        <div class="title-box"><i class="fas fa-edit"></i> Reemplazo Híbrido</div>
+        <div class="box">
+          <label>Texto Original (Prioriza Input 1 si está conectado):</label>
+          <textarea df-original style="height: 60px;" placeholder="Escribe aquí o conecta Input 1..."></textarea>
+          <!-- Añadimos un campo oculto para guardar lo que llega por input -->
+          <input type="hidden" df-lastInput>
+
+          <label>Buscar:</label>
+          <input type="text" df-find placeholder="Texto a buscar">
+
+          <label>Reemplazar con:</label>
+          <input type="text" df-replace placeholder="Nuevo texto">
+
+          <button type="button" onclick="executeHybridReplace(event)" style="width: 100%; margin-top: 10px; padding: 8px; background-color: #FF9800; color: white; border: none; border-radius: 4px; cursor: pointer;">
+             <i class="fas fa-check"></i> Aplicar Reemplazo Manualmente
+          </button>
+
+          <div style="margin-top:10px;">
+            <label>Resultado:</label>
+            <textarea df-result readonly style="height: 60px; width: 100%; background-color: var(--background-readonly);"></textarea>
+          </div>
+        </div>
+      </div>`,
+    cssClass: 'hybrid-replace-node', // Nueva clase
+    data: {
+        original: '',    // Texto escrito por el usuario
+        find: '',        // Texto a buscar
+        replace: '',     // Texto de reemplazo
+        lastInput: null, // Texto que LLEGA por la conexión Input 1
+        result: ''       // Resultado calculado
+    }
+},
+// *** FIN NUEVO NODO HÍBRIDO ***
 
 
 
 
+'nodo_seleccion_verde': {
+    name: 'nodo_seleccion_verde', // Nombre interno único
+    title: 'Nodo Selección Verde', // Título visible en la lista de nodos
+    inputs: 1,
+    outputs: 1,
+    html: `
+      <div>
+        <div class="title-box"><i class="fas fa-leaf"></i> Selección Verde</div>
+        <div class="box">
+          <p style="text-align: center; padding: 10px 0;">
+            Este nodo se pone verde<br>cuando lo seleccionas.
+          </p>
+          <input type="text" df-sampledata placeholder="Dato de ejemplo...">
+        </div>
+      </div>`,
+    cssClass: 'green-selectable-node', // Clase CSS específica para este nodo
+    data: {
+        sampledata: '' // Datos iniciales para el campo df-sampledata
+    }
+},
 
 
+// Dentro de tu objeto baseNodeDefinitions en xocoflow_logic.js
 
-
-
-
-
-
-
-
-
-
-
+'nodo_seleccion_rojo_claro': {
+    name: 'nodo_seleccion_rojo_claro', // Nombre interno único
+    title: 'Nodo Selección Rojo Claro', // Título visible en la lista de nodos
+    inputs: 1,
+    outputs: 0, // Ejemplo: solo entrada
+    html: `
+      <div>
+        <div class="title-box"><i class="fas fa-fire-alt"></i> Selección Rojo Claro</div>
+        <div class="box">
+          <p style="text-align: center; padding: 10px 0;">
+            Este nodo se pone rojo claro<br>cuando lo seleccionas.
+          </p>
+          <input type="number" df-priority placeholder="Prioridad (ej: 1-5)">
+        </div>
+      </div>`,
+    cssClass: 'light-red-selectable-node base-style-for-red-node', // Clase CSS específica para selección + clase base
+    data: {
+        priority: null // Datos iniciales para el campo df-priority
+    }
+},
 
 
 
@@ -616,6 +945,93 @@ function executeJsNode(event) { const nEl = event.target.closest('.drawflow-node
 function resetJsNodeResult(event) { const nEl = event.target.closest('.drawflow-node'); if (!nEl) return; const id = nEl.id.split('-')[1]; const node = editor.getNodeFromId(id); if (!node || node.name !== 'javascript_code') return; const ta = nEl.querySelector('textarea[df-result]'); if (ta) { ta.value = ''; ta.classList.remove('error'); } editor.updateNodeDataFromId(id, { result: '' }); propagateData(id, 'javascript_code', 'result', null); }
 
 
+
+
+
+
+/**
+ * Ejecuta la lógica de reemplazo para el nodo 'hybrid_text_replace'.
+ * Se llama al hacer clic en el botón dentro del nodo.
+ * Prioriza el texto recibido por conexión (lastInput) sobre el escrito (original).
+ */
+function executeHybridReplace(event) {
+    const id = getNodeIdFromEvent(event);
+    if (!id) return;
+
+    console.log(`--- Executing Hybrid Replace Node ${id} ---`);
+    const node = editor.getNodeFromId(id);
+
+    if (!node || node.name !== 'hybrid_text_replace') {
+        console.error(`Hybrid Replace (${id}): Node not found or invalid type.`);
+        return;
+    }
+
+    // Determinar qué texto original usar:
+    // Prioridad: Si lastInput NO es null/undefined (llegó algo por cable), usarlo.
+    // Fallback: Usar el texto del campo df-original.
+    const hasInputConnectionData = (node.data.lastInput !== null && node.data.lastInput !== undefined);
+    const sourceText = hasInputConnectionData ? String(node.data.lastInput) : (node.data.original ?? '');
+
+    // Leer find y replace actuales
+    const findText = node.data.find ?? '';
+    const replaceText = node.data.replace ?? '';
+
+    console.log(`   Source Text Used: "${sourceText}" (Input Connection Used: ${hasInputConnectionData})`);
+    console.log(`   Find Text from node.data: "${findText}"`);
+    console.log(`   Replace Text from node.data: "${replaceText}"`);
+
+    let resultText;
+    if (findText) {
+        try {
+            console.log(`   >>> Attempting: String("${sourceText}").split("${findText}").join("${replaceText}")`);
+            resultText = sourceText.split(findText).join(replaceText);
+        } catch (e) {
+            console.error(`Hybrid Replace (${id}): Error during split/join - ${e.message}`);
+            resultText = `Error: ${e.message}`;
+        }
+    } else {
+        resultText = sourceText;
+        console.log("   Find text is empty, result is the original input.");
+    }
+
+    console.log(`   >>> Calculated resultText: "${resultText}"`);
+
+    // Actualizar el nodo (UI y datos) y propagar el resultado
+    updateNodeResult(id, resultText); // Usa la misma función de antes
+
+    console.log(`--- Finished Hybrid Replace Node ${id} ---`);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // --- Functions for Local Image Node (v1.11 - Stable) ---
 function selectLocalImageFile(event) { const nodeId = getNodeIdFromEvent(event); if (!nodeId || !editor) return; try { const fileInput = document.createElement('input'); fileInput.type = 'file'; fileInput.accept = 'image/*'; fileInput.onchange = (e) => { const file = e.target.files[0]; if (file) { const reader = new FileReader(); reader.onload = (loadEvent) => { try { const imageDataUrl = loadEvent.target.result; editor.updateNodeDataFromId(nodeId, { imagesrc: imageDataUrl, filename: file.name }); const nodeElement = document.getElementById(`node-${nodeId}`); if (nodeElement) { const imgTag = nodeElement.querySelector('img[df-imagesrc]'); const filenameSpan = nodeElement.querySelector('span[df-filename]'); const placeholderText = nodeElement.querySelector('.placeholder-text'); if (imgTag) { imgTag.src = imageDataUrl; imgTag.style.display = 'block'; const nodeData = editor.getNodeFromId(nodeId).data; imgTag.style.width = nodeData.imagewidth || '100%'; imgTag.style.height = nodeData.imageheight || 'auto'; } if (filenameSpan) { filenameSpan.textContent = file.name; filenameSpan.title = file.name; } if (placeholderText) { placeholderText.style.display = 'none'; } } saveHistoryState(); } catch (innerError) { console.error("Error processing loaded image:", innerError); showToast('error', 'Error Interno', 'No se pudo procesar la imagen.'); } }; reader.onerror = () => { showToast('error', 'Error de Lectura', 'No se pudo leer el archivo.'); }; reader.readAsDataURL(file); } fileInput.value = null; }; fileInput.click(); } catch (error) { console.error("Error selecting local image file:", error); showToast('error', 'Error', 'No se pudo iniciar selección.'); } }
 function updateLocalImageStyle(event) { const nodeId = getNodeIdFromEvent(event); if (!nodeId || !editor) return; try { const nodeElement = document.getElementById(`node-${nodeId}`); if (!nodeElement) return; const imgTag = nodeElement.querySelector('img[df-imagesrc]'); const widthInput = nodeElement.querySelector('input[df-imagewidth]'); const heightInput = nodeElement.querySelector('input[df-imageheight]'); if (!imgTag || !widthInput || !heightInput) return; const newWidth = widthInput.value.trim() || 'auto'; const newHeight = heightInput.value.trim() || 'auto'; imgTag.style.width = newWidth; imgTag.style.height = newHeight; handleNodeDataChange(event); } catch (error) { console.error("Error updating local image style:", error); showToast('error', 'Error Estilo Imagen', 'No se pudo actualizar tamaño imagen.'); } }
@@ -648,117 +1064,427 @@ function getNodeIdFromEvent(event) {
     return nodeId;
 }
 
+
+
+
+// ==========================================================
+// ====> PUEDES PEGAR LA NUEVA FUNCIÓN AQUÍ <====
+// ==========================================================
+/**
+ * Ejecuta la lógica de reemplazo para el nodo 'manual_text_replace'.
+ * Se llama al hacer clic en el botón dentro del nodo.
+ * Lee todos los valores necesarios directamente desde los datos del nodo en ese momento.
+ */
+function executeManualReplace(event) {
+    const id = getNodeIdFromEvent(event); // Obtiene el ID del nodo desde el evento del botón
+    if (!id) return;
+
+    console.log(`--- Executing Manual Replace Node ${id} ---`);
+    const node = editor.getNodeFromId(id);
+
+    // Validar que el nodo existe y es del tipo correcto
+    if (!node || node.name !== 'manual_text_replace') {
+        console.error(`Manual Replace (${id}): Node not found or invalid type.`);
+        return;
+    }
+
+    // Leer los valores DIRECTAMENTE de node.data en el momento del clic
+    const originalText = node.data.original ?? '';
+    const findText = node.data.find ?? '';
+    const replaceText = node.data.replace ?? '';
+
+    console.log(`   Original Text from node.data: "${originalText}"`);
+    console.log(`   Find Text from node.data: "${findText}"`);
+    console.log(`   Replace Text from node.data: "${replaceText}"`);
+
+    let resultText;
+
+    // Realizar el reemplazo (solo si 'findText' no está vacío)
+    if (findText) {
+        try {
+            console.log(`   >>> Attempting: String("${originalText}").split("${findText}").join("${replaceText}")`);
+            resultText = originalText.split(findText).join(replaceText);
+        } catch (e) {
+            console.error(`Manual Replace (${id}): Error during split/join - ${e.message}`);
+            resultText = `Error: ${e.message}`;
+        }
+    } else {
+        // Si 'findText' está vacío, el resultado es el texto original
+        resultText = originalText;
+        console.log("   Find text is empty, result is the original input.");
+    }
+
+    console.log(`   >>> Calculated resultText: "${resultText}"`);
+
+    // Actualizar el nodo (UI y datos) y propagar el resultado
+    updateNodeResult(id, resultText); // Actualiza UI (df-result), node.data.result, propaga y guarda historial
+
+    console.log(`--- Finished Manual Replace Node ${id} ---`);
+}
+// ==========================================================
+// ====> FIN DE LA NUEVA FUNCIÓN <====
+// ==========================================================
+
+
+
+
+// --- Añade esta nueva función de ejecución ---
+/**
+ * Ejecuta la lógica de reemplazo para el nodo 'auto_text_replace'.
+ * Puede ser llamado por la llegada de nuevo input o por cambios en find/replace.
+ * @param {string} nodeId - El ID del nodo.
+ * @param {*} inputTextValue - El texto sobre el cual se realizará el reemplazo (normalmente node.data.lastInput).
+ */
+function executeAutoReplace(nodeId, inputTextValue) {
+    console.log(`--- Executing Auto Replace Node ${nodeId} ---`);
+    const node = editor.getNodeFromId(nodeId);
+
+    if (!node || node.name !== 'auto_text_replace') {
+        console.error(`Auto Replace (${nodeId}): Node not found or invalid type.`);
+        return;
+    }
+
+    // Leer los valores ACTUALES de find y replace desde node.data
+    const findText = node.data.find ?? '';
+    const replaceText = node.data.replace ?? '';
+    // Convertir el valor de entrada a string (maneja null/undefined)
+    const currentInputText = String(inputTextValue ?? '');
+
+    console.log(`   Input Text for Processing: "${currentInputText}"`);
+    console.log(`   Find Text from node.data: "${findText}"`);
+    console.log(`   Replace Text from node.data: "${replaceText}"`);
+
+    let resultText;
+    // Realizar el reemplazo (solo si 'findText' no está vacío)
+    if (findText) {
+        try {
+            console.log(`   >>> Attempting: String("${currentInputText}").split("${findText}").join("${replaceText}")`);
+            resultText = currentInputText.split(findText).join(replaceText);
+        } catch (e) {
+            console.error(`Auto Replace (${id}): Error during split/join - ${e.message}`);
+            resultText = `Error: ${e.message}`;
+        }
+    } else {
+        // Si 'findText' está vacío, el resultado es el texto original
+        resultText = currentInputText;
+        console.log("   Find text is empty, result is the original input.");
+    }
+
+    console.log(`   >>> Calculated resultText: "${resultText}"`);
+
+    // Actualizar el nodo (UI y datos) y propagar el resultado
+    updateNodeResult(nodeId, resultText); // Actualiza UI(df-result), data.result, propaga y guarda historial (si cambió)
+
+    console.log(`--- Finished Auto Replace Node ${nodeId} ---`);
+}
+
+
+
+
+
+
+/**
+ * [Simplificado] Ejecuta el reemplazo de texto para un nodo.
+ * Realiza un reemplazo global y sensible a mayúsculas.
+ * @param {string} nodeId - El ID del nodo.
+ * @param {*}    inputText - Texto o dato a procesar.
+ */
+function executeTextReplace(nodeId, inputTextValue) { // Cambiado nombre de variable para claridad
+    console.log(`--- Executing Text Replace Node ${nodeId} ---`);
+    const node = editor.getNodeFromId(nodeId);
+
+    if (!node || node.name !== 'text_replace') {
+        console.error(`Text Replace (${nodeId}): Node not found or invalid type.`);
+        return;
+    }
+
+    // Obtener los valores ACTUALES de find y replace desde node.data
+    const findText = node.data.find ?? '';
+    const replaceText = node.data.replace ?? '';
+    // Convertir el valor de entrada a string (maneja null/undefined)
+    const currentInputText = String(inputTextValue ?? ''); // Usamos el argumento
+
+    // *** LOGS DE ENTRADA DETALLADOS ***
+    console.log(`   Input Text Received: "${currentInputText}" (Type: ${typeof inputTextValue})`);
+    console.log(`   Find Text from node.data: "${findText}"`);
+    console.log(`   Replace Text from node.data: "${replaceText}"`);
+    // *** FIN LOGS DE ENTRADA ***
+
+    let resultText;
+    if (findText) {
+        try {
+            // *** LOG ANTES DE LA OPERACIÓN ***
+            console.log(`   >>> Attempting: String("${currentInputText}").split("${findText}").join("${replaceText}")`);
+            // *** FIN LOG ANTES ***
+            resultText = currentInputText.split(findText).join(replaceText);
+        } catch (e) {
+            console.error(`Text Replace (${nodeId}): Error during split/join - ${e.message}`);
+            resultText = `Error: ${e.message}`;
+        }
+    } else {
+        resultText = currentInputText;
+        console.log("   Find text is empty, result is the original input.");
+    }
+
+    // *** LOG RESULTADO CALCULADO ***
+    console.log(`   >>> Calculated resultText: "${resultText}"`);
+    // *** FIN LOG RESULTADO ***
+
+    // Llamar a updateNodeResult para actualizar todo
+    updateNodeResult(nodeId, resultText); // Pasamos el resultado calculado
+    console.log(`--- Finished Text Replace Node ${nodeId} ---`);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // --- PEGA ESTA FUNCIÓN ARRIBA DENTRO DE TU ARCHIVO xocoflow_logic.js ---
 // --- PUEDES PONERLA CERCA DE LAS OTRAS FUNCIONES DEL NODO LOCAL_IMAGE ---
 // --- O EN LA SECCIÓN GENERAL DE "HELPER FUNCTIONS" ---
+// Asegúrate de que esta es tu función handleNodeDataChange completa
+
+// --- USA ESTA VERSIÓN COMPLETA Y MODIFICADA ---
+// --- USA ESTA VERSIÓN FINAL ---
 function handleNodeDataChange(event) {
     if (!editor || !event?.target) return;
     const el = event.target;
     const nodeEl = el.closest('.drawflow-node');
     if (!nodeEl) return;
     const id = nodeEl.id.split('-')[1];
-    const node = editor.getNodeFromId(id);
+    const node = editor.getNodeFromId(id); // Obtener nodo para verificar datos iniciales si es necesario
     if (!node) return;
     let key = null;
-    for (const attr of el.attributes) if (attr.name.startsWith('df-')) { key = attr.name.substring(3); break; }
-    if (!key) return;
+    // Buscar el atributo df-*
+    for (const attr of el.attributes) {
+        if (attr.name.startsWith('df-')) {
+            key = attr.name.substring(3);
+            break;
+        }
+    }
+    if (!key) return; // Si no hay df-*, salir
+
+    // *** LOG INICIAL en handleNodeDataChange ***
+    console.log(`>>> handleNodeDataChange triggered for Node ${id}, Element with df-${key}`);
 
     requestAnimationFrame(() => { // Usar requestAnimationFrame asegura que el valor en node.data se actualice antes de leerlo
         try {
-            const updatedNode = editor.getNodeFromId(id);
-            // Verificar que el nodo y la clave aún existen y son válidos
-            if (!updatedNode?.data || !updatedNode.data.hasOwnProperty(key)) {
-                 console.warn(`handleNodeDataChange: Node ${id} or key ${key} no longer exists or data is invalid.`);
+            const updatedNode = editor.getNodeFromId(id); // Volver a obtener para datos actualizados
+            // Verificar que el nodo y la clave aún existen y son válidos después de actualizar
+            if (!updatedNode?.data || !Object.prototype.hasOwnProperty.call(updatedNode.data, key)) {
+                 console.warn(`handleNodeDataChange: Node ${id} or key '${key}' no longer exists or data is invalid after update.`);
                  return;
             }
-            const val = updatedNode.data[key]; // Obtener el valor actualizado de los datos del nodo
+            const val = updatedNode.data[key]; // Obtener el valor ACTUALIZADO de los datos del nodo
             const name = updatedNode.name;
+
+            // *** LOG con el valor actualizado ***
+            console.log(`   Node Name: ${name}, Key: ${key}, Updated Value in node.data:`, val);
+
+            let historySavedByExecution = false; // Flag para ver si una ejecución ya guardó historial
 
             // --- Lógica específica por tipo de nodo y clave cambiada ---
             if ((name === 'url_input' && key === 'url')) {
-                 executeNode(id, val); // URL Input -> Ejecutar fetch/propagación
+                 executeNode(id, val); // Asume que executeNode guarda historial si es necesario
+                 historySavedByExecution = true;
             } else if (name === 'cargarTexto' && key === 'filecontent') {
-                 propagateData(id, name, key, val); // Cargar Texto -> Propagar contenido
+                 propagateData(id, name, key, val); // Asume que la propagación final guarda historial si es necesario
+                 historySavedByExecution = true; // Asumimos que sí
             } else if (name === 'imagen' && ['imgsrc', 'imgalt', 'imgwidth', 'imgheight'].includes(key)) {
-                 handleImageInputChange(event); // Nodo Imagen (original) -> Actualizar/Propagar HTML
+                 handleImageInputChange(event); // Esta llama a generateImageHtml que llama a saveHistoryState
+                 historySavedByExecution = true;
             } else if (name === 'nota' && key === 'notecontent') {
-                 updateCharacterCount(event); // Nodo Nota -> Actualizar contador
-            } else if ((name === 'timer_fetch' || name === 'timer_download' || name === 'loop') && key === 'interval') {
-                 executeNode(id, null); // Cambia intervalo de Timers -> Reiniciar timer
-            } else if (name === 'timer_fetch' && key === 'url') {
-                 executeNode(id, null); // Cambia URL de Timer Fetch -> Reiniciar timer
+                 updateCharacterCount(event);
+                 // No necesita ejecución, guardar historial directamente al final
+            } else if ((name === 'timer_fetch' || name === 'timer_download' || name === 'loop') && (key === 'interval' || (name === 'timer_fetch' && key === 'url'))) {
+                 executeNode(id, null); // Reinicia timer, no necesita guardar historial extra aquí
+                 historySavedByExecution = true; // El reinicio puede considerarse un cambio
             }
-            // --- INICIO: MANEJO INPUTS SIMPLES Y NODO PLANTILLA ---
             else if (['input_number', 'input_text', 'input_range', 'input_date', 'input_time', 'input_color'].includes(name)) {
-                 // Nodos de entrada simples -> Propagar el valor cambiado
-                 propagateData(id, name, key, val);
+                 propagateData(id, name, key, val); // Llama a propagateData, que debería llevar a guardar historial si algo cambia
+                 historySavedByExecution = true; // Asumimos que sí
             }
             else if (name === 'template_engine' && key === 'template') {
-                 // Cambió el texto de la plantilla -> Reprocesar con el último JSON
                  console.log(`Template Node (${id}): Template changed by user. Reprocessing...`);
-                 processTemplateNode(id); // Llama a la función de procesamiento
+                 processTemplateNode(id); // Llama a processTemplateNode que llama a updateNodeResult que guarda historial
+                 historySavedByExecution = true;
             }
-            // --- FIN: MANEJO INPUTS SIMPLES Y NODO PLANTILLA ---
-
-            // --- INICIO: MANEJO NODOS LOCAL IMAGE ---
             else if (name === 'local_image') {
                 if (key === 'imagewidth' || key === 'imageheight') {
-                    updateLocalImageStyle(event);
+                    updateLocalImageStyle(event); // Llama a handleNodeDataChange -> saveHistoryState
                 } else if (key === 'nodewidth' || key === 'nodeheight') {
-                    updateLocalNodeSize(event);
+                    updateLocalNodeSize(event); // Llama a handleNodeDataChange -> saveHistoryState
                 }
+                 // Necesita guardado directo al final
             }
             else if (name === 'image_minimal') {
-                // No requiere acción aquí usualmente
+                // No requiere acción aquí usualmente, guardar al final si cambia algo relevante
             }
-            // --- FIN: MANEJO NODOS LOCAL IMAGE ---
-
-             // --- INICIO: MANEJO NODOS DE TEXTO (ACTUALIZADO) ---
-             else if (name === 'text_replace' && (key === 'find' || key === 'replace')) {
-                if (updatedNode.data.lastInput !== null && updatedNode.data.lastInput !== undefined) { 
-                     console.log(`Text Replace (${id}): Input field ${key} changed. Reprocessing with lastInput...`); // <-- ¡Este log debe aparecer!
-                     setTimeout(() => executeTextReplace(id, updatedNode.data.lastInput), 0); 
-                } else {
-                     console.log(`Text Replace (${id}): Input field ${key} changed, but no lastInput to process yet.`);
-                }
-            }
-             else if (name === 'text_split' && key === 'separator') {
-                 // Similar para text_split: reprocesar si cambia el separador y hay texto.
-                 if (updatedNode.data.lastInput !== null && updatedNode.data.lastInput !== undefined) {
-                      console.log(`Text Split (${id}): Input field ${key} changed. Reprocessing with lastInput...`);
-                      setTimeout(() => executeTextSplit(id, updatedNode.data.lastInput), 0);
+             // ===================================================================
+             // ====> INICIO: BLOQUE ACTUALIZADO PARA TODOS LOS REEMPLAZOS <====
+             // ===================================================================
+             // Maneja 'text_replace' y 'auto_text_replace' (disparan ejecución)
+             else if ((name === 'text_replace' || name === 'auto_text_replace') && (key === 'find' || key === 'replace')) {
+                 console.log(`   *** ${name} condition MET for key '${key}' ***`);
+                 const lastInput = updatedNode.data.lastInput;
+                 if (lastInput !== null && lastInput !== undefined) {
+                     console.log(`   ${name} (${id}): Input field '${key}' changed. Reprocessing with lastInput: "${lastInput}"`);
+                     const executionFunction = (name === 'auto_text_replace') ? executeAutoReplace : executeTextReplace;
+                     setTimeout(() => executionFunction(id, lastInput), 0);
+                     historySavedByExecution = true; // La ejecución llamará a updateNodeResult -> saveHistoryState
                  } else {
-                      // console.log(`Text Split (${id}): Input field ${key} changed, but no lastInput to process yet.`); // Log opcional
+                     console.log(`   ${name} (${id}): Input field '${key}' changed, but no lastInput to process yet.`);
+                     // Si no hay lastInput, solo el cambio en find/replace se guarda al final
                  }
              }
-             // --- FIN: MANEJO NODOS DE TEXTO ---
+             // Maneja 'hybrid_text_replace' (NO dispara ejecución)
+             else if (name === 'hybrid_text_replace' && ['original', 'find', 'replace'].includes(key)) {
+                 console.log(`   Hybrid Replace (${id}): Field '${key}' changed by user. No automatic action.`);
+                 // No se hace nada más, la ejecución es manual vía botón.
+                 // El historial se guarda al final.
+             }
+             // ===================================================================
+             // ====> FIN: BLOQUE ACTUALIZADO <====
+             // ===================================================================
 
+             // --- Manejo de text_split (separado por si acaso) ---
+             else if (name === 'text_split' && key === 'separator') {
+                 const lastInput = updatedNode.data.lastInput;
+                 if (lastInput !== null && lastInput !== undefined) {
+                      console.log(`   Text Split (${id}): Input field '${key}' changed. Reprocessing with lastInput: "${lastInput}"`);
+                      setTimeout(() => executeTextSplit(id, lastInput), 0);
+                      historySavedByExecution = true; // La ejecución llamará a updateNodeResult -> saveHistoryState
+                 } else {
+                     // console.log(`   Text Split (${id}): Input field '${key}' changed, but no lastInput to process yet.`);
+                 }
+             }
+             // --- FIN MANEJO NODOS DE TEXTO ---
 
-            // Guardar historial después de un cambio detectado Y procesado por las lógicas anteriores.
-            // Las funciones llamadas (executeNode, propagateData, processTemplateNode, etc.)
-            // ya llaman a saveHistoryState() internamente SIEMPRE que el resultado o estado relevante cambia.
-            // Llamar a saveHistoryState() aquí puede ser redundante en muchos casos,
-            // pero asegura que cambios simples (como en nota) o los cambios en find/replace/separator
-            // (que ahora disparan una ejecución que SÍ guardará si el resultado cambia) se capturen
-            // si hubiera algún caso no cubierto por las funciones internas. Es relativamente seguro dejarlo.
-            saveHistoryState();
+            // Guardar historial para cambios que no dispararon una ejecución que ya guarda.
+            if (!historySavedByExecution) {
+                // ¿Realmente hubo un cambio en los datos? (Drawflow actualiza node.data antes de llamar a esto via rAF)
+                // Podríamos comparar el valor 'val' con el valor original antes del rAF, pero es complejo.
+                // Por simplicidad, guardamos si no fue manejado por una ejecución.
+                console.log(`   Saving history directly from handleNodeDataChange for ${name} (key: ${key})`);
+                saveHistoryState();
+            } else {
+                 console.log(`   History save deferred or handled by execution for ${name} (key: ${key})`);
+            }
+
 
         } catch (e) {
             console.error(`Error handleNodeDataChange (Node: ${id}, Key: ${key}):`, e);
-            // Podrías añadir un showToast aquí si fuera necesario
         }
     });
 }
-
-function applyTextReplace(event) {
-    const id = getNodeIdFromEvent(event);
-    const node = editor.getNodeFromId(id);
-    const txt = node.data.lastInput ?? '';
-    const find = node.data.find;
-    const replace = node.data.replace;
-    const res = txt.split(find).join(replace);
-    updateNodeResult(id, res);
-  }
   
   function applyTextSplit(event) {
     const id = getNodeIdFromEvent(event);
@@ -1523,71 +2249,6 @@ function executeTextCase(nodeId, inputValue, mode) {
 
 
 
-/**
- * [Simplificado] Ejecuta el reemplazo de texto para un nodo.
- * Realiza un reemplazo global y sensible a mayúsculas.
- * @param {string} nodeId - El ID del nodo.
- * @param {*}    inputText - Texto o dato a procesar.
- */
-function executeTextReplace(nodeId, inputText) {
-    console.log(`--- [Simple] Executing Text Replace Node ${nodeId} ---`);
-
-    // 1. Validar el nodo
-    const node = editor.getNodeFromId(nodeId);
-    if (!node || node.name !== 'text_replace') {
-        console.error(`Text Replace (${nodeId}): Nodo inválido o tipo incorrecto.`);
-        return; // No continuar si el nodo no es válido
-    }
-
-    // 2. Obtener datos necesarios del nodo
-    // Lee directamente de node.data (asumiendo que handleNodeDataChange los actualiza)
-    const findText = node.data.find ?? '';         // Usar '' si no está definido
-    const replaceText = node.data.replace ?? '';   // Usar '' si no está definido
-    
-    // 3. Asegurar que el texto de entrada sea un string
-    const currentInputText = String(inputText ?? ''); 
-
-    console.log(`   Input: "${currentInputText}"`);
-    console.log(`   Find: "${findText}"`);
-    console.log(`   Replace: "${replaceText}"`);
-
-    // 4. Si el texto a buscar ('find') está vacío, no hacer nada y devolver el original
-    if (!findText) {
-        console.warn(`Text Replace (${nodeId}): Texto de búsqueda vacío. Devolviendo texto original.`);
-        // Llamamos a updateNodeResult para asegurar que la salida refleje la entrada actual
-        updateNodeResult(nodeId, currentInputText); 
-        console.log(`--- [Simple] Finished Text Replace Node ${nodeId} (No Find Text) ---`);
-        return; 
-    }
-
-    // 5. Realizar el reemplazo (global, case-sensitive)
-    let resultText;
-    try {
-        // El método split/join es eficiente para reemplazos literales globales
-        resultText = currentInputText.split(findText).join(replaceText);
-        console.log(`   Result: "${resultText}"`);
-    } catch (error) {
-        // Capturar errores inesperados durante el split/join
-        console.error(`Text Replace Node (${nodeId}): Error durante el reemplazo`, error);
-        resultText = `Error: ${error.message}`; // Establecer un mensaje de error como resultado
-    }
-
-    // 6. Actualizar el nodo con el resultado (o el mensaje de error)
-    // Esta función actualiza node.data.result, la UI, propaga y guarda historial
-    updateNodeResult(nodeId, resultText); 
-    
-    console.log(`--- [Simple] Finished Text Replace Node ${nodeId} ---`);
-}
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -2268,13 +2929,12 @@ function handleNodeDataChange(event) {
 
 // MODIFICADO: propagateData con manejo de nodos aritméticos, texto (auto) y PLANTILLA
 // ACTUALIZADO: propagateData con manejo de nodos aritméticos, texto (auto) y PLANTILLA (corregido)
+// --- USA ESTA VERSIÓN COMPLETA Y MODIFICADA ---
 function propagateData(sourceNodeId, sourceNodeName, changedKey, outputData) {
     try {
         const sourceNode = editor.getNodeFromId(sourceNodeId);
-        // Asume puerto de salida estándar 'output_1', si no existe o no tiene conexiones, salir.
         const outputPort = sourceNode?.outputs?.output_1;
         if (!outputPort?.connections || outputPort.connections.length === 0) {
-            // console.log(`Propagate from ${sourceNodeId}: No output connections found on output_1.`);
             return;
         }
 
@@ -2287,31 +2947,35 @@ function propagateData(sourceNodeId, sourceNodeName, changedKey, outputData) {
             dataToPropagate = outputData;
         } else {
             const commonOutputKeys = ['result', 'content', 'codecontent', 'outputhtml', 'filecontent', 'display', 'url', 'jscode'];
-            const inputKeys = ['number', 'text', 'range', 'date', 'time', 'color', 'json', 'notecontent'];
+            const inputKeys = ['number', 'text', 'range', 'date', 'time', 'color', 'json', 'notecontent', 'original']; // Añadido 'original' por si acaso
             const searchKeys = [changedKey, ...commonOutputKeys, ...inputKeys].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i);
 
             for (const k of searchKeys) {
-                if (sourceData.hasOwnProperty(k)) {
+                // Usar Object.prototype.hasOwnProperty.call para seguridad
+                if (Object.prototype.hasOwnProperty.call(sourceData, k)) {
                     dataToPropagate = sourceData[k];
                     break;
                 }
             }
+            // Fallback más seguro
             if (dataToPropagate === undefined) {
-                const firstKey = Object.keys(sourceData).find(k => !['lastInput', 'lastInputs', 'selector_received'].includes(k));
-                if (firstKey) dataToPropagate = sourceData[firstKey];
+                const validKeys = Object.keys(sourceData).filter(k => !['lastInput', 'lastInputs', 'selector_received'].includes(k));
+                if (validKeys.length > 0) {
+                    dataToPropagate = sourceData[validKeys[0]];
+                }
             }
         }
         // --- Fin determinación de dato ---
 
         connections.forEach(conn => {
-            const targetId   = conn.node;
+            const targetId = conn.node;
             const targetNode = editor.getNodeFromId(targetId);
             if (!targetNode) {
                 console.warn(`Target node ${targetId} not found during propagation from ${sourceNodeId}.`);
                 return;
             }
             const targetNodeName = targetNode.name;
-            const targetInputPort = conn.output;
+            const targetInputPort = conn.output; // Puerto de entrada del nodo destino (ej: 'input_1')
 
             // === Lógica de Propagación Específica por Tipo de Nodo Destino ===
 
@@ -2323,7 +2987,7 @@ function propagateData(sourceNodeId, sourceNodeName, changedKey, outputData) {
                         const s = String(dataToPropagate ?? '');
                         editor.updateNodeDataFromId(targetId, { selector_received: s });
                         const el = document.getElementById(`node-${targetId}`);
-                        const i  = el?.querySelector('input[df-selector_received]');
+                        const i = el?.querySelector('input[df-selector_received]');
                         if (i) i.value = s;
                     }
                 } else {
@@ -2364,54 +3028,138 @@ function propagateData(sourceNodeId, sourceNodeName, changedKey, outputData) {
                 const ta = el?.querySelector('textarea[df-savecontent]');
                 if (ta) ta.value = v;
             }
-            else if (['text_replace', 'text_split', 'text_uppercase', 'text_lowercase', 'text_length', 'html_strip'].includes(targetNodeName) && targetInputPort === 'input_1') { // Nodos Transformación Texto (Automático)
+            // --- Mantener bloque para Nodos de Texto originales (si aún los usas) ---
+            else if (['text_replace', 'text_split', 'text_uppercase', 'text_lowercase', 'text_length', 'html_strip'].includes(targetNodeName) && targetInputPort === 'input_1') {
                 const inputText = String(dataToPropagate ?? '');
                 editor.updateNodeDataFromId(targetId, { lastInput: inputText });
                 setTimeout(() => {
                     try {
-                        // console.log(`Auto-executing ${targetNodeName} (${targetId}) due to input change.`);
                         switch (targetNodeName) {
                             case 'text_uppercase': executeTextCase(targetId, inputText, 'upper'); break;
                             case 'text_lowercase': executeTextCase(targetId, inputText, 'lower'); break;
-                            case 'text_replace': executeTextReplace(targetId, inputText); break;
+                            case 'text_replace': executeTextReplace(targetId, inputText); break; // Llama a la función original
                             case 'text_split': executeTextSplit(targetId, inputText); break;
                             case 'text_length': executeTextLength(targetId, inputText); break;
                             case 'html_strip': executeHtmlStrip(targetId, inputText); break;
                         }
-                    } catch (execError) {
-                        console.error(`Error during automatic execution of ${targetNodeName} (${targetId}):`, execError);
-                        const nodeElement = document.getElementById(`node-${targetId}`);
-                        const resultTextArea = nodeElement?.querySelector('textarea[df-result], input[df-result]');
-                        if(resultTextArea) resultTextArea.value = `Error: ${execError.message}`;
-                        editor.updateNodeDataFromId(targetId, { result: `Error: ${execError.message}` });
-                    }
+                    } catch (execError) { /* ... manejo de error ... */ }
                 }, 0);
             }
-            // --- INICIO: BLOQUE CORREGIDO PARA NODO PLANTILLA ---
-            else if (targetNodeName === 'template_engine' && targetInputPort === 'input_1') {
-                // 1. Guardar el objeto JSON recibido en lastInput (útil para reprocesamiento si cambia la plantilla)
-                editor.updateNodeDataFromId(targetId, { lastInput: dataToPropagate });
-                // console.log(`Template Node (${targetId}): Stored input data for potential reprocessing.`, dataToPropagate);
+            // --- FIN Bloque Nodos Texto Originales ---
+// ============================================================
+            // ====> INICIO: NUEVO BLOQUE PARA 'auto_text_replace' (CORREGIDO) <====
+            // ============================================================
+            else if (targetNodeName === 'auto_text_replace' && targetInputPort === 'input_1') {
+                const inputTextString = String(dataToPropagate ?? ''); // Asegurar que sea string
 
-                // 2. Llamar a la función de procesamiento PASANDO el dato directamente
-                //    Guardar en variable local para el closure del setTimeout
+                // 1. Guardar el dato que llegó en 'lastInput' Y ACTUALIZAR UI
+                editor.updateNodeDataFromId(targetId, { lastInput: inputTextString }); // GUARDA DATO INTERNO
+                const targetNodeElement = document.getElementById(`node-${targetId}`);
+                const lastInputElement = targetNodeElement?.querySelector('textarea[df-lastInput]'); // BUSCA EL TEXTAREA
+                if (lastInputElement) {
+                    lastInputElement.value = inputTextString; // ACTUALIZA SU VALOR
+                    console.log(`Auto Replace (${targetId}): Updated df-lastInput UI.`);
+                } else {
+                    console.warn(`Auto Replace (${targetId}): df-lastInput textarea not found in UI.`);
+                }
+                console.log(`Auto Replace (${targetId}): Received new input. Storing as lastInput (internal).`);
+
+                // 2. Ejecutar el reemplazo INMEDIATAMENTE con el nuevo texto llegado
+                console.log(`Auto Replace (${targetId}): Executing replacement with new input...`);
+                setTimeout(() => executeAutoReplace(targetId, inputTextString), 0); // Llama a executeAutoReplace con el string
+           }
+           // ============================================================
+           // ====> FIN: NUEVO BLOQUE PARA 'auto_text_replace' (CORREGIDO) <====
+           // ============================================================
+
+
+// DENTRO de la función propagateData, añade este bloque 'else if'
+// junto a los otros que manejan nodos específicos
+
+            // ============================================================
+            // ====> INICIO: NUEVO BLOQUE PARA 'hybrid_text_replace' <====
+            // ============================================================
+            else if (targetNodeName === 'hybrid_text_replace' && targetInputPort === 'input_1') {
+                const inputText = dataToPropagate; // Dato que llega
+
+                // 1. Guardar el dato que llegó en 'lastInput'
+                //    (No necesitamos ejecutar nada automáticamente aquí)
+                editor.updateNodeDataFromId(targetId, { lastInput: inputText });
+                console.log(`Hybrid Replace (${targetId}): Received new input via connection. Storing in lastInput.`);
+
+                // Opcional: Actualizar visualmente el textarea df-original para mostrar lo recibido?
+                // Podría ser confuso si el usuario también escribe. Por ahora, solo guardamos internamente.
+                /*
+                const targetNodeElement = document.getElementById(`node-${targetId}`);
+                const originalTextArea = targetNodeElement?.querySelector('textarea[df-original]');
+                if(originalTextArea) {
+                    originalTextArea.value = String(inputText ?? '');
+                    // Quizás añadir un estilo para indicar que vino de fuera?
+                    // originalTextArea.style.fontStyle = 'italic';
+                    // originalTextArea.style.color = '#6c757d';
+                }
+                */
+           }
+           // ============================================================
+           // ====> FIN: NUEVO BLOQUE PARA 'hybrid_text_replace' <====
+           // ============================================================
+
+// Asegúrate de que este bloque esté ANTES del bloque `template_engine` o al final
+// de los manejadores específicos.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            // --- BLOQUE NODO PLANTILLA (EXISTENTE) ---
+            else if (targetNodeName === 'template_engine' && targetInputPort === 'input_1') {
+                editor.updateNodeDataFromId(targetId, { lastInput: dataToPropagate });
                 const jsonDataForTimeout = dataToPropagate;
                 setTimeout(() => {
-                    // Llama a processTemplateNode CON el dato como segundo argumento
                     processTemplateNode(targetId, jsonDataForTimeout);
                 }, 0);
             }
-            // --- FIN: BLOQUE CORREGIDO PARA NODO PLANTILLA ---
+            // --- FIN BLOQUE NODO PLANTILLA ---
 
-            // Añade aquí más 'else if' si creas otros nodos personalizados que reaccionen a la entrada
+            // Añade aquí más 'else if' si creas otros nodos personalizados
 
         }); // Fin del forEach connections
     } catch (error) {
         console.error(`Error propagating data from node ${sourceNodeId} (${sourceNodeName}):`, error);
-        // showToast('error', 'Propagation Error', `Error from ${sourceNodeName}`);
     }
 }
-
 
 
 
@@ -3372,205 +4120,367 @@ function updateZoomStatus(level) { if (zoomLevelSpan) zoomLevelSpan.textContent 
 function updateNodePositionStatus(nodeId) { if (nodePositionSpan) { if (nodeId) { const n = editor?.getNodeFromId(nodeId); if (n) nodePositionSpan.textContent = `X:${Math.round(n.pos_x)},Y:${Math.round(n.pos_y)}`; else nodePositionSpan.textContent = `X:-,Y:-`; } else nodePositionSpan.textContent = `X:-,Y:-`; } }
 
 // --- Drawflow Event Listeners ---
+// --- VERSIÓN COMPLETA Y ACTUALIZADA ---
+// xocoflow_logic.js
+
+// ... (Asegúrate de que las siguientes funciones estén definidas en tu script,
+// como se proporcionó en la respuesta anterior):
+// - getOrCreateLockIndicator(titleBoxElement)
+// - updateNodeVisualLockState(nodeId, isLocked)
+// - setNodeMovementLock(nodeId, lockState)
+// - toggleNodeMovementLock(nodeId)
+// - showCustomContextMenu(event, nodeId)
+// - hideCustomContextMenu()
+// - handleClickOutsideContextMenu(event)
+// Y que la variable global customContextMenu esté definida:
+// let customContextMenu = null;
+// ...
+
 function setupDrawflowListeners() {
-  if (!editor) { console.error("Cannot setup listeners: Drawflow editor missing."); return; }
-  try {
-      // --- nodeRemoved Listener ---
-      editor.on('nodeRemoved', (id) => {
-          console.log(`Event: Node Removed ${id}`);
-          cleanupNodeIntervals(id); // Limpiar timers/intervalos
+    if (!editor) { console.error("Cannot setup listeners: Drawflow editor missing."); return; }
+    try {
+        // --- nodeRemoved Listener ---
+        editor.on('nodeRemoved', (id) => {
+            console.log(`Event: Node Removed ${id}`);
+            cleanupNodeIntervals(id); // Limpiar timers/intervalos
+            hideCustomContextMenu(); // Ocultar menú si estaba abierto y se borró el nodo
+  
+            // Actualizar estado de selección y UI
+            if (selectedNodeId === id) { selectedNodeId = null; updateNodePositionStatus(null); }
+            if (currentlyEditingNodeId === id) closeCodeEditorSidebar(false); // Cerrar editor si se borra el nodo editado
+  
+            // --- INICIO LÓGICA NODOS DEPENDIENTES (CUANDO SE BORRA LA FUENTE) ---
+            let connectionsFromRemovedNode = [];
+            try {
+                const nodeDataBeforeRemoval = editor.getNodeFromId(id); // Nota: Drawflow puede haberlo quitado ya
+                if (nodeDataBeforeRemoval && nodeDataBeforeRemoval.outputs) { // Chequeo extra
+                    Object.values(nodeDataBeforeRemoval.outputs).forEach(outputPort => {
+                        connectionsFromRemovedNode = connectionsFromRemovedNode.concat(outputPort.connections || []);
+                    });
+                }
+            } catch (e) {
+                console.warn(`Could not reliably get connections from node ${id} during removal event (might be already fully removed).`);
+            }
+  
+            // Actualizar nodos destino que dependen del nodo eliminado
+            // Esta parte puede ser menos fiable si el nodo ya no existe en editor.export()
+            // Una estrategia más robusta sería iterar todos los nodos y ver sus inputs.
+            // Pero por ahora, mantenemos la lógica si getNodeFromId aún funciona en este punto.
+            if (connectionsFromRemovedNode.length > 0) {
+                connectionsFromRemovedNode.forEach(conn => {
+                    try { // Añadir try-catch por si targetNode no existe
+                        const targetNode = editor.getNodeFromId(conn.node); 
+                        if (targetNode) { 
+                            const targetName = targetNode.name;
+                            const needsRecalc = ['sum', 'subtract', 'multiply', 'divide', 'concatenar'];
+                            if (needsRecalc.includes(targetName)) {
+                                console.log(`Node ${id} removed, updating target ${targetName} node ${conn.node}`);
+                                switch (targetName) {
+                                    case 'sum': setTimeout(() => updateSumNode(conn.node), 0); break;
+                                    case 'subtract': setTimeout(() => updateSubtractNode(conn.node), 0); break;
+                                    case 'multiply': setTimeout(() => updateMultiplyNode(conn.node), 0); break;
+                                    case 'divide': setTimeout(() => updateDivideNode(conn.node), 0); break;
+                                    case 'concatenar': setTimeout(() => updateConcatenateNode(conn.node), 0); break;
+                                }
+                            }
+                        }
+                    } catch (findTargetError) {
+                        console.warn(`Error finding target node ${conn.node} during node ${id} removal cleanup.`);
+                    }
+                });
+            }
+            // --- FIN LÓGICA NODOS DEPENDIENTES ---
+  
+            updateUIDisabledStates();
+            saveHistoryState();
+        });
+  
+        // --- nodeSelected Listener ---
+        editor.on('nodeSelected', (id) => {
+            console.log(`Event: Node Selected ${id}`);
+            selectedNodeId = id;
+            updateUIDisabledStates();
+            updateNodePositionStatus(id);
+        });
+  
+        // --- nodeUnselected Listener ---
+        editor.on('nodeUnselected', (wasSelected) => {
+            console.log(`Event: Node Unselected (was selected: ${wasSelected})`);
+            const prevSelected = selectedNodeId;
+            selectedNodeId = null;
+            updateUIDisabledStates();
+            updateNodePositionStatus(null);
+            if (prevSelected && prevSelected === currentlyEditingNodeId) {
+                closeCodeEditorSidebar(true);
+            }
+        });
+  
+        // --- nodeMoved Listener ---
+        editor.on('nodeMoved', (id) => {
+            saveHistoryState();
+            if(id === selectedNodeId) updateNodePositionStatus(id);
+  
+            try { // Envolver en try-catch
+                const node = editor.getNodeFromId(id);
+                if(node) {
+                    const orderDependentTargets = ['concatenar', 'subtract', 'divide'];
+                    const nodeName = node.name;
+    
+                    const outputConnections = getConnections(id, 'output');
+                    outputConnections.forEach(conn => {
+                        try { // try-catch para el nodo target
+                            const targetNode = editor.getNodeFromId(conn.node);
+                            if (targetNode && orderDependentTargets.includes(targetNode.name)) {
+                                console.log(`Node ${id} moved, updating order-dependent target node ${conn.node} (${targetNode.name})`);
+                                switch (targetNode.name) {
+                                    case 'concatenar': setTimeout(() => updateConcatenateNode(conn.node), 0); break;
+                                    case 'subtract': setTimeout(() => updateSubtractNode(conn.node), 0); break;
+                                    case 'divide': setTimeout(() => updateDivideNode(conn.node), 0); break;
+                                }
+                            }
+                        } catch (e) { console.warn(`Error processing target node ${conn.node} on move of ${id}`); }
+                    });
+    
+                    if (orderDependentTargets.includes(nodeName)) {
+                        console.log(`Order-dependent node ${id} (${nodeName}) moved, recalculating...`);
+                        switch (nodeName) {
+                            case 'concatenar': setTimeout(() => updateConcatenateNode(id), 0); break;
+                            case 'subtract': setTimeout(() => updateSubtractNode(id), 0); break;
+                            case 'divide': setTimeout(() => updateDivideNode(id), 0); break;
+                        }
+                    }
+                }
+            } catch (e) { console.warn(`Error processing nodeMoved for ${id}: ${e.message}`); }
+        });
+  
+        // --- connectionCreated Listener ---
+        editor.on('connectionCreated', (connectionInfo) => {
+            console.log(`Event: Connection Created`, connectionInfo);
+            setTimeout(() => {
+                try {
+                    const sourceNodeId = connectionInfo.output_id;
+                    const targetNodeId = connectionInfo.input_id;
+                    const sourceNode = editor.getNodeFromId(sourceNodeId);
+                    const targetNode = editor.getNodeFromId(targetNodeId);
+  
+                    if (!sourceNode || !targetNode) {
+                        throw new Error("Source or Target node missing after delay in connectionCreated handler.");
+                    }
+                    const targetNodeName = targetNode.name;
+  
+                    console.log(`connectionCreated: Calling propagateData from ${sourceNodeId} to ${targetNodeId}`);
+                    propagateData(sourceNodeId, sourceNode.name, null, undefined);
+  
+                    const recalcNodes = ['sum', 'subtract', 'multiply', 'divide', 'concatenar'];
+                    if (recalcNodes.includes(targetNodeName)) {
+                        console.log(`connectionCreated: Recalculating target node ${targetNodeId} (${targetNodeName})`);
+                        switch (targetNodeName) {
+                            case 'sum': updateSumNode(targetNodeId); break;
+                            case 'subtract': updateSubtractNode(targetNodeId); break;
+                            case 'multiply': updateMultiplyNode(targetNodeId); break;
+                            case 'divide': updateDivideNode(targetNodeId); break;
+                            case 'concatenar': updateConcatenateNode(targetNodeId); break;
+                        }
+                    }
+                    saveHistoryState();
+                } catch (error) {
+                    console.error("Error processing connectionCreated event:", error, "Connection info:", connectionInfo);
+                    saveHistoryState();
+                }
+            }, 50);
+        });
+  
+        // --- connectionRemoved Listener ---
+        editor.on('connectionRemoved', (connectionInfo) => {
+            console.log(`Event: Connection Removed`, connectionInfo);
+            setTimeout(() => {
+                 try {
+                     const targetNodeId = connectionInfo.input_id;
+                     const targetNode = editor.getNodeFromId(targetNodeId);
+  
+                     if (targetNode) {
+                         const targetName = targetNode.name;
+                         const recalcNodes = ['sum', 'subtract', 'multiply', 'divide', 'concatenar'];
+                         if (recalcNodes.includes(targetName)) {
+                             console.log(`connectionRemoved: Recalculating target node ${targetNodeId} (${targetName})`);
+                             switch (targetName) {
+                                 case 'sum': updateSumNode(targetNodeId); break;
+                                 case 'subtract': updateSubtractNode(targetNodeId); break;
+                                 case 'multiply': updateMultiplyNode(targetNodeId); break;
+                                 case 'divide': updateDivideNode(targetNodeId); break;
+                                 case 'concatenar': updateConcatenateNode(targetNodeId); break;
+                             }
+                         }
+                         if (targetName === 'hybrid_text_replace' && connectionInfo.input_class === 'input_1') {
+                             console.log(`Hybrid Replace (${targetNodeId}): Input connection removed. Clearing lastInput.`);
+                             editor.updateNodeDataFromId(targetNodeId, { lastInput: null });
+                         }
+                     } else {
+                          console.warn(`connectionRemoved: Target node ${targetNodeId} not found.`);
+                     }
+                     saveHistoryState();
+                 } catch (error) {
+                     console.error("Error processing connectionRemoved event:", error, "Connection info:", connectionInfo);
+                     saveHistoryState();
+                 }
+            }, 50);
+        });
+  
+        // --- moduleChanged Listener ---
+        editor.on('moduleChanged', (name) => {
+            console.log(`%cEVENT: Module Changed -> ${name}`, 'color: blue; font-weight: bold;');
+            hideCustomContextMenu(); // Ocultar menú si está abierto al cambiar de módulo
+            const modulesData = editor.export()?.drawflow;
+            if (!modulesData || !modulesData[name]) {
+                 console.warn(`Module ${name} not found after moduleChanged event. Falling back to Home.`);
+                 name = 'Home';
+                 if (!modulesData || !modulesData[name]) {
+                     editor.addModule('Home');
+                 }
+                 editor.changeModule('Home');
+                 return;
+            }
+            renderModuleTabs();
+            initializeHistory();
+            selectedNodeId = null;
+            copiedNodeData = null;
+            currentlyEditingNodeId = null;
+            updateUIDisabledStates();
+            updateZoomStatus(editor.zoom);
+            updateNodePositionStatus(null);
+            document.title = `Xocoflow | ${currentProjectName} - ${name}`;
+            closeCodeEditorSidebar(false);
+            setTimeout(() => {
+                if(editor.module === name){
+                    saveHistoryState(true);
+                    activateExistingAutoNodes();
+                    console.log(` -> Module ${name} processing complete.`);
+                }
+            }, 100);
+        });
+  
+        editor.on('zoom', (level) => { updateZoomStatus(level); });
+  
+        editor.on('translate', (pos) => { /* Podrías actualizar algo aquí */ });
+  
+        // --- Context Menu Listener (MODIFICADO) ---
+        editor.on('contextmenu', (e) => {
+            const nodeElement = e.target.closest(".drawflow-node");
+            
+            if (e.target.closest('.drawflow-delete')) {
+                e.preventDefault(); 
+                // Aquí puedes decidir si quieres que el menú contextual aparezca
+                // sobre el botón X de Drawflow o simplemente dejar que Drawflow lo maneje.
+                // Por ahora, prevenimos el menú del navegador y no mostramos el nuestro.
+                hideCustomContextMenu(); // Asegura que cualquier menú anterior se oculte
+                return;
+            }
+        
+            if (nodeElement) {
+                const nodeId = nodeElement.id.slice(5); // "node-123" -> "123"
+                showCustomContextMenu(e, nodeId); // Esto ya hace e.preventDefault()
+            } else {
+                // Clic derecho en el fondo del canvas
+                e.preventDefault(); // Prevenir menú del navegador
+                hideCustomContextMenu(); // Ocultar nuestro menú si estaba visible
+            }
+        });
+  
+        // --- Click Listener (General) ---
+        editor.on('click', (e) => {
+            const target = e.target;
 
-          // Actualizar estado de selección y UI
-          if (selectedNodeId === id) { selectedNodeId = null; updateNodePositionStatus(null); }
-          if (currentlyEditingNodeId === id) closeCodeEditorSidebar(false); // Cerrar editor si se borra el nodo editado
-
-          // --- INICIO LÓGICA NODOS DEPENDIENTES ---
-          let connectionsFromRemovedNode = [];
-          try { // Intentar obtener conexiones antes de la eliminación completa
-              const nodeDataBeforeRemoval = editor.getNodeFromId(id);
-              if (nodeDataBeforeRemoval?.outputs) {
-                  Object.values(nodeDataBeforeRemoval.outputs).forEach(outputPort => {
-                      connectionsFromRemovedNode = connectionsFromRemovedNode.concat(outputPort.connections || []);
-                  });
-              }
-          } catch (e) {
-              console.warn(`Could not reliably get connections from node ${id} during removal event.`);
-          }
-
-          // Actualizar nodos Suma, Resta, Multiplicación, División o Concatenar conectados
-          if (connectionsFromRemovedNode.length > 0) {
-              connectionsFromRemovedNode.forEach(conn => {
-                  const targetNode = editor.getNodeFromId(conn.node); // Obtiene el nodo destino
-                  if (targetNode) { // Verificar si el nodo destino aún existe
-                      const targetName = targetNode.name;
-                      if (targetName === 'sum') {
-                          console.log(`Node ${id} removed, updating target sum node ${conn.node}`);
-                          setTimeout(() => updateSumNode(conn.node), 0);
-                      } else if (targetName === 'subtract') {
-                          console.log(`Node ${id} removed, updating target subtract node ${conn.node}`);
-                          setTimeout(() => updateSubtractNode(conn.node), 0);
-                      } else if (targetName === 'multiply') {
-                          console.log(`Node ${id} removed, updating target multiply node ${conn.node}`);
-                          setTimeout(() => updateMultiplyNode(conn.node), 0);
-                      } else if (targetName === 'divide') {
-                          console.log(`Node ${id} removed, updating target divide node ${conn.node}`);
-                          setTimeout(() => updateDivideNode(conn.node), 0);
-                      } else if (targetName === 'concatenar') {
-                          console.log(`Node ${id} removed, updating target concatenate node ${conn.node}`);
-                          setTimeout(() => updateConcatenateNode(conn.node), 0);
-                      }
-                  }
-              });
-          }
-          // --- FIN LÓGICA NODOS DEPENDIENTES ---
-
-          updateUIDisabledStates(); // Actualizar botones
-          saveHistoryState(); // Guardar estado después de la eliminación
-      });
-
-      // --- nodeSelected Listener ---
-      editor.on('nodeSelected', (id) => {
-          console.log(`Event: Node Selected ${id}`);
-          selectedNodeId = id;
-          updateUIDisabledStates();
-          updateNodePositionStatus(id);
-      });
-
-      // --- nodeUnselected Listener ---
-      editor.on('nodeUnselected', (wasSelected) => {
-          console.log(`Event: Node Unselected (was selected: ${wasSelected})`);
-          const prevSelected = selectedNodeId;
-          selectedNodeId = null; // Limpiar selección
-          updateUIDisabledStates();
-          updateNodePositionStatus(null);
-          // Cerrar y guardar sidebar si se deselecciona el nodo que se estaba editando
-          if (prevSelected && prevSelected === currentlyEditingNodeId) {
-              closeCodeEditorSidebar(true);
-          }
-      });
-
-      // --- nodeMoved Listener ---
-      editor.on('nodeMoved', (id) => {
-          saveHistoryState(); // Guarda historial al mover
-          if(id === selectedNodeId) updateNodePositionStatus(id); // Actualiza posición en barra de estado
-
-          const node = editor.getNodeFromId(id);
-          if(node) {
-              // --- INICIO LÓGICA NODOS DEPENDIENTES DEL ORDEN Y ---
-              // Si el nodo movido tiene salidas conectadas a nodos cuyo cálculo depende del orden Y
-              const outputConnections = getConnections(id, 'output');
-              outputConnections.forEach(conn => {
-                  const targetNode = editor.getNodeFromId(conn.node);
-                  if (targetNode) { // Verificar si el nodo destino existe
-                      const targetName = targetNode.name;
-                      if (targetName === 'concatenar' || targetName === 'subtract' || targetName === 'divide') {
-                           console.log(`Node ${id} moved, updating order-dependent target node ${conn.node} (${targetName})`);
-                           // Llamar a la función de actualización correspondiente
-                           if (targetName === 'concatenar') setTimeout(() => updateConcatenateNode(conn.node), 0);
-                           else if (targetName === 'subtract') setTimeout(() => updateSubtractNode(conn.node), 0);
-                           else if (targetName === 'divide') setTimeout(() => updateDivideNode(conn.node), 0);
-                      }
-                      // Suma y Multiplicación no dependen del orden, no necesitan recalcular por mover una entrada
-                  }
-              });
-
-              // Si el nodo movido ES uno de los que dependen del orden Y de sus propias entradas
-              const nodeName = node.name;
-              if (nodeName === 'concatenar' || nodeName === 'subtract' || nodeName === 'divide') {
-                   console.log(`Order-dependent node ${id} (${nodeName}) moved, recalculating...`);
-                  // Recalcular el propio nodo movido
-                  if (nodeName === 'concatenar') setTimeout(() => updateConcatenateNode(id), 0);
-                  else if (nodeName === 'subtract') setTimeout(() => updateSubtractNode(id), 0);
-                  else if (nodeName === 'divide') setTimeout(() => updateDivideNode(id), 0);
-              }
-              // --- FIN LÓGICA NODOS DEPENDIENTES DEL ORDEN Y ---
-          }
-      });
-
-      // --- connectionCreated Listener ---
-      editor.on('connectionCreated', (connectionInfo) => {
-          setTimeout(() => { // Retrasar ligeramente
-              try {
-                  const sourceNodeId = connectionInfo.output_id;
-                  const targetNodeId = connectionInfo.input_id;
-                  const sourceNode = editor.getNodeFromId(sourceNodeId);
-                  const targetNode = editor.getNodeFromId(targetNodeId);
-
-                  if (!sourceNode || !targetNode) throw new Error("Source or Target node missing in connectionCreated handler.");
-
-                  const targetNodeName = targetNode.name;
-
-                  // 1. Propagar el dato inicial desde la fuente al conectar
-                  propagateData(sourceNodeId, sourceNode.name, null, undefined);
-
-                  // 2. Llamada específica para recalcular el nodo destino si es necesario
-                  if (targetNodeName === 'sum') { updateSumNode(targetNodeId); }
-                  else if (targetNodeName === 'subtract') { updateSubtractNode(targetNodeId); }
-                  else if (targetNodeName === 'multiply') { updateMultiplyNode(targetNodeId); }
-                  else if (targetNodeName === 'divide') { updateDivideNode(targetNodeId); }
-                  else if (targetNodeName === 'concatenar') { updateConcatenateNode(targetNodeId); }
-                  // No es necesario loguear aquí, las funciones de update ya loguean si cambian el resultado
-
-                  saveHistoryState(); // Guardar historial después de conexión y propagación/cálculo inicial
-              } catch (error) {
-                  console.error("Error processing connectionCreated event:", error, "Connection info:", connectionInfo);
-                  saveHistoryState(); // Guardar incluso si hay error para poder deshacer
-              }
-          }, 10); // 10ms delay
-      });
-
-      // --- connectionRemoved Listener ---
-      editor.on('connectionRemoved', (connectionInfo) => {
-          setTimeout(() => { // Retrasar ligeramente
-               const targetNodeId = connectionInfo.input_id; // Nodo al que LLEGABA la conexión
-               const targetNode = editor.getNodeFromId(targetNodeId);
-
-               if (targetNode) { // Verificar que el nodo destino aún existe
-                   const targetName = targetNode.name;
-                   // Si se quitó una conexión a un nodo que necesita recalcularse, hacerlo
-                   if (targetName === 'sum') { updateSumNode(targetNodeId); }
-                   else if (targetName === 'subtract') { updateSubtractNode(targetNodeId); }
-                   else if (targetName === 'multiply') { updateMultiplyNode(targetNodeId); }
-                   else if (targetName === 'divide') { updateDivideNode(targetNodeId); }
-                   else if (targetName === 'concatenar') { updateConcatenateNode(targetNodeId); }
-                   // No es necesario loguear aquí, las funciones de update ya loguean
-               }
-
-               saveHistoryState(); // Guardar estado tras quitar conexión
-          }, 10);
-      });
-
-      // --- Otros Listeners (sin cambios) ---
-      editor.on('moduleChanged', (name) => { console.log(`%cEVENT: Module Changed -> ${name}`, 'color: blue; font-weight: bold;'); renderModuleTabs(); initializeHistory(); selectedNodeId = null; copiedNodeData = null; currentlyEditingNodeId = null; updateUIDisabledStates(); updateZoomStatus(editor.zoom); updateNodePositionStatus(null); document.title = `Xocoflow | ${currentProjectName} - ${name}`; closeCodeEditorSidebar(false); setTimeout(() => { if(editor.module === name){ saveHistoryState(true); activateExistingAutoNodes(); console.log(` -> Module ${name} loaded.`); }}, 50); });
-      editor.on('zoom', (level) => { updateZoomStatus(level); });
-      editor.on('translate', (pos) => { /* No action needed now */ });
-      editor.on('contextmenu', (e) => { e.preventDefault(); });
-      editor.on('click', (e) => {
-          const target = e.target;
-          // Cerrar sidebar si se hace clic fuera de ella Y fuera de CUALQUIER nodo
-          if (codeEditorSidebar?.classList.contains('visible') && !target.closest('#code-editor-sidebar') && !target.closest('.drawflow-node')) {
-               closeCodeEditorSidebar(true);
-          }
-          // Deseleccionar nodo si se hace clic en el fondo del canvas (o elementos no interactivos)
-          if (!target.closest('.drawflow-node,.controls-container,.menu,.swal2-container,#code-editor-sidebar,.nodes-list,.col header')) { // Añadidos elementos a ignorar
-              if (selectedNodeId) {
-                  try { editor.removeSelection(); } catch { /* Ignorar si falla */ }
-                  // El evento 'nodeUnselected' ya maneja la limpieza del estado
-              }
-          }
-      });
-      console.log("Drawflow event listeners attached.");
-  } catch (e) {
-      console.error("Error setting Drawflow listeners:", e);
-      showToast('error', 'Critical Error', 'Failed editor events.');
-  }
+            // Si hay un menú contextual personalizado visible y el clic NO es dentro de él, lo oculta.
+            // Esta lógica se maneja mejor con handleClickOutsideContextMenu globalmente,
+            // pero podemos dejar una llamada explícita aquí por si acaso.
+            if (customContextMenu && !customContextMenu.contains(target)) {
+                hideCustomContextMenu();
+            }
+            
+            if (codeEditorSidebar?.classList.contains('visible') && !target.closest('#code-editor-sidebar') && !target.closest('.drawflow-node')) {
+                 closeCodeEditorSidebar(true);
+            }
+            const ignoreClickTargets = '.drawflow-node, .controls-container, .menu, .swal2-container, #code-editor-sidebar, .nodes-list, .col header, .drawflow-delete, .point, .custom-context-menu'; // Añadido .custom-context-menu
+            if (!target.closest(ignoreClickTargets)) {
+                if (selectedNodeId) {
+                    try { editor.removeSelection(); } catch { /* Ignorar */ }
+                }
+            }
+        });
+  
+        console.log("Drawflow event listeners attached.");
+  
+    } catch (e) {
+        console.error("Error setting Drawflow listeners:", e);
+        showToast('error', 'Critical Error', 'Failed to setup editor events.');
+    }
 }
+
+
+// IMPORTANTE: El listener para el bloqueo de movimiento (`drawflowElement.addEventListener('mousedown', ..., true)`)
+// debe registrarse DESPUÉS de que `editor` se haya inicializado y `drawflowElement` esté disponible.
+// Generalmente, esto se hace en `initializeApp()` después de `editor = new Drawflow(...)` y `editor.start()`.
+// Ejemplo de dónde ponerlo en initializeApp():
+/*
+function initializeApp() {
+    // ... (caching de elementos, etc.) ...
+    editor = new Drawflow(drawflowElement);
+    // ... (configuración del editor) ...
+    editor.start();
+
+    setupDrawflowListeners(); // <-- Tus listeners de Drawflow aquí
+
+    // Listener para el bloqueo de movimiento
+    if (drawflowElement) {
+        drawflowElement.addEventListener('mousedown', (e) => {
+            if (e.target.closest('.input') || e.target.closest('.output')) return;
+            const nodeElement = e.target.closest(".drawflow-node");
+            if (nodeElement) {
+                const nodeId = nodeElement.id.slice(5);
+                try {
+                    const node = editor.getNodeFromId(nodeId);
+                    if (node && node.data && node.data.isMovementLocked === true) {
+                        const interactiveElements = 'input, textarea, select, button, [contenteditable="true"], a, .lock-indicator';
+                        if (e.target.matches(interactiveElements) || e.target.closest(interactiveElements)) {
+                            if (e.button === 0 && e.target.closest('.lock-indicator')) {
+                                toggleNodeMovementLock(nodeId);
+                                e.stopPropagation(); e.preventDefault(); return;
+                            }
+                            return; 
+                        }
+                        e.stopPropagation();
+                        if (!nodeElement.classList.contains('selected')) {
+                            editor.selectNode(nodeElement.id);
+                        }
+                        if (e.button !== 2) e.preventDefault(); // No prevenir context menu
+                    }
+                } catch (error) { console.warn("Error check lock mousedown:", error); }
+            }
+        }, true); // Fase de captura
+    }
+    // ... (resto de initializeApp) ...
+}
+*/
 
 // --- Keyboard Shortcuts ---
 document.addEventListener('keydown', (event) => { try { const active = document.activeElement; const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable || active.closest('.CodeMirror')); const isModal = nodeDefinitionModal?.style.display !== 'none'; const isCM = codeMirrorEditor && codeMirrorEditor.hasFocus(); const isSidebar = codeEditorSidebar?.contains(active); const locked = isLocked(); if (event.key === 'Escape') { if (isModal) { closeNodeDefinitionModal(); event.preventDefault(); return; } if (isCM || (isSidebar && currentlyEditingNodeId)) { closeCodeEditorSidebar(true); event.preventDefault(); return; } if (selectedNodeId) { try{ editor.removeSelection(); } catch { selectedNodeId = null; } updateUIDisabledStates(); event.preventDefault(); return; } } if (isInput && !isCM && !isSidebar) { if ((event.ctrlKey || event.metaKey) && ['a','c','x','v','z','y'].includes(event.key.toLowerCase())) return; if (!['Escape','Delete','Backspace'].includes(event.key)) return; } const ctrl = event.ctrlKey || event.metaKey; if (ctrl) { switch (event.key.toLowerCase()) { case 'z': if(!locked){ event.preventDefault(); undo(); } break; case 'y': if(!locked){ event.preventDefault(); redo(); } break; case 'c': if(selectedNodeId && !locked){event.preventDefault(); copySelectedNode();} break; case 'v': if(!locked){event.preventDefault(); pasteNode();} break; case 'd': if(selectedNodeId && !locked){event.preventDefault(); duplicateSelectedNode();} break; case 's': event.preventDefault(); if (event.shiftKey) promptSaveAs(); else saveProject(currentProjectName); break; case 'o': event.preventDefault(); triggerLoad(); break; case 'r': if(recalculateButton && !locked){event.preventDefault(); recalculateAllNodesInCurrentModule();} break; } } else { switch (event.key) { case 'Delete': case 'Backspace': if (selectedNodeId && !isInput && !locked) { event.preventDefault(); deleteSelectedNode(); } break; } } } catch (e) { console.error("Keyboard shortcut error:", e); } });
 function isLocked() { return editor?.editor_mode === 'fixed'; }
 
 // --- Application Initialization ---
+// xocoflow_logic.js
+
+// ... (Asegúrate de que las funciones de bloqueo de nodo y menú contextual estén definidas antes de esta)
+// - getOrCreateLockIndicator
+// - updateNodeVisualLockState
+// - setNodeMovementLock
+// - toggleNodeMovementLock
+// - showCustomContextMenu
+// - hideCustomContextMenu
+// - handleClickOutsideContextMenu
+// Y la variable global:
+// let customContextMenu = null;
+// ...
+
 function initializeApp() {
     try {
         console.log("🚀 Initializing Xocoflow...");
@@ -3591,7 +4501,7 @@ function initializeApp() {
         zoomLevelSpan = checkElement('#zoom-level');
         nodePositionSpan = checkElement('#node-position');
         searchInput = checkElement('#node-search');
-        fileInputElement = checkElement('#file-input'); // <-- Se asigna aquí
+        fileInputElement = checkElement('#file-input');
         nodeDefinitionModal = checkElement('#nodeDefinitionModal');
         modalBackdrop = checkElement('#modalBackdrop');
         codeEditorSidebar = checkElement('#code-editor-sidebar');
@@ -3611,7 +4521,7 @@ function initializeApp() {
         }
         // --- End Attach Search Listener ---
 
-        // --- Attach File Input Listener --- <<<<< BLOQUE AÑADIDO AQUÍ
+        // --- Attach File Input Listener ---
         if (fileInputElement) {
             fileInputElement.addEventListener('change', loadProjectFromFile);
             console.log("File input listener attached.");
@@ -3638,7 +4548,7 @@ function initializeApp() {
         editor.start(); // Start Drawflow *after* instance created
         console.log("Drawflow started.");
 
-        setupDrawflowListeners(); // Attach event handlers *after* start
+        setupDrawflowListeners(); // Attach Drawflow-specific event handlers (editor.on(...))
 
         // --- Initial Module Setup ---
         const initialExport = editor.export(); const initialModules = initialExport?.drawflow;
@@ -3648,6 +4558,85 @@ function initializeApp() {
         console.log(`Initial active module: ${editor.module}`);
         // --- End Initial Module ---
 
+
+        // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        // +++ START: LISTENER PARA BLOQUEO DE MOVIMIENTO DE NODOS +++++++++++++++++++
+        // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        if (drawflowElement) {
+            drawflowElement.addEventListener('mousedown', (e) => {
+                // Descomenta los logs si necesitas depurar
+                // console.log("MOUSEDOWN on drawflowElement (capture phase). Target:", e.target, "Button:", e.button);
+
+                if (e.target.closest('.input') || e.target.closest('.output')) {
+                    // console.log("  -> Click on input/output port, ignoring for lock.");
+                    return;
+                }
+
+                const nodeElement = e.target.closest(".drawflow-node");
+                if (nodeElement) {
+                    const nodeId = nodeElement.id.slice(5);
+                    // console.log(`  -> Click targeted a node: ${nodeElement.id} (Node ID: ${nodeId})`);
+                    try {
+                        const node = editor.getNodeFromId(nodeId);
+                        if (!node) {
+                            // console.warn(`  -> Node data for ${nodeId} not found in editor!`);
+                            return;
+                        }
+                        // console.log(`  -> Node data from editor:`, JSON.parse(JSON.stringify(node.data)));
+                        
+                        const isNodeMovementLocked = node.data && node.data.isMovementLocked === true;
+                        // console.log(`  -> Is node movement locked (from node.data.isMovementLocked)? ${isNodeMovementLocked}`);
+
+                        if (isNodeMovementLocked) {
+                            const interactiveElements = 'input, textarea, select, button, [contenteditable="true"], a, .lock-indicator';
+                            const isInteractiveClick = e.target.matches(interactiveElements) || e.target.closest(interactiveElements);
+                            // console.log(`  -> Is click on an interactive element inside the node? ${isInteractiveClick}`);
+
+                            if (isInteractiveClick) {
+                                if (e.button === 0 && e.target.closest('.lock-indicator')) {
+                                    // console.log("  -> Click on lock indicator detected, toggling lock status.");
+                                    toggleNodeMovementLock(nodeId);
+                                    e.stopPropagation();
+                                    e.preventDefault();
+                                    return; 
+                                }
+                                // console.log("  -> Click on other interactive element, allowing event to proceed normally.");
+                                return; 
+                            }
+
+                            // console.log(`  >>> NODE ${nodeId} IS LOCKED & click was NOT on an interactive element. STOPPING EVENT PROPAGATION to prevent drag.`);
+                            e.stopPropagation(); // CRUCIAL: Stop event before Drawflow handles it for drag
+
+                            if (e.button === 0 && !nodeElement.classList.contains('selected')) {
+                                // console.log(`  -> Programmatically selecting locked node ${nodeId}.`);
+                                editor.selectNode(nodeElement.id);
+                            }
+                            
+                            if (e.button !== 2) { // Don't prevent default for right-click (context menu)
+                                // console.log("  -> Preventing default browser action for left/middle click on locked node.");
+                                e.preventDefault();
+                            } else {
+                                // console.log("  -> Right click on locked node, default not prevented (allows context menu).");
+                            }
+                        } else {
+                            // console.log(`  -> Node ${nodeId} is NOT locked. Allowing default Drawflow mousedown behavior.`);
+                        }
+                    } catch (error) {
+                        console.warn(`  -> Error during mousedown logic for node ${nodeId}:`, error);
+                    }
+                } else {
+                    // console.log("  -> Mousedown on canvas background (not on a node).");
+                }
+            }, true); // Use CAPTURE phase
+            console.log("Mousedown listener for movement lock attached to drawflowElement in CAPTURE phase.");
+        } else {
+            console.error("drawflowElement (editor container) not found! Cannot attach mousedown listener for movement lock.");
+        }
+        // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        // +++ END: LISTENER PARA BLOQUEO DE MOVIMIENTO DE NODOS +++++++++++++++++++++
+        // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
         loadCustomNodesToSidebar();
         renderModuleTabs();
         initializeHistory();
@@ -3655,7 +4644,7 @@ function initializeApp() {
         updateZoomStatus(editor.zoom);
         updateNodePositionStatus(null);
         document.title = `Xocoflow | ${currentProjectName} - ${editor.module}`;
-        changeMode('edit');
+        changeMode('edit'); // Asegura que el editor general esté desbloqueado al inicio
 
         const currentModuleData = editor.export()?.drawflow?.[editor.module]?.data ?? {};
         if (Object.keys(currentModuleData).length === 0) { addWelcomeNode(editor.module); saveHistoryState(true); }
@@ -3672,7 +4661,6 @@ function initializeApp() {
         showInitializationError(`Initialization failed: ${error.message}`);
     }
 }
-
 
 
 

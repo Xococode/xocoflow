@@ -485,3 +485,208 @@ header h2 { margin: 0; line-height: 50px; font-size: 1.6em; font-weight: 700; co
 }
 
 /* === END OF FILE beautiful.css === */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* === Custom Context Menu === */
+.custom-context-menu {
+  position: fixed; /* Use fixed para evitar problemas con scroll del contenedor Drawflow */
+  z-index: 10000;
+  background-color: var(--background-color);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  box-shadow: var(--box-shadow-medium);
+  padding: 5px 0;
+  min-width: 200px;
+  font-size: var(--font-size-small);
+  color: var(--text-dark);
+}
+.custom-context-menu ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.custom-context-menu ul li {
+  padding: 9px 15px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+.custom-context-menu ul li:hover {
+  background-color: var(--background-hover-light);
+  color: var(--primary-dark-color);
+}
+.custom-context-menu ul li i {
+  color: var(--text-medium);
+  width: 16px;
+  text-align: center;
+  font-size: 0.95em;
+}
+.custom-context-menu ul li:hover i {
+  color: var(--primary-dark-color);
+}
+.custom-context-menu hr {
+  border: none;
+  border-top: 1px solid var(--border-light-color);
+  margin: 5px 0;
+}
+
+/* === Node Lock Indicator === */
+.drawflow-node .title-box .lock-indicator {
+  margin-left: auto; /* Pushes it to the far right of the title-box */
+  padding-left: 8px; /* Space from any element to its left */
+  font-size: 0.9em;  /* Slightly smaller than title text */
+  color: var(--text-medium);
+  opacity: 0.6;
+  display: inline-flex;
+  align-items: center;
+}
+.drawflow-node.selected .title-box .lock-indicator {
+  color: var(--primary-dark-color); /* Match selected node's icon color */
+  opacity: 0.8;
+}
+.drawflow-node .title-box .lock-indicator.locked {
+  color: var(--warning-color); /* Prominent color when locked */
+  opacity: 1;
+}
+.drawflow-node .title-box .lock-indicator i {
+  color: inherit !important; /* Make sure FontAwesome icon inherits color */
+}
+
+
+
+
+
+
+
+
+
+/* === START OF FILE beautiful.css === */
+/* ... (tus estilos existentes) ... */
+
+/* --- Estilos Específicos Nodos --- */
+/* ... (otros estilos de nodos como text-node, concatenate-node, etc.) ... */
+
+/* Estilos base para el Nodo Selección Verde (cuando NO está seleccionado) */
+.drawflow-node.green-selectable-node {
+  background-color: #f0f0f0; /* Un gris claro por defecto, o el que prefieras */
+  border-color: #cccccc;
+  width: 240px; /* Ajusta el ancho según necesites */
+}
+
+.drawflow-node.green-selectable-node .title-box {
+  background-color: #e0e0e0; /* Un gris un poco más oscuro para el título */
+  color: var(--text-dark);
+  border-bottom-color: #bdbdbd;
+}
+
+.drawflow-node.green-selectable-node .title-box i {
+  color: #689f38; /* Icono de hoja en un tono verde */
+}
+
+/* Estilos para el Nodo Selección Verde CUANDO ESTÁ SELECCIONADO */
+.drawflow .drawflow-node.green-selectable-node.selected {
+  /* Fondo del cuerpo del nodo: VERDE */
+  background-color: #c8e6c9; /* Un verde claro, ej: var(--success-light-color) */
+  
+  /* Borde del nodo: Un verde más oscuro o el primario de selección */
+  border-color: var(--success-color); /* O var(--primary-color) si prefieres el borde de selección azul */
+
+  /* La sombra de selección (difuminado azul) provendrá de la regla general:
+     .drawflow .drawflow-node.selected {
+         box-shadow: 0 0 0 3px var(--focus-shadow-color), var(--box-shadow-medium);
+     }
+     Si quieres que la SOMBRA también sea verde, deberás sobrescribir 'box-shadow' aquí:
+     box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.3), var(--box-shadow-medium);
+  */
+}
+
+/* Opcional: Cambiar el estilo del título cuando el nodo está seleccionado */
+.drawflow .drawflow-node.green-selectable-node.selected .title-box {
+  background-color: var(--success-color); /* Fondo del título en verde más oscuro */
+  color: var(--text-on-primary); /* Texto blanco para contraste */
+  border-bottom-color: var(--success-dark-color);
+}
+
+.drawflow .drawflow-node.green-selectable-node.selected .title-box i {
+  color: var(--text-on-primary); /* Icono también en blanco */
+}
+
+/* ... (resto de tus estilos) ... */
+/* === END OF FILE beautiful.css === */
+
+
+
+
+
+
+/* === START OF FILE beautiful.css === */
+/* ... (tus estilos existentes) ... */
+
+/* --- Estilos Específicos Nodos --- */
+/* ... (otros estilos de nodos) ... */
+
+/* Estilos base para el Nodo Selección Rojo Claro (cuando NO está seleccionado) */
+/* Usamos la clase 'base-style-for-red-node' que definimos en el JS */
+.drawflow-node.base-style-for-red-node {
+  background-color: #f3e5f5; /* Un lila muy claro por defecto, por ejemplo */
+  border-color: #ce93d8;
+  width: 250px; /* Ajusta el ancho según necesites */
+}
+
+.drawflow-node.base-style-for-red-node .title-box {
+  background-color: #ba68c8; /* Un lila más oscuro para el título */
+  color: var(--text-on-primary);
+  border-bottom-color: #ab47bc;
+}
+
+.drawflow-node.base-style-for-red-node .title-box i {
+  color: #f44336; /* Icono de fuego en rojo */
+}
+
+/* Estilos para el Nodo Selección Rojo Claro CUANDO ESTÁ SELECCIONADO */
+/* Usamos la clase 'light-red-selectable-node' */
+.drawflow .drawflow-node.light-red-selectable-node.selected {
+  /* Fondo del cuerpo del nodo: ROJO CLARO */
+  background-color: #ffcdd2; /* Un rojo claro, ej: var(--danger-light-color) */
+  
+  /* Borde del nodo: Un rojo más oscuro o el primario de selección */
+  border-color: var(--danger-color); /* O var(--primary-color) si prefieres el borde de selección azul */
+
+  /*
+     Nota sobre la sombra de selección:
+     Por defecto, heredará la sombra azul de la regla general .drawflow .drawflow-node.selected.
+     Si quieres que la SOMBRA también sea roja, puedes DESCOMENTAR la siguiente línea 
+     y ajustar el color (rgba(239, 83, 80, 0.3) es un ejemplo de rojo semitransparente).
+  */
+  /* box-shadow: 0 0 0 3px rgba(239, 83, 80, 0.3), var(--box-shadow-medium); */
+}
+
+/* Opcional: Cambiar el estilo del título cuando el nodo está seleccionado */
+.drawflow .drawflow-node.light-red-selectable-node.selected .title-box {
+  background-color: var(--danger-color); /* Fondo del título en rojo más oscuro */
+  color: var(--text-on-primary); /* Texto blanco para contraste */
+  border-bottom-color: var(--danger-dark-color); /* ej. #c62828 */
+}
+
+.drawflow .drawflow-node.light-red-selectable-node.selected .title-box i {
+  color: var(--text-on-primary); /* Icono también en blanco */
+}
+
+/* ... (resto de tus estilos) ... */
+/* === END OF FILE beautiful.css === */
