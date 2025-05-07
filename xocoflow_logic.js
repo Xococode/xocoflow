@@ -1,8 +1,8 @@
 // === START OF COMPLETE xocoflow_logic.js ===
-// Version: 1.7.6 - Node Resizing and Enhanced Auto Replace
+// Version: 1.7.8 - Capitalize Words Node & Enhanced Context Menu
 "use strict";
 
-console.log("Xocoflow Script: Initializing (v1.7.6)...");
+console.log("Xocoflow Script: Initializing (v1.7.8)...");
 
 // --- Constants ---
 const DRAWFLOW_CONTAINER_ID = "drawflow";
@@ -129,39 +129,110 @@ function toggleNodeMovementLock(nodeId) {
     }
 }
 
-// --- Custom Context Menu ---
+// --- Custom Context Menu (UPDATED) ---
 function showCustomContextMenu(event, nodeId) {
     event.preventDefault();
     event.stopPropagation();
-    hideCustomContextMenu();
+    hideCustomContextMenu(); // Close any existing menu
 
     const node = editor.getNodeFromId(nodeId);
     if (!node) return;
     const currentData = node.data || {};
     const isNodeLocked = currentData.isMovementLocked === true;
+    const generalLock = isLocked(); // Check if the whole editor is locked
+    const canPasteHere = copiedNodeData !== null; // Check if there's data to paste
 
     customContextMenu = document.createElement('div');
     customContextMenu.className = 'custom-context-menu';
     const ul = document.createElement('ul');
 
+    // --- Lock/Unlock ---
     const lockLi = document.createElement('li');
     lockLi.innerHTML = `<i class="fas ${isNodeLocked ? 'fa-lock-open' : 'fa-lock'}"></i> <span>${isNodeLocked ? 'Desbloquear Movimiento' : 'Bloquear Movimiento'}</span>`;
-    lockLi.onclick = (e) => { e.stopPropagation(); toggleNodeMovementLock(nodeId); hideCustomContextMenu(); };
+    if (generalLock) {
+        lockLi.style.opacity = '0.5';
+        lockLi.style.cursor = 'not-allowed';
+        lockLi.title = 'Desbloquea el editor general para cambiar bloqueo';
+    } else {
+        lockLi.onclick = (e) => { 
+            e.stopPropagation(); 
+            toggleNodeMovementLock(nodeId); 
+            hideCustomContextMenu(); 
+        };
+    }
     ul.appendChild(lockLi);
 
-    const hr = document.createElement('hr');
-    ul.appendChild(hr);
+    // --- Separator ---
+    ul.appendChild(document.createElement('hr'));
 
+    // --- Copy ---
+    const copyLi = document.createElement('li');
+    copyLi.innerHTML = '<i class="fas fa-copy"></i> <span>Copiar Nodo</span>';
+    if (generalLock) {
+        copyLi.style.opacity = '0.5';
+        copyLi.style.cursor = 'not-allowed';
+        copyLi.title = 'Desbloquea el editor para copiar';
+    } else {
+        copyLi.onclick = (e) => { 
+            e.stopPropagation(); 
+            copySelectedNode(); // Assumes the context menu appears on a selected node
+            hideCustomContextMenu(); 
+        };
+    }
+    ul.appendChild(copyLi);
+
+    // --- Paste ---
+    const pasteLi = document.createElement('li');
+    pasteLi.innerHTML = '<i class="fas fa-paste"></i> <span>Pegar Nodo</span>';
+    if (generalLock || !canPasteHere) {
+        pasteLi.style.opacity = '0.5';
+        pasteLi.style.cursor = 'not-allowed';
+        pasteLi.title = generalLock ? 'Desbloquea el editor para pegar' : 'No hay nada copiado para pegar';
+    } else {
+        pasteLi.onclick = (e) => { 
+            e.stopPropagation(); 
+            pasteNode(); 
+            hideCustomContextMenu(); 
+        };
+    }
+    ul.appendChild(pasteLi);
+
+    // --- Duplicate ---
+    const duplicateLi = document.createElement('li');
+    duplicateLi.innerHTML = '<i class="fas fa-clone"></i> <span>Duplicar Nodo</span>';
+     if (generalLock) {
+        duplicateLi.style.opacity = '0.5';
+        duplicateLi.style.cursor = 'not-allowed';
+        duplicateLi.title = 'Desbloquea el editor para duplicar';
+    } else {
+        duplicateLi.onclick = (e) => { 
+            e.stopPropagation(); 
+            duplicateSelectedNode(); // Assumes the context menu appears on a selected node
+            hideCustomContextMenu(); 
+        };
+    }
+    ul.appendChild(duplicateLi);
+
+    // --- Separator ---
+    ul.appendChild(document.createElement('hr'));
+
+    // --- Delete ---
     const deleteLi = document.createElement('li');
-    deleteLi.innerHTML = '<i class="fas fa-trash-alt"></i> <span>Eliminar Nodo</span>';
-    deleteLi.onclick = (e) => {
-        e.stopPropagation();
-        if (isLocked()) { showToast('warning', 'Editor Bloqueado', 'Desbloquea el editor para eliminar nodos.'); hideCustomContextMenu(); return; }
-        editor.removeNodeId(`node-${nodeId}`);
-        hideCustomContextMenu();
-    };
+    deleteLi.innerHTML = '<i class="fas fa-trash-alt" style="color: #d32f2f;"></i> <span style="color: #d32f2f;">Eliminar Nodo</span>';
+    if (generalLock) {
+        deleteLi.style.opacity = '0.5';
+        deleteLi.style.cursor = 'not-allowed';
+        deleteLi.title = 'Desbloquea el editor para eliminar';
+    } else {
+        deleteLi.onclick = (e) => {
+            e.stopPropagation();
+            editor.removeNodeId(`node-${nodeId}`); // removeNodeId triggers history save via listener
+            hideCustomContextMenu();
+        };
+    }
     ul.appendChild(deleteLi);
 
+    // --- Append and Position Menu ---
     customContextMenu.appendChild(ul);
     document.body.appendChild(customContextMenu);
 
@@ -176,11 +247,13 @@ function showCustomContextMenu(event, nodeId) {
     customContextMenu.style.top = `${y}px`;
     customContextMenu.style.left = `${x}px`;
 
+    // Add listeners to close the menu
     setTimeout(() => {
         document.addEventListener('click', handleClickOutsideContextMenu, true);
-        document.addEventListener('contextmenu', handleClickOutsideContextMenu, true);
+        document.addEventListener('contextmenu', handleClickOutsideContextMenu, true); // Also close on another context menu click
     }, 0);
 }
+
 
 function hideCustomContextMenu() {
     if (customContextMenu) {
@@ -226,6 +299,8 @@ function startNodeResize(event, nodeId, resizerElement) {
     if (drawflowElement) drawflowElement.style.userSelect = 'none';
 }
 
+// En xocoflow_logic.js
+
 function duringNodeResize(event) {
     if (!isResizingNode || !resizingNodeInfo.id) return;
     event.preventDefault();
@@ -237,16 +312,56 @@ function duringNodeResize(event) {
     const deltaX = (event.clientX - resizingNodeInfo.initialMouseX) / zoomFactor;
     const deltaY = (event.clientY - resizingNodeInfo.initialMouseY) / zoomFactor;
 
-    let newWidth = resizingNodeInfo.initialNodeWidth + deltaX;
-    let newHeight = resizingNodeInfo.initialNodeHeight + deltaY;
+    let newContainerWidth = resizingNodeInfo.initialNodeWidth + deltaX;
+    let newContainerHeight = resizingNodeInfo.initialNodeHeight + deltaY;
 
-    const minWidth = 100; 
-    const minHeight = 60;
-    if (newWidth < minWidth) newWidth = minWidth;
-    if (newHeight < minHeight) newHeight = minHeight;
+    const minContainerWidth = 100; 
+    const minContainerHeight = 80; // Un mínimo para el contenedor del nodo
+    if (newContainerWidth < minContainerWidth) newContainerWidth = minContainerWidth;
+    if (newContainerHeight < minContainerHeight) newContainerHeight = minContainerHeight;
 
-    nodeElement.style.width = `${newWidth}px`;
-    nodeElement.style.height = `${newHeight}px`;
+    nodeElement.style.width = `${newContainerWidth}px`;
+    nodeElement.style.height = `${newContainerHeight}px`; // Redimensiona el nodo completo
+
+    // --- INICIO: Lógica para redimensionar Textarea ---
+    const boxElement = nodeElement.querySelector('.box');
+    const targetTextarea = boxElement ? boxElement.querySelector('textarea[df-content], textarea[df-notecontent], textarea[df-jscode], textarea[df-codecontent], textarea[df-mytext], textarea[df-original], textarea[df-lastInput], textarea[df-result], textarea[df-template], textarea') : null;
+    // Prioriza textareas con atributos df-* comunes, luego cualquier textarea.
+
+    if (targetTextarea && boxElement) {
+        // Calcular la altura disponible para el textarea dentro del .box
+        // Esto es una aproximación y puede necesitar ajustes según tu padding, márgenes, y otros elementos en .box
+        
+        const titleBoxHeight = nodeElement.querySelector('.title-box')?.offsetHeight || 35;
+        const boxPaddingTop = parseFloat(getComputedStyle(boxElement).paddingTop) || 0;
+        const boxPaddingBottom = parseFloat(getComputedStyle(boxElement).paddingBottom) || 0;
+        const resizerHeight = nodeElement.querySelector('.node-resizer')?.offsetHeight || 0;
+        
+        let otherElementsHeightInBox = 0;
+        // Sumar la altura de otros elementos DENTRO del .box que NO sean el targetTextarea
+        Array.from(boxElement.children).forEach(child => {
+            if (child !== targetTextarea && getComputedStyle(child).display !== 'none') {
+                const style = getComputedStyle(child);
+                otherElementsHeightInBox += child.offsetHeight;
+                otherElementsHeightInBox += parseFloat(style.marginTop) || 0;
+                otherElementsHeightInBox += parseFloat(style.marginBottom) || 0;
+            }
+        });
+        
+        // Altura disponible para el textarea
+        let availableHeightForTextarea = newContainerHeight - titleBoxHeight - boxPaddingTop - boxPaddingBottom - otherElementsHeightInBox - (resizerHeight > 0 ? 5 : 0) /* un pequeño margen si el resizer está visible y abajo */;
+
+        const minTextareaHeight = 30; // Mínima altura para el textarea
+        if (availableHeightForTextarea < minTextareaHeight) {
+            availableHeightForTextarea = minTextareaHeight;
+        }
+        
+        targetTextarea.style.height = `${availableHeightForTextarea}px`;
+        // targetTextarea.style.width = '100%'; // Asegurar que el ancho sea 100% del .box
+        // console.log(`Resizing textarea in node ${resizingNodeInfo.id} to height: ${availableHeightForTextarea}px`);
+    }
+    // --- FIN: Lógica para redimensionar Textarea ---
+
     editor.updateConnectionNodes(`node-${resizingNodeInfo.id}`);
 }
 
@@ -279,7 +394,7 @@ function stopNodeResize() {
     saveHistoryState();
 }
 
-// --- Base Node Definitions ---
+// --- Base Node Definitions (UPDATED) ---
 const baseNodeDefinitions = {
     'texto': { name: 'texto', inputs: 1, outputs: 1, html: `<div><div class="title-box"><i class="fas fa-paragraph"></i> Texto</div><div class="box"><label>Contenido:</label><textarea df-content readonly style="height: 80px;" placeholder="..."></textarea><button type="button" class="edit-code-btn" onclick="openEditorForNode(event)"><i class="fas fa-edit"></i> Editar Contenido</button><p class="help-text">Edita en panel lateral.</p></div></div>`, cssClass: 'text-node', data: { content: '' } },
     'concatenar': { name: 'concatenar', inputs: 1, outputs: 1, html: `<div><div class="title-box"><i class="fas fa-link"></i> Concatenar</div><div class="box" style="text-align: center; font-size: 11px; color: #777; padding: 20px 5px;">Concatena entradas<br>(orden Y)<input type="hidden" df-result></div></div>`, cssClass: 'concatenate-node', data: { result: '' } },
@@ -350,6 +465,24 @@ const baseNodeDefinitions = {
     'hybrid_text_replace': { name: 'hybrid_text_replace', inputs: 1, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-edit"></i> Reemplazo Híbrido</div> <div class="box"> <label>Texto Original (Prioriza Input 1 si está conectado):</label> <textarea df-original style="height: 60px;" placeholder="Escribe aquí o conecta Input 1..."></textarea> <input type="hidden" df-lastInput> <label>Buscar:</label> <input type="text" df-find placeholder="Texto a buscar"> <label>Reemplazar con:</label> <input type="text" df-replace placeholder="Nuevo texto"> <button type="button" onclick="executeHybridReplace(event)" style="width: 100%; margin-top: 10px; padding: 8px; background-color: #FF9800; color: white; border: none; border-radius: 4px; cursor: pointer;"> <i class="fas fa-check"></i> Aplicar Reemplazo Manualmente </button> <div style="margin-top:10px;"> <label>Resultado:</label> <textarea df-result readonly style="height: 60px; width: 100%; background-color: var(--background-readonly);"></textarea> </div> </div> <div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div> </div>`, cssClass: 'hybrid-replace-node resizable-node-class', data: { original: '', find: '', replace: '', lastInput: null, result: '', nodeWidth: '260px', nodeHeight: 'auto' } },
     'nodo_seleccion_verde': { name: 'nodo_seleccion_verde', title: 'Nodo Selección Verde', inputs: 1, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-leaf"></i> Selección Verde</div> <div class="box"> <p style="text-align: center; padding: 10px 0;"> Este nodo se pone verde<br>cuando lo seleccionas. </p> <input type="text" df-sampledata placeholder="Dato de ejemplo..."> </div> <div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div></div>`, cssClass: 'green-selectable-node resizable-node-class', data: { sampledata: '', nodeWidth: '240px', nodeHeight: 'auto' } },
     'nodo_seleccion_rojo_claro': { name: 'nodo_seleccion_rojo_claro', title: 'Nodo Selección Rojo Claro', inputs: 1, outputs: 0, html: `<div> <div class="title-box"><i class="fas fa-fire-alt"></i> Selección Rojo Claro</div> <div class="box"> <p style="text-align: center; padding: 10px 0;"> Este nodo se pone rojo claro<br>cuando lo seleccionas. </p> <input type="number" df-priority placeholder="Prioridad (ej: 1-5)"> </div> <div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div></div>`, cssClass: 'light-red-selectable-node base-style-for-red-node resizable-node-class', data: { priority: null, nodeWidth: '250px', nodeHeight: 'auto' } },
+    // START: Modified & New Node Definitions
+    'text_capitalize_words': { // Renamed from text_capitalize_all
+        name: 'text_capitalize_words', 
+        inputs: 1, 
+        outputs: 1, 
+        html: `<div> <div class="title-box"><i class="fas fa-font-case"></i> Capitalizar Palabras</div> <div class="box"> <p class="help-text">Pone en mayúscula la primera letra de CADA palabra.</p> <textarea df-result readonly style="height: 60px;"></textarea> </div> </div>`, // Updated icon and description
+        cssClass: 'capitalize-words-node', 
+        data: { result: '', lastInput: null } 
+    },
+    'text_capitalize_first': { 
+        name: 'text_capitalize_first', 
+        inputs: 1, 
+        outputs: 1, 
+        html: `<div> <div class="title-box"><i class="fas fa-pen-fancy"></i> Capitalizar Primera</div> <div class="box"> <p class="help-text">Pone en mayúscula la primera letra del texto y el resto en minúsculas.</p> <textarea df-result readonly style="height: 60px;"></textarea> </div> </div>`, 
+        cssClass: 'capitalize-first-node', 
+        data: { result: '', lastInput: null } 
+    },
+    // END: Modified & New Node Definitions
 };
 console.log("Base node definitions loaded:", Object.keys(baseNodeDefinitions).length);
 
@@ -1672,16 +1805,34 @@ function executeTextCase(nodeId, inputValue, mode) {
 }
 
 
+// START: Updated Execution Functions for Capitalize Nodes
+/**
+ * Pone en mayúscula la primera letra de cada palabra en el texto de entrada.
+ * @param {string} nodeId - ID del nodo.
+ * @param {string} inputValue - El texto de entrada.
+ */
+function executeCapitalizeWords(nodeId, inputValue) {
+    // console.log(`Executing Capitalize Words: Node ${nodeId}`);
+    const text = String(inputValue ?? '');
+    let result = text.toLowerCase().replace(/\b\w/g, char => char.toUpperCase());
+    updateNodeResult(nodeId, result);
+}
 
-
-
-
-
-
-
-
-
-
+/**
+ * Pone en mayúscula la primera letra del texto y el resto en minúsculas.
+ * @param {string} nodeId - ID del nodo.
+ * @param {string} inputValue - El texto de entrada.
+ */
+function executeCapitalizeFirstLetter(nodeId, inputValue) {
+    // console.log(`Executing Capitalize First Letter: Node ${nodeId}`);
+    const text = String(inputValue ?? '');
+    let result = '';
+    if (text.length > 0) {
+        result = text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
+    }
+    updateNodeResult(nodeId, result);
+}
+// END: Updated Execution Functions for Capitalize Nodes
 
 
 
@@ -1972,9 +2123,6 @@ function getValueFromJsonPath(json, path) {
     
     return current;
 }
-
-
-
 
 
 
@@ -2523,18 +2671,20 @@ function propagateData(sourceNodeId, sourceNodeName, changedKey, outputData) {
                 const ta = el?.querySelector('textarea[df-savecontent]');
                 if (ta) ta.value = v;
             }
-            else if (['text_replace', 'text_split', 'text_uppercase', 'text_lowercase', 'text_length', 'html_strip'].includes(targetNodeName) && targetInputPortName === 'input_1') {
+            // UPDATED: Included text_capitalize_words
+            else if (['text_replace', 'text_split', 'text_uppercase', 'text_lowercase', 'text_length', 'html_strip', 'text_capitalize_words', 'text_capitalize_first'].includes(targetNodeName) && targetInputPortName === 'input_1') { 
                 const inputText = String(dataToPropagate ?? '');
                 editor.updateNodeDataFromId(targetId, { lastInput: inputText }); // Guardar el input
                 setTimeout(() => {
                     try {
-                        // Las funciones de ejecución deben leer find/separator de node.data y usar el inputText
                         if (targetNodeName === 'text_uppercase') executeTextCase(targetId, inputText, 'upper');
                         else if (targetNodeName === 'text_lowercase') executeTextCase(targetId, inputText, 'lower');
                         else if (targetNodeName === 'text_replace') executeTextReplace(targetId, inputText);
                         else if (targetNodeName === 'text_split') executeTextSplit(targetId, inputText);
                         else if (targetNodeName === 'text_length') executeTextLength(targetId, inputText);
                         else if (targetNodeName === 'html_strip') executeHtmlStrip(targetId, inputText);
+                        else if (targetNodeName === 'text_capitalize_words') executeCapitalizeWords(targetId, inputText); // Changed from _all to _words
+                        else if (targetNodeName === 'text_capitalize_first') executeCapitalizeFirstLetter(targetId, inputText); 
                     } catch (execError) { console.error(`Error executing text op for ${targetNodeName} (${targetId}):`, execError); }
                 }, 0);
             }
@@ -2588,7 +2738,7 @@ function addDraggableItemToSidebar(nodeDef) { if (!nodesListContainer || !nodeDe
 function loadCustomNodesToSidebar() { if (!nodesListContainer) return; try { const stored = getStoredCustomNodeTypes(); customNodeTypes = { ...baseNodeDefinitions, ...stored }; console.log("Node types loaded:", Object.keys(customNodeTypes).length); nodesListContainer.innerHTML = ''; if (nodeDefinitionModal) { const btn = document.createElement('div'); btn.className = 'create-node-button'; btn.setAttribute('role', 'button'); btn.innerHTML = '<i class="fas fa-plus-circle"></i><span>&nbsp;&nbsp;Create Node Type</span>'; btn.title = 'Define new custom node type'; btn.onclick = openNodeDefinitionModal; nodesListContainer.appendChild(btn); } const defs = Object.values(customNodeTypes).sort((a, b) => (a.title || a.name).localeCompare(b.title || b.name)); defs.forEach(addDraggableItemToSidebar); filterNodes(); } catch (e) { console.error("Fatal sidebar load error:", e); showToast('error', 'Sidebar Error', 'Error loading nodes.'); } }
 function openNodeDefinitionModal() { if (!nodeDefinitionModal || !modalBackdrop) { showToast('error','Error','Modal not available.'); return; } document.getElementById('newNodeTypeName').value = ''; document.getElementById('newNodeTypeTitle').value = ''; document.getElementById('newNodeInputs').value = '1'; document.getElementById('newNodeOutputs').value = '1'; document.getElementById('newNodeCssClass').value = ''; document.getElementById('newNodeHtmlContent').value = `<div>\n  <div class="title-box"><i class="fas fa-cogs"></i> My Node</div>\n  <div class="box">\n    <label>Data:</label>\n    <input type="text" df-mydata placeholder="Value...">\n  </div>\n <div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div></div>`; document.getElementById('newNodeInitialData').value = `{ "mydata": "", "nodeWidth": "220px", "nodeHeight": "auto" }`; nodeDefinitionModal.style.display = 'block'; modalBackdrop.style.display = 'block'; document.getElementById('newNodeTypeName').focus(); }
 function closeNodeDefinitionModal() { if (!nodeDefinitionModal || !modalBackdrop) return; nodeDefinitionModal.style.display = 'none'; modalBackdrop.style.display = 'none'; }
-function saveNewNodeType() { const nameIn=document.getElementById('newNodeTypeName'), titleIn=document.getElementById('newNodeTypeTitle'), inputsIn=document.getElementById('newNodeInputs'), outputsIn=document.getElementById('newNodeOutputs'), cssIn=document.getElementById('newNodeCssClass'), htmlIn=document.getElementById('newNodeHtmlContent'), dataIn=document.getElementById('newNodeInitialData'); if(!nameIn||!titleIn||!inputsIn||!outputsIn||!cssIn||!htmlIn||!dataIn) { showToast('error','Internal Error','Modal fields missing.'); return; } const name=nameIn.value.trim().toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,''); const title=titleIn.value.trim(); const inputs=parseInt(inputsIn.value,10); const outputs=parseInt(outputsIn.value,10); const cssClass=(cssIn.value.trim()||`${name}-node`) + " resizable-node-class"; const html=htmlIn.value.trim(); if(!name) { showToast('error','Validation Error','Internal name required.'); nameIn.focus(); return; } if(customNodeTypes[name]) { showToast('error','Validation Error',`Name "${name}" exists.`); nameIn.focus(); return; } if(isNaN(inputs)||inputs<0||isNaN(outputs)||outputs<0) { showToast('error','Validation Error','Inputs/Outputs >= 0.'); return; } if(!html) { showToast('error','Validation Error','HTML empty.'); htmlIn.focus(); return; } let iData={ nodeWidth: "220px", nodeHeight: "auto"}; if(dataStr) { try { const parsedData =JSON.parse(dataStr); if(typeof parsedData!=='object'||parsedData===null||Array.isArray(parsedData)) throw new Error("JSON must be object."); iData = {...iData, ...parsedData}; } catch (e) { showToast('error','JSON Error',`Initial Data: ${e.message}`); dataIn.focus(); return; } } else { try { const tmp=document.createElement('div'); tmp.innerHTML=html; tmp.querySelectorAll('[df-]').forEach(el=>{ for(const a of el.attributes) if(a.name.startsWith('df-')){ const k=a.name.substring(3); if(!iData.hasOwnProperty(k)) iData[k]=el.value??el.textContent??''; } }); } catch(e){console.warn("Infer data error:", e);} } if (!html.includes('class="node-resizer"')) { showToast('warning', 'Resizer Missing', 'Añade <div class="node-resizer"><i class="fas fa-expand-alt"></i></div> al HTML si quieres que sea redimensionable.');} const def={name,title,inputs,outputs,html,data:iData,cssClass}; customNodeTypes[name]=def; saveCustomNodeTypes(customNodeTypes); addDraggableItemToSidebar(def); const item=nodesListContainer.querySelector(`[data-node="${name}"]`); item?.scrollIntoView({behavior:'smooth',block:'nearest'}); showToast('success','Success',`Type "${title||name}" added.`); closeNodeDefinitionModal(); }
+function saveNewNodeType() { const nameIn=document.getElementById('newNodeTypeName'), titleIn=document.getElementById('newNodeTypeTitle'), inputsIn=document.getElementById('newNodeInputs'), outputsIn=document.getElementById('newNodeOutputs'), cssIn=document.getElementById('newNodeCssClass'), htmlIn=document.getElementById('newNodeHtmlContent'), dataIn=document.getElementById('newNodeInitialData'); if(!nameIn||!titleIn||!inputsIn||!outputsIn||!cssIn||!htmlIn||!dataIn) { showToast('error','Internal Error','Modal fields missing.'); return; } const name=nameIn.value.trim().toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,''); const title=titleIn.value.trim(); const inputs=parseInt(inputsIn.value,10); const outputs=parseInt(outputsIn.value,10); const cssClass=(cssIn.value.trim()||`${name}-node`) + " resizable-node-class"; const html=htmlIn.value.trim(); if(!name) { showToast('error','Validation Error','Internal name required.'); nameIn.focus(); return; } if(customNodeTypes[name]) { showToast('error','Validation Error',`Name "${name}" exists.`); nameIn.focus(); return; } if(isNaN(inputs)||inputs<0||isNaN(outputs)||outputs<0) { showToast('error','Validation Error','Inputs/Outputs >= 0.'); return; } if(!html) { showToast('error','Validation Error','HTML empty.'); htmlIn.focus(); return; } let iData={ nodeWidth: "220px", nodeHeight: "auto"}; const dataStr = dataIn.value.trim(); if(dataStr) { try { const parsedData =JSON.parse(dataStr); if(typeof parsedData!=='object'||parsedData===null||Array.isArray(parsedData)) throw new Error("JSON must be object."); iData = {...iData, ...parsedData}; } catch (e) { showToast('error','JSON Error',`Initial Data: ${e.message}`); dataIn.focus(); return; } } else { try { const tmp=document.createElement('div'); tmp.innerHTML=html; tmp.querySelectorAll('[df-]').forEach(el=>{ for(const a of el.attributes) if(a.name.startsWith('df-')){ const k=a.name.substring(3); if(!iData.hasOwnProperty(k)) iData[k]=el.value??el.textContent??''; } }); } catch(e){console.warn("Infer data error:", e);} } if (!html.includes('class="node-resizer"')) { showToast('warning', 'Resizer Missing', 'Añade <div class="node-resizer"><i class="fas fa-expand-alt"></i></div> al HTML si quieres que sea redimensionable.');} const def={name,title,inputs,outputs,html,data:iData,cssClass}; customNodeTypes[name]=def; saveCustomNodeTypes(customNodeTypes); addDraggableItemToSidebar(def); const item=nodesListContainer.querySelector(`[data-node="${name}"]`); item?.scrollIntoView({behavior:'smooth',block:'nearest'}); showToast('success','Success',`Type "${title||name}" added.`); closeNodeDefinitionModal(); }
 function promptDeleteNodeType(nodeTypeName) { if(!nodeTypeName) return; if(baseNodeDefinitions.hasOwnProperty(nodeTypeName)){ showToast('warning','Not Allowed',`Base node "${nodeTypeName}" cannot be deleted.`); return; } if(!customNodeTypes.hasOwnProperty(nodeTypeName) || !getStoredCustomNodeTypes().hasOwnProperty(nodeTypeName)){ showToast('error','Error',`Custom node "${nodeTypeName}" not found.`); return; } const title=customNodeTypes[nodeTypeName]?.title||nodeTypeName; Swal.fire({title:`Delete Type "${title}"?`, text:`Delete definition "${nodeTypeName}"? Existing nodes may fail. Irreversible!`, icon:'warning', showCancelButton:true, confirmButtonColor:'#d33', cancelButtonColor:'#3085d6', confirmButtonText:'Yes, delete type', cancelButtonText:'Cancel'}).then((res) => { if(res.isConfirmed){ try { delete customNodeTypes[nodeTypeName]; saveCustomNodeTypes(customNodeTypes); loadCustomNodesToSidebar(); showToast('success','Deleted',`Type "${title}" deleted.`); } catch(err){ console.error(`Err deleting ${nodeTypeName}:`,err); showToast('error','Error', 'Failed to delete.'); customNodeTypes[nodeTypeName] = getStoredCustomNodeTypes()[nodeTypeName]; } } }); }
 
 // --- History (Undo/Redo) ---
@@ -2819,7 +2969,7 @@ function saveProject(filename) {
         // Construye el objeto del proyecto a guardar
         const project = {
             appName: "Xocoflow",
-            version: "1.7.6", 
+            version: "1.7.8", // Updated version
             savedAt: new Date().toISOString(),
             customNodeDefinitions: customDefs,
             drawflow: drawflowData.drawflow 

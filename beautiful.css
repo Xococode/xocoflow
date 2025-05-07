@@ -229,7 +229,11 @@ header h2 { margin: 0; line-height: 50px; font-size: 1.6em; font-weight: 700; co
 .drawflow-node.selected .title-box i { color: var(--primary-dark-color); }
 .drawflow-node .box { padding: 12px; font-size: var(--font-size-small); color: var(--text-dark); }
 .drawflow-node .box input[type="text"], .drawflow-node .box input[type="number"], .drawflow-node .box input[type="url"], .drawflow-node .box input[type="date"], .drawflow-node .box input[type="time"], .drawflow-node .box input[type="color"], .drawflow-node .box input[type="range"], .drawflow-node .box select, .drawflow-node .box textarea { width: 100%; font-size: var(--font-size-small); min-height: 30px; line-height: 1.4; padding: 5px 8px; margin-bottom: 8px; border-radius: 3px; border: 1px solid var(--border-color); color: var(--text-dark); box-sizing: border-box; display: block; background-color: var(--background-color); transition: border-color var(--transition-fast), box-shadow var(--transition-fast); }
-.drawflow-node .box textarea { min-height: 60px; resize: vertical; }
+.drawflow-node .box textarea {
+  min-height: 60px; /* Establece una altura mínima para todos los textareas en los nodos */
+  resize: vertical; /* Permite el redimensionamiento vertical nativo del textarea (el tirador del navegador) */
+  /* overflow-y: auto;  Añade esto si no lo tienes, para que aparezca el scroll si el contenido es mayor */
+}
 .drawflow-node .box input:focus, .drawflow-node .box select:focus, .drawflow-node .box textarea:focus { border-color: var(--border-focus-color); box-shadow: 0 0 0 3px var(--focus-shadow-color); outline: none; }
 .drawflow-node .box input[readonly], .drawflow-node .box textarea[readonly] { background-color: var(--background-readonly); cursor: default; border-color: var(--border-light-color); }
 .drawflow-node .box label { font-size: var(--font-size-xsmall); display: block; margin-bottom: 4px; color: var(--text-medium); font-weight: 700; }
