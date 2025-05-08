@@ -490,11 +490,7 @@ header h2 { margin: 0; line-height: 50px; font-size: 1.6em; font-weight: 700; co
   justify-content: center;
 }
 
-.drawflow-node.youtube-minimal-node:has(iframe[src*="youtube.com/embed/"]) { /* If iframe has a youtube embed src */
-  border: none;
-  background-color: transparent; /* Or #000 for video players */
-  box-shadow: var(--box-shadow-light);
-}
+
 
 .youtube-minimal-node .youtube-minimal-content {
   width: 100%;
@@ -533,10 +529,23 @@ header h2 { margin: 0; line-height: 50px; font-size: 1.6em; font-weight: 700; co
   color: #cc0000;
 }
 
-/* Hide placeholder when video is loaded */
+
+
+/* REMOVE OR COMMENT THESE in beautiful.css */
+/*
+.drawflow-node.youtube-minimal-node:has(iframe[src*="youtube.com/embed/"]) {
+  border: none;
+  background-color: transparent; 
+  box-shadow: var(--box-shadow-light);
+}
 .youtube-minimal-node:has(iframe[src*="youtube.com/embed/"]) .youtube-placeholder {
   display: none;
 }
+.youtube-minimal-node iframe[df-youtubeiframe][src*="youtube.com/embed/"] {
+  display: block;
+}
+*/
+
 
 /* Style for the iframe itself */
 .youtube-minimal-node iframe[df-youtubeiframe] {
@@ -546,10 +555,7 @@ header h2 { margin: 0; line-height: 50px; font-size: 1.6em; font-weight: 700; co
   border: none; /* Remove iframe border */
 }
 
-/* Show iframe when it has a valid YouTube embed source */
-.youtube-minimal-node iframe[df-youtubeiframe][src*="youtube.com/embed/"] {
-  display: block;
-}
+
 
 .drawflow-node.youtube-minimal-node.selected {
   box-shadow: 0 0 0 3px var(--focus-shadow-color), var(--box-shadow-medium);

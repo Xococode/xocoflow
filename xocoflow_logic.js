@@ -1,8 +1,8 @@
 // === START OF COMPLETE xocoflow_logic.js ===
-// Version: 1.7.8 - Capitalize Words Node & Enhanced Context Menu
+// Version: 1.7.9 - YouTube IFrame Player API Integration
 "use strict";
 
-console.log("Xocoflow Script: Initializing (v1.7.8)...");
+console.log("Xocoflow Script: Initializing (v1.7.9)...");
 
 // --- Constants ---
 const DRAWFLOW_CONTAINER_ID = "drawflow";
@@ -19,7 +19,7 @@ let historyIndex = -1;
 let customNodeTypes = {};
 let copiedNodeData = null;
 let nodeIntervals = {};
-let customContextMenu = null; 
+let customContextMenu = null;
 
 // --- Node Resizing State ---
 let isResizingNode = false;
@@ -31,7 +31,6 @@ let resizingNodeInfo = {
     initialNodeHeight: 0,
     resizerElement: null
 };
-
 
 // --- CodeMirror State ---
 let codeMirrorEditor = null;
@@ -46,6 +45,28 @@ let drawflowElement, undoButton, redoButton, duplicateButton, copyButton, pasteB
     codeMirrorElement, codeEditorSaveButton, codeEditorCloseButton,
     editingNodeIdSpan, codeEditorTitleSpan;
 
+// --- YouTube IFrame API State ---
+let isYouTubeApiReady = false;
+let youtubeApiReadyQueue = []; // Queue for player initializations if API isn't ready yet
+let youtubePlayers = {};       // Stores YT.Player instances, keyed by nodeId (e.g., '5')
+
+/**
+ * This function is called automatically by the YouTube IFrame API script
+ * when it's loaded and ready.
+ */
+function onYouTubeIframeAPIReady() {
+    console.log("YouTube IFrame API is ready.");
+    isYouTubeApiReady = true;
+    // Process any player creation/update requests that were queued
+    while (youtubeApiReadyQueue.length > 0) {
+        const action = youtubeApiReadyQueue.shift();
+        try {
+            action();
+        } catch (e) {
+            console.error("Error processing YouTube API ready queue item:", e);
+        }
+    }
+}
 
 // --- Helper Function for DOM Checks (Defined Globally) ---
 function checkElement(selector, isCritical = false, message = `Element "${selector}" not found.`) {
@@ -79,7 +100,12 @@ function updateNodeVisualLockState(nodeId, isLocked) {
         const nodeElement = document.getElementById(`node-${nodeId}`);
         if (!nodeElement) return;
         const titleBox = nodeElement.querySelector('.title-box');
-        if (!titleBox) return;
+        // Handle nodes like youtube_minimal that don't have a .title-box
+        if (!titleBox) {
+            // Maybe add a visual indicator elsewhere for these nodes?
+            // For now, just skip if no title-box
+            return;
+        }
         const indicator = getOrCreateLockIndicator(titleBox);
         if (!indicator) return;
 
@@ -154,10 +180,10 @@ function showCustomContextMenu(event, nodeId) {
         lockLi.style.cursor = 'not-allowed';
         lockLi.title = 'Desbloquea el editor general para cambiar bloqueo';
     } else {
-        lockLi.onclick = (e) => { 
-            e.stopPropagation(); 
-            toggleNodeMovementLock(nodeId); 
-            hideCustomContextMenu(); 
+        lockLi.onclick = (e) => {
+            e.stopPropagation();
+            toggleNodeMovementLock(nodeId);
+            hideCustomContextMenu();
         };
     }
     ul.appendChild(lockLi);
@@ -173,10 +199,10 @@ function showCustomContextMenu(event, nodeId) {
         copyLi.style.cursor = 'not-allowed';
         copyLi.title = 'Desbloquea el editor para copiar';
     } else {
-        copyLi.onclick = (e) => { 
-            e.stopPropagation(); 
+        copyLi.onclick = (e) => {
+            e.stopPropagation();
             copySelectedNode(); // Assumes the context menu appears on a selected node
-            hideCustomContextMenu(); 
+            hideCustomContextMenu();
         };
     }
     ul.appendChild(copyLi);
@@ -189,10 +215,10 @@ function showCustomContextMenu(event, nodeId) {
         pasteLi.style.cursor = 'not-allowed';
         pasteLi.title = generalLock ? 'Desbloquea el editor para pegar' : 'No hay nada copiado para pegar';
     } else {
-        pasteLi.onclick = (e) => { 
-            e.stopPropagation(); 
-            pasteNode(); 
-            hideCustomContextMenu(); 
+        pasteLi.onclick = (e) => {
+            e.stopPropagation();
+            pasteNode();
+            hideCustomContextMenu();
         };
     }
     ul.appendChild(pasteLi);
@@ -205,10 +231,10 @@ function showCustomContextMenu(event, nodeId) {
         duplicateLi.style.cursor = 'not-allowed';
         duplicateLi.title = 'Desbloquea el editor para duplicar';
     } else {
-        duplicateLi.onclick = (e) => { 
-            e.stopPropagation(); 
+        duplicateLi.onclick = (e) => {
+            e.stopPropagation();
             duplicateSelectedNode(); // Assumes the context menu appears on a selected node
-            hideCustomContextMenu(); 
+            hideCustomContextMenu();
         };
     }
     ul.appendChild(duplicateLi);
@@ -299,8 +325,6 @@ function startNodeResize(event, nodeId, resizerElement) {
     if (drawflowElement) drawflowElement.style.userSelect = 'none';
 }
 
-// En xocoflow_logic.js
-
 function duringNodeResize(event) {
     if (!isResizingNode || !resizingNodeInfo.id) return;
     event.preventDefault();
@@ -336,18 +360,12 @@ function duringNodeResize(event) {
 
     // --- Logic for redimensionar Textarea (if present) ---
     const boxElement = nodeElement.querySelector('.box');
-    // Prioritize textareas with df-* common attributes, then any textarea.
     const targetTextarea = boxElement ? boxElement.querySelector('textarea[df-content], textarea[df-notecontent], textarea[df-jscode], textarea[df-codecontent], textarea[df-mytext], textarea[df-original], textarea[df-lastInput], textarea[df-result], textarea[df-template], textarea') : null;
 
     if (targetTextarea && boxElement) {
         const titleBoxHeight = nodeElement.querySelector('.title-box')?.offsetHeight || 35;
         const boxPaddingTop = parseFloat(getComputedStyle(boxElement).paddingTop) || 0;
         const boxPaddingBottom = parseFloat(getComputedStyle(boxElement).paddingBottom) || 0;
-        const resizerElement = nodeElement.querySelector('.node-resizer');
-        const resizerHeight = resizerElement ? resizerElement.offsetHeight : 0;
-        // Only consider resizer height if it's actually part of the .box flow or visually overlaps
-        // For now, assume resizer is outside .box or its height is negligible for textarea calculation
-        // A small buffer might be added if resizer is visually at the bottom of the box.
 
         let otherElementsHeightInBox = 0;
         Array.from(boxElement.children).forEach(child => {
@@ -360,40 +378,18 @@ function duringNodeResize(event) {
         });
 
         let availableHeightForTextarea = newContainerHeight - titleBoxHeight - boxPaddingTop - boxPaddingBottom - otherElementsHeightInBox;
-        // If resizer is visually inside the box and at the bottom, subtract its height too.
-        // For now, this simple calculation. Add a small margin if needed.
-        // availableHeightForTextarea -= (resizerHeight > 0 ? 5 : 0);
-
-
         const minTextareaHeight = 30;
         if (availableHeightForTextarea < minTextareaHeight) {
             availableHeightForTextarea = minTextareaHeight;
         }
-
         targetTextarea.style.height = `${availableHeightForTextarea}px`;
-        // targetTextarea.style.width = '100%'; // Usually handled by CSS already
     }
     // --- END: Lógica para redimensionar Textarea ---
 
-
     // --- START: Specific logic for Image and YouTube Minimal Nodes ---
-    // These nodes don't have a '.box', their content (img/iframe) is directly inside
-    if (nodeElement.classList.contains('image-minimal-node')) {
-        const imgTag = nodeElement.querySelector('img[df-imgsrc]');
-        if (imgTag) {
-            // The img tag has object-fit: contain and width/height 100% by CSS,
-            // so it should scale correctly within the resized nodeElement.
-            // No specific JS style changes needed here for the img itself during resize.
-        }
-    } else if (nodeElement.classList.contains('youtube-minimal-node')) {
-        const iframeTag = nodeElement.querySelector('iframe[df-youtubeiframe]');
-        if (iframeTag) {
-            // The iframe has width/height 100% by CSS/HTML attributes,
-            // so it should scale correctly within the resized nodeElement.
-            // No specific JS style changes needed here for the iframe itself during resize.
-        }
-    }
-    // --- END: Specific logic for Image and YouTube Minimal Nodes ---
+    // Content (img/player) inside these nodes uses 100% width/height
+    // No explicit JS resizing of the content needed here.
+    // --- END: Specific logic ---
 
     editor.updateConnectionNodes(`node-${resizingNodeInfo.id}`);
 }
@@ -427,7 +423,7 @@ function stopNodeResize() {
     saveHistoryState();
 }
 
-// --- Base Node Definitions (UPDATED) ---
+// --- Base Node Definitions (UPDATED youtube_minimal HTML) ---
 const baseNodeDefinitions = {
     'texto': { name: 'texto', inputs: 1, outputs: 1, html: `<div><div class="title-box"><i class="fas fa-paragraph"></i> Texto</div><div class="box"><label>Contenido:</label><textarea df-content readonly style="height: 80px;" placeholder="..."></textarea><button type="button" class="edit-code-btn" onclick="openEditorForNode(event)"><i class="fas fa-edit"></i> Editar Contenido</button><p class="help-text">Edita en panel lateral.</p></div></div>`, cssClass: 'text-node', data: { content: '' } },
     'concatenar': { name: 'concatenar', inputs: 1, outputs: 1, html: `<div><div class="title-box"><i class="fas fa-link"></i> Concatenar</div><div class="box" style="text-align: center; font-size: 11px; color: #777; padding: 20px 5px;">Concatena entradas<br>(orden Y)<input type="hidden" df-result></div></div>`, cssClass: 'concatenate-node', data: { result: '' } },
@@ -470,113 +466,40 @@ const baseNodeDefinitions = {
     'subtract': { name: 'subtract', inputs: 1, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-minus"></i> Resta</div> <div class="box"> <label>Resultado:</label> <textarea df-result readonly style="height: 40px; text-align:right; font-weight:bold; font-size: 1.1em; padding: 5px 8px;" placeholder="0"></textarea> <p class="help-text" style="font-size:10px; text-align:center; margin-top: 5px;">Resta entradas (orden Y).</p> </div> </div>`, cssClass: 'subtract-node', data: { result: 0 } },
     'multiply': { name: 'multiply', inputs: 1, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-times"></i> Multiplicación</div> <div class="box"> <label>Resultado:</label> <textarea df-result readonly style="height: 40px; text-align:right; font-weight:bold; font-size: 1.1em; padding: 5px 8px;" placeholder="1"></textarea> <p class="help-text" style="font-size:10px; text-align:center; margin-top: 5px;">Multiplica entradas.</p> </div> </div>`, cssClass: 'multiply-node', data: { result: 1 } },
     'divide': { name: 'divide', inputs: 1, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-divide"></i> División</div> <div class="box"> <label>Resultado:</label> <textarea df-result readonly style="height: 40px; text-align:right; font-weight:bold; font-size: 1.1em; padding: 5px 8px;" placeholder="N/A"></textarea> <p class="help-text" style="font-size:10px; text-align:center; margin-top: 5px;">Divide entradas (orden Y).</p> </div> </div>`, cssClass: 'divide-node', data: { result: NaN } },
-    'image_minimal': { name: 'image_minimal', inputs: 0, outputs: 0, html: `<div class="image-minimal-content" role="img" aria-label="Imagen cargada"> <div class="image-placeholder" title="Haz clic, pega o arrastra una imagen aquí"> <i class="fas fa-image"></i> <span>Cargar Imagen</span> </div> <img df-imgsrc src="" alt="Imagen cargada" style="display: none;" /> <div class="node-resizer" title="Redimensionar Imagen"><i class="fas fa-expand-alt"></i></div> </div>`, cssClass: 'image-minimal-node resizable-node-class', data: { imgsrc: '', naturalWidth: 0, naturalHeight: 0, nodeWidth: '80px', nodeHeight: '60px' } }, // nodeWidth/Height para tamaño inicial
+    'image_minimal': { name: 'image_minimal', inputs: 0, outputs: 0, html: `<div class="image-minimal-content" role="img" aria-label="Imagen cargada"> <div class="image-placeholder" title="Haz clic, pega o arrastra una imagen aquí"> <i class="fas fa-image"></i> <span>Cargar Imagen</span> </div> <img df-imgsrc src="" alt="Imagen cargada" style="display: none;" /> <div class="node-resizer" title="Redimensionar Imagen"><i class="fas fa-expand-alt"></i></div> </div>`, cssClass: 'image-minimal-node resizable-node-class', data: { imgsrc: '', naturalWidth: 0, naturalHeight: 0, nodeWidth: '80px', nodeHeight: '60px' } },
     'template_engine': { name: 'template_engine', inputs: 1, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-file-invoice"></i> Plantilla</div> <div class="box"> <p class="help-text" style="font-size: 10px; margin-bottom: 8px;"> Usa <code>{{variable}}</code> o <code>{{objeto.propiedad}}</code> para insertar valores del JSON de entrada. </p> <label for="node-{{id}}-template">Plantilla:</label> <textarea id="node-{{id}}-template" df-template style="height: 120px; font-family: var(--font-family-code); font-size: 12px;" placeholder="Hola {{nombre}}, \n\nTu pedido {{pedido.id}} está listo." oninput="handleNodeDataChange(event)"></textarea> <label for="node-{{id}}-result" style="margin-top:10px;">Resultado:</label> <textarea id="node-{{id}}-result" df-result readonly style="height: 80px; font-size: 12px; background-color: var(--background-readonly);"></textarea> </div> <div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div> </div>`, cssClass: 'template-node resizable-node-class', data: { template: '', lastInput: null, result: '', nodeWidth: '250px', nodeHeight: 'auto' } },
     'manual_text_replace': { name: 'manual_text_replace', inputs: 0, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-highlighter"></i> Reemplazo Manual</div> <div class="box"> <label>Texto Original:</label> <textarea df-original style="height: 80px;" placeholder="Pega o escribe el texto aquí..."></textarea> <label>Buscar:</label> <input type="text" df-find placeholder="Texto a buscar"> <label>Reemplazar con:</label> <input type="text" df-replace placeholder="Nuevo texto"> <button type="button" onclick="executeManualReplace(event)" style="width: 100%; margin-top: 10px; padding: 8px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;"> <i class="fas fa-check"></i> Aplicar Reemplazo y Ver Resultado </button> <div style="margin-top:10px;"> <label>Resultado:</label> <textarea df-result readonly style="height: 60px; width: 100%; background-color: var(--background-readonly);"></textarea> </div> </div> <div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div> </div>`, cssClass: 'manual-replace-node resizable-node-class', data: { original: '', find: '', replace: '', result: '', nodeWidth: '260px', nodeHeight: 'auto' } },
     'auto_text_replace': {
-        name: 'auto_text_replace',
-        inputs: 2, // Ahora 2 entradas
-        outputs: 1,
-        html: `
-          <div>
-            <div class="title-box"><i class="fas fa-magic"></i> Reemplazo Automático</div>
-            <div class="box">
-              <label>Texto Original (Recibido por Input 1):</label>
-              <textarea df-lastInput readonly style="height: 45px; width: 100%; background-color: #e9ecef; color: #495057; font-size: 11px; margin-bottom: 8px;" placeholder="(Esperando texto por Input 1)"></textarea>
-              <label>Buscar:</label>
-              <input type="text" df-find placeholder="Texto a buscar" oninput="handleNodeDataChange(event)">
-              <label>Reemplazar con:</label>
-              <input type="text" df-replace placeholder="Nuevo texto" oninput="handleNodeDataChange(event)">
-              <p class="help-text" style="font-size: 10px; margin-top: 5px;"> Input 1: Texto a procesar.<br> Input 2: Disparador (trigger) para re-procesar. </p>
-              <div style="margin-top:10px;"> <label>Resultado:</label> <textarea df-result readonly style="height: 60px; width: 100%; background-color: var(--background-readonly);"></textarea> </div>
-            </div>
-            <div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div>
-          </div>`,
+        name: 'auto_text_replace', inputs: 2, outputs: 1,
+        html: `<div> <div class="title-box"><i class="fas fa-magic"></i> Reemplazo Automático</div> <div class="box"> <label>Texto Original (Recibido por Input 1):</label> <textarea df-lastInput readonly style="height: 45px; width: 100%; background-color: #e9ecef; color: #495057; font-size: 11px; margin-bottom: 8px;" placeholder="(Esperando texto por Input 1)"></textarea> <label>Buscar:</label> <input type="text" df-find placeholder="Texto a buscar" oninput="handleNodeDataChange(event)"> <label>Reemplazar con:</label> <input type="text" df-replace placeholder="Nuevo texto" oninput="handleNodeDataChange(event)"> <p class="help-text" style="font-size: 10px; margin-top: 5px;"> Input 1: Texto a procesar.<br> Input 2: Disparador (trigger) para re-procesar. </p> <div style="margin-top:10px;"> <label>Resultado:</label> <textarea df-result readonly style="height: 60px; width: 100%; background-color: var(--background-readonly);"></textarea> </div> </div> <div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div> </div>`,
         cssClass: 'auto-replace-node resizable-node-class',
         data: { find: '', replace: '', lastInput: '', result: '', nodeWidth: '260px', nodeHeight: 'auto' }
     },
-
-
-// Inside baseNodeDefinitions object
-'youtube_minimal': {
-    name: 'youtube_minimal',
-    inputs: 0,
-    outputs: 0,
-    html: `
-        <div class="youtube-minimal-content" role="application" aria-label="Reproductor de YouTube">
-            <div class="youtube-placeholder" title="Haz clic o pega un enlace de YouTube aquí">
-                <i class="fab fa-youtube"></i> <!-- FontAwesome YouTube icon -->
-                <span>Cargar Video YouTube</span>
-            </div>
-            <iframe df-youtubeiframe
-                    width="100%"
-                    height="100%"
-                    src=""
-                    frameborder="0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                    referrerpolicy="strict-origin-when-cross-origin"
-                    allowfullscreen
-                    style="display: none;">
-            </iframe>
-            <div class="node-resizer" title="Redimensionar Video"><i class="fas fa-expand-alt"></i></div>
-        </div>`,
-    cssClass: 'youtube-minimal-node resizable-node-class',
-    data: {
-        videoid: '',      // Stores the 11-character YouTube video ID
-        nodeWidth: '320px', // Default width
-        nodeHeight: '180px' // Default height (16:9 aspect ratio for 320px width)
-    }
-},
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    'youtube_minimal': { // ** UPDATED HTML **
+        name: 'youtube_minimal', inputs: 0, outputs: 0,
+        html: `
+            <div class="youtube-minimal-content" role="application" aria-label="Reproductor de YouTube">
+                <div class="youtube-placeholder" title="Haz clic o pega un enlace de YouTube aquí">
+                    <i class="fab fa-youtube"></i>
+                    <span>Cargar Video YouTube</span>
+                </div>
+                <div class="yt-player-container" style="width:100%; height:100%; display:none;"></div>
+                <div class="node-resizer" title="Redimensionar Video"><i class="fas fa-expand-alt"></i></div>
+            </div>`,
+        cssClass: 'youtube-minimal-node resizable-node-class',
+        data: {
+            videoid: '', nodeWidth: '320px', nodeHeight: '180px'
+        }
+    },
     'hybrid_text_replace': { name: 'hybrid_text_replace', inputs: 1, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-edit"></i> Reemplazo Híbrido</div> <div class="box"> <label>Texto Original (Prioriza Input 1 si está conectado):</label> <textarea df-original style="height: 60px;" placeholder="Escribe aquí o conecta Input 1..."></textarea> <input type="hidden" df-lastInput> <label>Buscar:</label> <input type="text" df-find placeholder="Texto a buscar"> <label>Reemplazar con:</label> <input type="text" df-replace placeholder="Nuevo texto"> <button type="button" onclick="executeHybridReplace(event)" style="width: 100%; margin-top: 10px; padding: 8px; background-color: #FF9800; color: white; border: none; border-radius: 4px; cursor: pointer;"> <i class="fas fa-check"></i> Aplicar Reemplazo Manualmente </button> <div style="margin-top:10px;"> <label>Resultado:</label> <textarea df-result readonly style="height: 60px; width: 100%; background-color: var(--background-readonly);"></textarea> </div> </div> <div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div> </div>`, cssClass: 'hybrid-replace-node resizable-node-class', data: { original: '', find: '', replace: '', lastInput: null, result: '', nodeWidth: '260px', nodeHeight: 'auto' } },
     'nodo_seleccion_verde': { name: 'nodo_seleccion_verde', title: 'Nodo Selección Verde', inputs: 1, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-leaf"></i> Selección Verde</div> <div class="box"> <p style="text-align: center; padding: 10px 0;"> Este nodo se pone verde<br>cuando lo seleccionas. </p> <input type="text" df-sampledata placeholder="Dato de ejemplo..."> </div> <div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div></div>`, cssClass: 'green-selectable-node resizable-node-class', data: { sampledata: '', nodeWidth: '240px', nodeHeight: 'auto' } },
     'nodo_seleccion_rojo_claro': { name: 'nodo_seleccion_rojo_claro', title: 'Nodo Selección Rojo Claro', inputs: 1, outputs: 0, html: `<div> <div class="title-box"><i class="fas fa-fire-alt"></i> Selección Rojo Claro</div> <div class="box"> <p style="text-align: center; padding: 10px 0;"> Este nodo se pone rojo claro<br>cuando lo seleccionas. </p> <input type="number" df-priority placeholder="Prioridad (ej: 1-5)"> </div> <div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div></div>`, cssClass: 'light-red-selectable-node base-style-for-red-node resizable-node-class', data: { priority: null, nodeWidth: '250px', nodeHeight: 'auto' } },
-    // START: Modified & New Node Definitions
-    'text_capitalize_words': { // Renamed from text_capitalize_all
-        name: 'text_capitalize_words', 
-        inputs: 1, 
-        outputs: 1, 
-        html: `<div> <div class="title-box"><i class="fas fa-font-case"></i> Capitalizar Palabras</div> <div class="box"> <p class="help-text">Pone en mayúscula la primera letra de CADA palabra.</p> <textarea df-result readonly style="height: 60px;"></textarea> </div> </div>`, // Updated icon and description
-        cssClass: 'capitalize-words-node', 
-        data: { result: '', lastInput: null } 
-    },
-    'text_capitalize_first': { 
-        name: 'text_capitalize_first', 
-        inputs: 1, 
-        outputs: 1, 
-        html: `<div> <div class="title-box"><i class="fas fa-pen-fancy"></i> Capitalizar Primera</div> <div class="box"> <p class="help-text">Pone en mayúscula la primera letra del texto y el resto en minúsculas.</p> <textarea df-result readonly style="height: 60px;"></textarea> </div> </div>`, 
-        cssClass: 'capitalize-first-node', 
-        data: { result: '', lastInput: null } 
-    },
-    // END: Modified & New Node Definitions
+    'text_capitalize_words': { name: 'text_capitalize_words', inputs: 1, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-font-case"></i> Capitalizar Palabras</div> <div class="box"> <p class="help-text">Pone en mayúscula la primera letra de CADA palabra.</p> <textarea df-result readonly style="height: 60px;"></textarea> </div> </div>`, cssClass: 'capitalize-words-node', data: { result: '', lastInput: null } },
+    'text_capitalize_first': { name: 'text_capitalize_first', inputs: 1, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-pen-fancy"></i> Capitalizar Primera</div> <div class="box"> <p class="help-text">Pone en mayúscula la primera letra del texto y el resto en minúsculas.</p> <textarea df-result readonly style="height: 60px;"></textarea> </div> </div>`, cssClass: 'capitalize-first-node', data: { result: '', lastInput: null } },
 };
 console.log("Base node definitions loaded:", Object.keys(baseNodeDefinitions).length);
 
 // --- Helper Functions ---
-// Función escapeHtml necesaria para exportRawJson
 function escapeHtml(unsafe) {
     if (unsafe === null || unsafe === undefined) return '';
     return String(unsafe)
@@ -605,2366 +528,615 @@ function openEditorForNode(event) { try { const btn = event.target.closest('butt
 function executeJsNode(event) { const nEl = event.target.closest('.drawflow-node'); if (!nEl) return; const id = nEl.id.split('-')[1]; const node = editor.getNodeFromId(id); if (!node || node.name !== 'javascript_code') return; const code = node.data.jscode || ''; const input = node.data.lastInput; let res, err=false, resStr=''; const start = performance.now(); try { const func = new Function('input', `'use strict';\n${code}`); res = func(input); if (res === undefined) resStr = '(undefined)'; else if (res === null) resStr = 'null'; else if (typeof res === 'string') resStr = res; else try { resStr = JSON.stringify(res, null, 2); } catch { resStr = String(res); } const end = performance.now(); console.log(`JS Result (${(end - start).toFixed(1)}ms):`, res); } catch (e) { const end = performance.now(); console.error(`JS Error ${id} (${(end-start).toFixed(1)}ms):`, e); resStr=`Error: ${e.message}\n${e.stack?e.stack.split('\n')[1]:''}`; err=true; res=undefined; } const ta = nEl.querySelector('textarea[df-result]'); if (ta) { ta.value = resStr; ta.classList.toggle('error', err); } editor.updateNodeDataFromId(id, { result: res }); if (!err) propagateData(id, 'javascript_code', 'result', res); }
 function resetJsNodeResult(event) { const nEl = event.target.closest('.drawflow-node'); if (!nEl) return; const id = nEl.id.split('-')[1]; const node = editor.getNodeFromId(id); if (!node || node.name !== 'javascript_code') return; const ta = nEl.querySelector('textarea[df-result]'); if (ta) { ta.value = ''; ta.classList.remove('error'); } editor.updateNodeDataFromId(id, { result: '' }); propagateData(id, 'javascript_code', 'result', null); }
 
-
-
-
-
-
-/**
- * Ejecuta la lógica de reemplazo para el nodo 'hybrid_text_replace'.
- * Se llama al hacer clic en el botón dentro del nodo.
- * Prioriza el texto recibido por conexión (lastInput) sobre el escrito (original).
- */
 function executeHybridReplace(event) {
-    const id = getNodeIdFromEvent(event);
-    if (!id) return;
-
-    console.log(`--- Executing Hybrid Replace Node ${id} ---`);
+    const id = getNodeIdFromEvent(event); if (!id) return;
     const node = editor.getNodeFromId(id);
-
-    if (!node || node.name !== 'hybrid_text_replace') {
-        console.error(`Hybrid Replace (${id}): Node not found or invalid type.`);
-        return;
-    }
-
-    // Determinar qué texto original usar:
-    // Prioridad: Si lastInput NO es null/undefined (llegó algo por cable), usarlo.
-    // Fallback: Usar el texto del campo df-original.
+    if (!node || node.name !== 'hybrid_text_replace') { console.error(`Hybrid Replace (${id}): Node not found or invalid type.`); return; }
     const hasInputConnectionData = (node.data.lastInput !== null && node.data.lastInput !== undefined);
     const sourceText = hasInputConnectionData ? String(node.data.lastInput) : (node.data.original ?? '');
-
-    // Leer find y replace actuales
-    const findText = node.data.find ?? '';
-    const replaceText = node.data.replace ?? '';
-
-    // console.log(`   Source Text Used: "${sourceText}" (Input Connection Used: ${hasInputConnectionData})`);
-    // console.log(`   Find Text from node.data: "${findText}"`);
-    // console.log(`   Replace Text from node.data: "${replaceText}"`);
-
+    const findText = node.data.find ?? ''; const replaceText = node.data.replace ?? '';
     let resultText;
     if (findText) {
-        try {
-            // console.log(`   >>> Attempting: String("${sourceText}").split("${findText}").join("${replaceText}")`);
-            resultText = sourceText.split(findText).join(replaceText);
-        } catch (e) {
-            console.error(`Hybrid Replace (${id}): Error during split/join - ${e.message}`);
-            resultText = `Error: ${e.message}`;
-        }
-    } else {
-        resultText = sourceText;
-        // console.log("   Find text is empty, result is the original input.");
-    }
-
-    // console.log(`   >>> Calculated resultText: "${resultText}"`);
-
-    // Actualizar el nodo (UI y datos) y propagar el resultado
-    updateNodeResult(id, resultText); // Usa la misma función de antes
-
-    // console.log(`--- Finished Hybrid Replace Node ${id} ---`);
+        try { resultText = sourceText.split(findText).join(replaceText); }
+        catch (e) { console.error(`Hybrid Replace (${id}): Error during split/join - ${e.message}`); resultText = `Error: ${e.message}`; }
+    } else { resultText = sourceText; }
+    updateNodeResult(id, resultText);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // --- Functions for Local Image Node (v1.11 - Stable) ---
 function selectLocalImageFile(event) { const nodeId = getNodeIdFromEvent(event); if (!nodeId || !editor) return; try { const fileInput = document.createElement('input'); fileInput.type = 'file'; fileInput.accept = 'image/*'; fileInput.onchange = (e) => { const file = e.target.files[0]; if (file) { const reader = new FileReader(); reader.onload = (loadEvent) => { try { const imageDataUrl = loadEvent.target.result; editor.updateNodeDataFromId(nodeId, { imagesrc: imageDataUrl, filename: file.name }); const nodeElement = document.getElementById(`node-${nodeId}`); if (nodeElement) { const imgTag = nodeElement.querySelector('img[df-imagesrc]'); const filenameSpan = nodeElement.querySelector('span[df-filename]'); const placeholderText = nodeElement.querySelector('.placeholder-text'); if (imgTag) { imgTag.src = imageDataUrl; imgTag.style.display = 'block'; const nodeData = editor.getNodeFromId(nodeId).data; imgTag.style.width = nodeData.imagewidth || '100%'; imgTag.style.height = nodeData.imageheight || 'auto'; } if (filenameSpan) { filenameSpan.textContent = file.name; filenameSpan.title = file.name; } if (placeholderText) { placeholderText.style.display = 'none'; } } saveHistoryState(); } catch (innerError) { console.error("Error processing loaded image:", innerError); showToast('error', 'Error Interno', 'No se pudo procesar la imagen.'); } }; reader.onerror = () => { showToast('error', 'Error de Lectura', 'No se pudo leer el archivo.'); }; reader.readAsDataURL(file); } fileInput.value = null; }; fileInput.click(); } catch (error) { console.error("Error selecting local image file:", error); showToast('error', 'Error', 'No se pudo iniciar selección.'); } }
 function updateLocalImageStyle(event) { const nodeId = getNodeIdFromEvent(event); if (!nodeId || !editor) return; try { const nodeElement = document.getElementById(`node-${nodeId}`); if (!nodeElement) return; const imgTag = nodeElement.querySelector('img[df-imagesrc]'); const widthInput = nodeElement.querySelector('input[df-imagewidth]'); const heightInput = nodeElement.querySelector('input[df-imageheight]'); if (!imgTag || !widthInput || !heightInput) return; const newWidth = widthInput.value.trim() || 'auto'; const newHeight = heightInput.value.trim() || 'auto'; imgTag.style.width = newWidth; imgTag.style.height = newHeight; handleNodeDataChange(event); } catch (error) { console.error("Error updating local image style:", error); showToast('error', 'Error Estilo Imagen', 'No se pudo actualizar tamaño imagen.'); } }
 function updateLocalNodeSize(event) { const nodeId = getNodeIdFromEvent(event); if (!nodeId || !editor) return; try { const nodeElement = document.getElementById(`node-${nodeId}`); if (!nodeElement) return; const widthInput = nodeElement.querySelector('input[df-nodewidth]'); const heightInput = nodeElement.querySelector('input[df-nodeheight]'); if (!widthInput || !heightInput) return; const newWidth = widthInput.value.trim() || 'auto'; const newHeight = heightInput.value.trim() || 'auto'; nodeElement.style.width = newWidth; nodeElement.style.height = newHeight; handleNodeDataChange(event); editor.updateConnectionNodes(`node-${nodeId}`); } catch (error) { console.error("Error updating local node size:", error); showToast('error', 'Error Tamaño Nodo', 'No se pudo actualizar tamaño nodo.'); } }
-// --- END Local Image Node Functions ---
-/**
- * @function getNodeIdFromEvent
- * @description Helper function to extract the Drawflow node ID from an event target.
- *              This is crucial for event handlers defined directly in the node's HTML.
- * @param {Event} event - The event object (e.g., from onclick, oninput).
- * @returns {string|null} The numeric ID of the node (as a string), or null if not found.
- */
+
 function getNodeIdFromEvent(event) {
-    if (!event || !event.target) {
-        console.error("getNodeIdFromEvent: Event or event target is missing.");
-        return null;
-    }
-    // Find the closest parent element that represents a Drawflow node
+    if (!event || !event.target) { console.error("getNodeIdFromEvent: Event or event target is missing."); return null; }
     const nodeElement = event.target.closest('.drawflow-node');
-    if (!nodeElement) {
-        console.error("getNodeIdFromEvent: Could not find parent node element for target:", event.target);
-        return null;
-    }
-    // Extract the ID (e.g., 'node-5' -> '5')
+    if (!nodeElement) { console.error("getNodeIdFromEvent: Could not find parent node element for target:", event.target); return null; }
     const nodeId = nodeElement.id.split('-')[1];
-    if (!nodeId) {
-        console.error("getNodeIdFromEvent: Could not parse node ID from element ID:", nodeElement.id);
-        return null;
-    }
+    if (!nodeId) { console.error("getNodeIdFromEvent: Could not parse node ID from element ID:", nodeElement.id); return null; }
     return nodeId;
 }
 
-
-
-
-// ==========================================================
-// ====> PUEDES PEGAR LA NUEVA FUNCIÓN AQUÍ <====
-// ==========================================================
-/**
- * Ejecuta la lógica de reemplazo para el nodo 'manual_text_replace'.
- * Se llama al hacer clic en el botón dentro del nodo.
- * Lee todos los valores necesarios directamente desde los datos del nodo en ese momento.
- */
 function executeManualReplace(event) {
-    const id = getNodeIdFromEvent(event); // Obtiene el ID del nodo desde el evento del botón
-    if (!id) return;
-
-    // console.log(`--- Executing Manual Replace Node ${id} ---`);
+    const id = getNodeIdFromEvent(event); if (!id) return;
     const node = editor.getNodeFromId(id);
-
-    // Validar que el nodo existe y es del tipo correcto
-    if (!node || node.name !== 'manual_text_replace') {
-        console.error(`Manual Replace (${id}): Node not found or invalid type.`);
-        return;
-    }
-
-    // Leer los valores DIRECTAMENTE de node.data en el momento del clic
-    const originalText = node.data.original ?? '';
-    const findText = node.data.find ?? '';
-    const replaceText = node.data.replace ?? '';
-
-    // console.log(`   Original Text from node.data: "${originalText}"`);
-    // console.log(`   Find Text from node.data: "${findText}"`);
-    // console.log(`   Replace Text from node.data: "${replaceText}"`);
-
+    if (!node || node.name !== 'manual_text_replace') { console.error(`Manual Replace (${id}): Node not found or invalid type.`); return; }
+    const originalText = node.data.original ?? ''; const findText = node.data.find ?? ''; const replaceText = node.data.replace ?? '';
     let resultText;
-
-    // Realizar el reemplazo (solo si 'findText' no está vacío)
     if (findText) {
-        try {
-            // console.log(`   >>> Attempting: String("${originalText}").split("${findText}").join("${replaceText}")`);
-            resultText = originalText.split(findText).join(replaceText);
-        } catch (e) {
-            console.error(`Manual Replace (${id}): Error during split/join - ${e.message}`);
-            resultText = `Error: ${e.message}`;
-        }
-    } else {
-        // Si 'findText' está vacío, el resultado es el texto original
-        resultText = originalText;
-        // console.log("   Find text is empty, result is the original input.");
-    }
-
-    // console.log(`   >>> Calculated resultText: "${resultText}"`);
-
-    // Actualizar el nodo (UI y datos) y propagar el resultado
-    updateNodeResult(id, resultText); // Actualiza UI (df-result), node.data.result, propaga y guarda historial
-
-    // console.log(`--- Finished Manual Replace Node ${id} ---`);
+        try { resultText = originalText.split(findText).join(replaceText); }
+        catch (e) { console.error(`Manual Replace (${id}): Error during split/join - ${e.message}`); resultText = `Error: ${e.message}`; }
+    } else { resultText = originalText; }
+    updateNodeResult(id, resultText);
 }
-// ==========================================================
-// ====> FIN DE LA NUEVA FUNCIÓN <====
-// ==========================================================
 
-
-
-
-// --- Añade esta nueva función de ejecución ---
-/**
- * Ejecuta la lógica de reemplazo para el nodo 'auto_text_replace'.
- * Puede ser llamado por la llegada de nuevo input o por cambios en find/replace.
- * @param {string} nodeId - El ID del nodo.
- * @param {*} inputTextValue - El texto sobre el cual se realizará el reemplazo (normalmente node.data.lastInput).
- */
 function executeAutoReplace(nodeId, inputTextValue) {
-    // console.log(`--- Executing Auto Replace Node ${nodeId} ---`);
     const node = editor.getNodeFromId(nodeId);
-
-    if (!node || node.name !== 'auto_text_replace') {
-        console.error(`Auto Replace (${nodeId}): Node not found or invalid type.`);
-        return;
-    }
-
-    // Leer los valores ACTUALES de find y replace desde node.data
-    const findText = node.data.find ?? '';
-    const replaceText = node.data.replace ?? '';
-    // Convertir el valor de entrada a string (maneja null/undefined)
+    if (!node || node.name !== 'auto_text_replace') { console.error(`Auto Replace (${nodeId}): Node not found or invalid type.`); return; }
+    const findText = node.data.find ?? ''; const replaceText = node.data.replace ?? '';
     const currentInputText = String(inputTextValue ?? '');
-
-    // console.log(`   Input Text for Processing: "${currentInputText}"`);
-    // console.log(`   Find Text from node.data: "${findText}"`);
-    // console.log(`   Replace Text from node.data: "${replaceText}"`);
-
     let resultText;
-    // Realizar el reemplazo (solo si 'findText' no está vacío)
     if (findText) {
-        try {
-            // console.log(`   >>> Attempting: String("${currentInputText}").split("${findText}").join("${replaceText}")`);
-            resultText = currentInputText.split(findText).join(replaceText);
-        } catch (e) {
-            console.error(`Auto Replace (${id}): Error during split/join - ${e.message}`);
-            resultText = `Error: ${e.message}`;
-        }
-    } else {
-        // Si 'findText' está vacío, el resultado es el texto original
-        resultText = currentInputText;
-        // console.log("   Find text is empty, result is the original input.");
-    }
-
-    // console.log(`   >>> Calculated resultText: "${resultText}"`);
-
-    // Actualizar el nodo (UI y datos) y propagar el resultado
-    updateNodeResult(nodeId, resultText); // Actualiza UI(df-result), data.result, propaga y guarda historial (si cambió)
-
-    // console.log(`--- Finished Auto Replace Node ${nodeId} ---`);
+        try { resultText = currentInputText.split(findText).join(replaceText); }
+        catch (e) { console.error(`Auto Replace (${nodeId}): Error during split/join - ${e.message}`); resultText = `Error: ${e.message}`; }
+    } else { resultText = currentInputText; }
+    updateNodeResult(nodeId, resultText);
 }
 
-
-
-
-
-
-/**
- * [Simplificado] Ejecuta el reemplazo de texto para un nodo.
- * Realiza un reemplazo global y sensible a mayúsculas.
- * @param {string} nodeId - El ID del nodo.
- * @param {*}    inputText - Texto o dato a procesar.
- */
-function executeTextReplace(nodeId, inputTextValue) { // Cambiado nombre de variable para claridad
-    // console.log(`--- Executing Text Replace Node ${nodeId} ---`);
+function executeTextReplace(nodeId, inputTextValue) {
     const node = editor.getNodeFromId(nodeId);
-
-    if (!node || node.name !== 'text_replace') {
-        console.error(`Text Replace (${nodeId}): Node not found or invalid type.`);
-        return;
-    }
-
-    // Obtener los valores ACTUALES de find y replace desde node.data
-    const findText = node.data.find ?? '';
-    const replaceText = node.data.replace ?? '';
-    // Convertir el valor de entrada a string (maneja null/undefined)
-    const currentInputText = String(inputTextValue ?? ''); // Usamos el argumento
-
-    // *** LOGS DE ENTRADA DETALLADOS ***
-    // console.log(`   Input Text Received: "${currentInputText}" (Type: ${typeof inputTextValue})`);
-    // console.log(`   Find Text from node.data: "${findText}"`);
-    // console.log(`   Replace Text from node.data: "${replaceText}"`);
-    // *** FIN LOGS DE ENTRADA ***
-
+    if (!node || node.name !== 'text_replace') { console.error(`Text Replace (${nodeId}): Node not found or invalid type.`); return; }
+    const findText = node.data.find ?? ''; const replaceText = node.data.replace ?? '';
+    const currentInputText = String(inputTextValue ?? '');
     let resultText;
     if (findText) {
-        try {
-            // *** LOG ANTES DE LA OPERACIÓN ***
-            // console.log(`   >>> Attempting: String("${currentInputText}").split("${findText}").join("${replaceText}")`);
-            // *** FIN LOG ANTES ***
-            resultText = currentInputText.split(findText).join(replaceText);
-        } catch (e) {
-            console.error(`Text Replace (${nodeId}): Error during split/join - ${e.message}`);
-            resultText = `Error: ${e.message}`;
-        }
-    } else {
-        resultText = currentInputText;
-        // console.log("   Find text is empty, result is the original input.");
-    }
-
-    // *** LOG RESULTADO CALCULADO ***
-    // console.log(`   >>> Calculated resultText: "${resultText}"`);
-    // *** FIN LOG RESULTADO ***
-
-    // Llamar a updateNodeResult para actualizar todo
-    updateNodeResult(nodeId, resultText); // Pasamos el resultado calculado
-    // console.log(`--- Finished Text Replace Node ${nodeId} ---`);
+        try { resultText = currentInputText.split(findText).join(replaceText); }
+        catch (e) { console.error(`Text Replace (${nodeId}): Error during split/join - ${e.message}`); resultText = `Error: ${e.message}`; }
+    } else { resultText = currentInputText; }
+    updateNodeResult(nodeId, resultText);
 }
 
-
-
-
-
-// Add these functions somewhere in your xocoflow_logic.js, e.g., near image_minimal functions
-
-/**
- * Extracts YouTube video ID from various URL formats.
- * @param {string} url The YouTube URL.
- * @returns {string|null} The 11-character video ID or null.
- */
+// --- START: YouTube Minimal Node Functions ---
 function extractYouTubeID(url) {
     if (!url || typeof url !== 'string') return null;
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
     const match = url.match(regExp);
-    if (match && match[2].length === 11) {
-        return match[2];
-    }
-    // Check if the input itself is an 11-char ID
-    if (url.length === 11 && /^[a-zA-Z0-9_-]+$/.test(url)) {
-        return url;
-    }
+    if (match && match[2].length === 11) { return match[2]; }
+    if (url.length === 11 && /^[a-zA-Z0-9_-]+$/.test(url)) { return url; }
     return null;
 }
 
 /**
- * Processes a YouTube link, updates the node, and displays the video.
+ * Creates a new YouTube player or updates an existing one for a given node.
+ * Uses the YouTube IFrame Player API.
+ * @param {string} nodeId The ID of the node.
+ * @param {string | null} videoID The YouTube video ID. If null, player is destroyed/placeholder shown.
+ */
+function createOrUpdateYouTubePlayer(nodeId, videoID) {
+    if (!isYouTubeApiReady) {
+        console.warn(`YouTube API not ready. Queuing player action for node ${nodeId}.`);
+        youtubeApiReadyQueue.push(() => createOrUpdateYouTubePlayer(nodeId, videoID));
+        return;
+    }
+
+    const nodeElement = document.getElementById(`node-${nodeId}`);
+    if (!nodeElement) { console.error(`Node element 'node-${nodeId}' not found for YouTube player.`); return; }
+    const playerContainerDiv = nodeElement.querySelector('.yt-player-container');
+    const placeholderDiv = nodeElement.querySelector('.youtube-placeholder');
+    if (!playerContainerDiv || !placeholderDiv) { console.error(`Player container or placeholder not found in node ${nodeId}.`); return; }
+
+    const uniquePlayerApiTargetId = `yt-api-target-${nodeId}`;
+    playerContainerDiv.id = uniquePlayerApiTargetId;
+
+    if (youtubePlayers[nodeId]) {
+        try { youtubePlayers[nodeId].destroy(); }
+        catch (e) { console.error(`Error destroying existing player for node ${nodeId}:`, e); }
+        delete youtubePlayers[nodeId];
+    }
+
+    const nodeData = editor.getNodeFromId(nodeId).data;
+
+    if (videoID) {
+        playerContainerDiv.style.display = 'block';
+        placeholderDiv.style.display = 'none';
+        nodeElement.style.border = 'none';
+
+        try {
+            youtubePlayers[nodeId] = new YT.Player(uniquePlayerApiTargetId, {
+                videoId: videoID,
+                width: '100%', height: '100%',
+                playerVars: { 'autoplay': 0, 'controls': 1, 'modestbranding': 1, 'rel': 0, 'iv_load_policy': 3 },
+                events: {
+                    'onReady': (event) => { /* Player is ready */ },
+                    'onStateChange': (event) => { /* Handle state changes if needed */ },
+                    'onError': (errorEvent) => {
+                        console.error(`YouTube Player Error for node ${nodeId} (VideoID: ${videoID}): Code ${errorEvent.data}`);
+                        showToast('error', 'Error Video YouTube', `No se pudo cargar el video (Error ${errorEvent.data})`);
+                        // Revert to placeholder on error
+                        playerContainerDiv.style.display = 'none';
+                        placeholderDiv.style.display = 'flex';
+                        nodeElement.style.border = '2px dashed #cccccc';
+                        editor.updateNodeDataFromId(nodeId, { videoid: '' });
+                        if (youtubePlayers[nodeId]) { try { youtubePlayers[nodeId].destroy(); } catch (e) {} delete youtubePlayers[nodeId]; }
+                        saveHistoryState();
+                    }
+                }
+            });
+        } catch (e) {
+            console.error(`Error instantiating YT.Player for node ${nodeId}:`, e);
+            showToast('error', 'Error API YouTube', 'No se pudo crear el reproductor.');
+            playerContainerDiv.style.display = 'none';
+            placeholderDiv.style.display = 'flex';
+            nodeElement.style.border = '2px dashed #cccccc';
+        }
+    } else {
+        playerContainerDiv.style.display = 'none';
+        placeholderDiv.style.display = 'flex';
+        nodeElement.style.border = '2px dashed #cccccc';
+        const defaultNodeData = baseNodeDefinitions['youtube_minimal'].data;
+        nodeElement.style.width = nodeData.nodeWidth || defaultNodeData.nodeWidth;
+        nodeElement.style.height = nodeData.nodeHeight || defaultNodeData.nodeHeight;
+    }
+}
+
+/**
+ * Processes a YouTube link, updates the node data, and initializes the player.
  * @param {string} nodeId The ID of the YouTube minimal node.
  * @param {string} linkOrId The YouTube link or video ID.
  */
 function processYouTubeLink(nodeId, linkOrId) {
     if (!editor || !nodeId || !linkOrId) return;
 
-    // console.log(`Processing YouTube link for node ${nodeId}: "${linkOrId}"`);
-    const nodeElement = document.getElementById(`node-${nodeId}`);
-    const iframe = nodeElement?.querySelector('iframe[df-youtubeiframe]');
-    const placeholder = nodeElement?.querySelector('.youtube-placeholder');
-
-    if (!nodeElement || !iframe || !placeholder) {
-        console.error(`YouTube Minimal Node elements not found for ID ${nodeId}.`);
-        showToast('error', 'Error Interno', 'No se encontraron elementos del nodo video.');
-        return;
-    }
-
     const videoID = extractYouTubeID(linkOrId);
+    let currentNodeData;
+    try { currentNodeData = editor.getNodeFromId(nodeId)?.data; }
+    catch(e) { console.error(`Failed to get node data for ${nodeId} in processYouTubeLink`); return; }
+    if(!currentNodeData) { console.error(`Node data for ${nodeId} is null in processYouTubeLink`); return; }
+
 
     if (videoID) {
-        // console.log(`Valid YouTube ID extracted: ${videoID}`);
-        const embedUrl = `https://www.youtube.com/embed/${videoID}`;
-        const currentNodeData = editor.getNodeFromId(nodeId).data;
+        const newWidth = currentNodeData.nodeWidth || baseNodeDefinitions['youtube_minimal'].data.nodeWidth;
+        const newHeight = currentNodeData.nodeHeight || baseNodeDefinitions['youtube_minimal'].data.nodeHeight;
 
-        editor.updateNodeDataFromId(nodeId, {
-            videoid: videoID,
-            // Preserve existing dimensions or use defaults if not set
-            nodeWidth: currentNodeData.nodeWidth || '320px',
-            nodeHeight: currentNodeData.nodeHeight || '180px'
-        });
+        editor.updateNodeDataFromId(nodeId, { videoid: videoID, nodeWidth: newWidth, nodeHeight: newHeight });
 
-        iframe.src = embedUrl;
-        // Styles will be handled by CSS :has selector initially
-        // and by explicit sizing on load/resize
+        const nodeElement = document.getElementById(`node-${nodeId}`);
+        if (nodeElement) { nodeElement.style.width = newWidth; nodeElement.style.height = newHeight; }
 
-        // Apply node dimensions from data
-        const newWidth = currentNodeData.nodeWidth || '320px';
-        const newHeight = currentNodeData.nodeHeight || '180px';
-        nodeElement.style.width = newWidth;
-        nodeElement.style.height = newHeight;
-        // iframe.style.width = '100%'; // Already set in HTML
-        // iframe.style.height = '100%'; // Already set in HTML
-
-
-        // Ensure CSS class reflects loaded state (though :has should do this)
-        // setTimeout is a bit of a hack to ensure DOM has updated with new src for :has
-        setTimeout(() => {
-            if (!nodeElement.style.border.includes('dashed')) {
-                 nodeElement.style.border = 'none'; // Redundant if :has works perfectly
-            }
-            editor.updateConnectionNodes(`node-${nodeId}`);
-        }, 50);
-
+        createOrUpdateYouTubePlayer(nodeId, videoID);
         saveHistoryState();
         showToast('success', 'Video Cargado', `ID: ${videoID}`);
     } else {
-        // console.log(`Invalid YouTube link or ID: "${linkOrId}"`);
-        editor.updateNodeDataFromId(nodeId, { videoid: '' }); // Clear ID
-        iframe.src = ''; // Clear iframe src to hide it via CSS
-        // nodeElement.style.border = '2px dashed #cccccc'; // Re-apply dashed border if needed
-
-        // Reset to default size if no video
-        const defaultNodeData = baseNodeDefinitions['youtube_minimal'].data;
-        nodeElement.style.width = defaultNodeData.nodeWidth;
-        nodeElement.style.height = defaultNodeData.nodeHeight;
-
-        editor.updateConnectionNodes(`node-${nodeId}`);
+        editor.updateNodeDataFromId(nodeId, { videoid: '' });
+        createOrUpdateYouTubePlayer(nodeId, null);
         saveHistoryState();
         showToast('warning', 'Enlace Inválido', 'No se pudo encontrar un ID de video de YouTube.');
     }
+    editor.updateConnectionNodes(`node-${nodeId}`);
 }
 
-/**
- * Prompts the user for a YouTube link.
- * @param {string} nodeId The ID of the YouTube minimal node.
- */
 async function promptForYouTubeLink(nodeId) {
     if (!editor) return;
     try {
         const { value: url } = await Swal.fire({
-            title: 'Enlace de YouTube',
-            input: 'url',
+            title: 'Enlace de YouTube', input: 'url',
             inputLabel: 'Pega el enlace del video de YouTube o el ID del video',
             inputPlaceholder: 'https://www.youtube.com/watch?v=VIDEO_ID',
-            showCancelButton: true,
-            confirmButtonText: 'Cargar Video',
-            cancelButtonText: 'Cancelar',
-            inputValidator: (value) => {
-                if (!value) {
-                    return '¡Necesitas ingresar un enlace o ID!';
-                }
-            }
+            showCancelButton: true, confirmButtonText: 'Cargar Video', cancelButtonText: 'Cancelar',
+            inputValidator: (value) => { if (!value) return '¡Necesitas ingresar un enlace o ID!'; }
         });
-
-        if (url) {
-            processYouTubeLink(nodeId, url);
-        }
-    } catch (e) {
-        console.error("Error in YouTube link prompt:", e);
-    }
+        if (url) { processYouTubeLink(nodeId, url); }
+    } catch (e) { console.error("Error in YouTube link prompt:", e); }
 }
 
-/**
- * Handles paste event on the YouTube minimal node.
- * @param {ClipboardEvent} event
- * @param {string} nodeId The ID of the YouTube minimal node.
- */
 function handleYouTubeMinimalPaste(event, nodeId) {
     if (!editor) return;
     const pastedText = (event.clipboardData || window.clipboardData)?.getData('text');
-    if (pastedText) {
-        event.preventDefault();
-        processYouTubeLink(nodeId, pastedText);
-    }
+    if (pastedText) { event.preventDefault(); processYouTubeLink(nodeId, pastedText); }
 }
 
-/**
- * Sets up specific event listeners for a newly added YouTube minimal node.
- * @param {string} nodeId The ID of the node.
- */
 function setupYouTubeMinimalNodeListeners(nodeId) {
     const nodeElement = document.getElementById(`node-${nodeId}`);
     const placeholder = nodeElement?.querySelector('.youtube-placeholder');
-
-    if (!nodeElement || !placeholder) {
-        console.warn(`Could not find elements for YouTube minimal node ${nodeId} to attach listeners.`);
-        return;
-    }
-    // console.log(`Attaching listeners to YouTube minimal node ${nodeId}`);
-
+    if (!nodeElement || !placeholder) { console.warn(`Could not find elements for YouTube minimal node ${nodeId} to attach listeners.`); return; }
     placeholder.onclick = () => promptForYouTubeLink(nodeId);
     nodeElement.addEventListener('paste', (e) => handleYouTubeMinimalPaste(e, nodeId));
-    // Drag/drop for URLs is less common than for files, so skipping for now for "minimal"
 }
+// --- END: YouTube Minimal Node Functions ---
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// --- PEGA ESTA FUNCIÓN ARRIBA DENTRO DE TU ARCHIVO xocoflow_logic.js ---
-// --- PUEDES PONERLA CERCA DE LAS OTRAS FUNCIONES DEL NODO LOCAL_IMAGE ---
-// --- O EN LA SECCIÓN GENERAL DE "HELPER FUNCTIONS" ---
-// Asegúrate de que esta es tu función handleNodeDataChange completa
-
-// --- USA ESTA VERSIÓN COMPLETA Y MODIFICADA ---
-// --- USA ESTA VERSIÓN FINAL ---
 function handleNodeDataChange(event) {
     if (!editor || !event?.target) return;
     const el = event.target;
     const nodeEl = el.closest('.drawflow-node');
     if (!nodeEl) return;
     const id = nodeEl.id.split('-')[1];
-    const node = editor.getNodeFromId(id); // Obtener nodo para verificar datos iniciales si es necesario
-    if (!node) return;
+    const node = editor.getNodeFromId(id); if (!node) return;
     let key = null;
-    // Buscar el atributo df-*
-    for (const attr of el.attributes) {
-        if (attr.name.startsWith('df-')) {
-            key = attr.name.substring(3);
-            break;
-        }
-    }
-    if (!key) return; // Si no hay df-*, salir
+    for (const attr of el.attributes) if (attr.name.startsWith('df-')) { key = attr.name.substring(3); break; }
+    if (!key) return;
 
-    // *** LOG INICIAL en handleNodeDataChange ***
-    // console.log(`>>> handleNodeDataChange triggered for Node ${id}, Element with df-${key}`);
-
-    requestAnimationFrame(() => { // Usar requestAnimationFrame asegura que el valor en node.data se actualice antes de leerlo
+    requestAnimationFrame(() => {
         try {
-            const updatedNode = editor.getNodeFromId(id); // Volver a obtener para datos actualizados
-            // Verificar que el nodo y la clave aún existen y son válidos después de actualizar
-            if (!updatedNode?.data || !Object.prototype.hasOwnProperty.call(updatedNode.data, key)) {
-                 console.warn(`handleNodeDataChange: Node ${id} or key '${key}' no longer exists or data is invalid after update.`);
-                 return;
-            }
-            const val = updatedNode.data[key]; // Obtener el valor ACTUALIZADO de los datos del nodo
-            const name = updatedNode.name;
+            const updatedNode = editor.getNodeFromId(id);
+            if (!updatedNode?.data?.hasOwnProperty(key)) return;
+            const val = updatedNode.data[key]; const name = updatedNode.name;
+            let historySavedByInternalLogic = false;
 
-            // *** LOG con el valor actualizado ***
-            // console.log(`   Node Name: ${name}, Key: ${key}, Updated Value in node.data:`, val);
-
-            let historySavedByExecution = false; // Flag para ver si una ejecución ya guardó historial
-
-            // --- Lógica específica por tipo de nodo y clave cambiada ---
-            if ((name === 'url_input' && key === 'url')) {
-                 executeNode(id, val); // Asume que executeNode guarda historial si es necesario
-                 historySavedByExecution = true;
-            } else if (name === 'cargarTexto' && key === 'filecontent') {
-                 propagateData(id, name, key, val); // Asume que la propagación final guarda historial si es necesario
-                 historySavedByExecution = true; // Asumimos que sí
-            } else if (name === 'imagen' && ['imgsrc', 'imgalt', 'imgwidth', 'imgheight'].includes(key)) {
-                 handleImageInputChange(event); // Esta llama a generateImageHtml que llama a saveHistoryState
-                 historySavedByExecution = true;
-            } else if (name === 'nota' && key === 'notecontent') {
-                 updateCharacterCount(event);
-                 // No necesita ejecución, guardar historial directamente al final
-            } else if ((name === 'timer_fetch' || name === 'timer_download' || name === 'loop') && (key === 'interval' || (name === 'timer_fetch' && key === 'url'))) {
-                 executeNode(id, null); // Reinicia timer, no necesita guardar historial extra aquí
-                 historySavedByExecution = true; // El reinicio puede considerarse un cambio
-            }
-            else if (['input_number', 'input_text', 'input_range', 'input_date', 'input_time', 'input_color'].includes(name)) {
-                 propagateData(id, name, key, val); // Llama a propagateData, que debería llevar a guardar historial si algo cambia
-                 historySavedByExecution = true; // Asumimos que sí
-            }
-            else if (name === 'template_engine' && key === 'template') {
-                 // console.log(`Template Node (${id}): Template changed by user. Reprocessing...`);
-                 processTemplateNode(id); // Llama a processTemplateNode que llama a updateNodeResult que guarda historial
-                 historySavedByExecution = true;
-            }
-            else if (name === 'local_image') {
-                if (key === 'imagewidth' || key === 'imageheight') {
-                    updateLocalImageStyle(event); // Llama a handleNodeDataChange -> saveHistoryState
-                } else if (key === 'nodewidth' || key === 'nodeheight') {
-                    updateLocalNodeSize(event); // Llama a handleNodeDataChange -> saveHistoryState
+            if ((name === 'url_input' && key === 'url')) { executeNode(id, val); historySavedByInternalLogic = true; }
+            else if (name === 'cargarTexto' && key === 'filecontent') { propagateData(id, name, key, val); historySavedByInternalLogic = true; }
+            else if (name === 'imagen' && ['imgsrc', 'imgalt', 'imgwidth', 'imgheight'].includes(key)) { handleImageInputChange(event); historySavedByInternalLogic = true; }
+            else if (name === 'nota' && key === 'notecontent') { updateCharacterCount(event); }
+            else if ((name === 'timer_fetch' || name === 'timer_download' || name === 'loop') && key === 'interval') { executeNode(id, null); historySavedByInternalLogic = true; }
+            else if (name === 'timer_fetch' && key === 'url') { executeNode(id, null); historySavedByInternalLogic = true; }
+            else if (['input_number', 'input_text', 'input_range', 'input_date', 'input_time', 'input_color'].includes(name)) { propagateData(id, name, key, val); historySavedByInternalLogic = true; }
+            else if (name === 'template_engine' && key === 'template') { processTemplateNode(id); historySavedByInternalLogic = true; }
+            else if (name === 'local_image' && (key === 'imagewidth' || key === 'imageheight')) { updateLocalImageStyle(event); historySavedByInternalLogic = true; }
+            else if (name === 'local_image' && (key === 'nodewidth' || key === 'nodeheight')) { updateLocalNodeSize(event); historySavedByInternalLogic = true; }
+            else if ((name === 'text_replace' || name === 'auto_text_replace') && (key === 'find' || key === 'replace')) {
+                const lastInput = updatedNode.data.lastInput;
+                if (lastInput !== null && lastInput !== undefined) {
+                    const executionFunction = (name === 'auto_text_replace') ? executeAutoReplace : executeTextReplace;
+                    setTimeout(() => executionFunction(id, lastInput), 0);
+                    historySavedByInternalLogic = true;
                 }
-                 // Necesita guardado directo al final
             }
-            else if (name === 'image_minimal') {
-                // No requiere acción aquí usualmente, guardar al final si cambia algo relevante
+            else if (name === 'text_split' && key === 'separator') {
+                const lastInput = updatedNode.data.lastInput;
+                if (lastInput !== null && lastInput !== undefined) { setTimeout(() => executeTextSplit(id, lastInput), 0); historySavedByInternalLogic = true; }
             }
-             // ===================================================================
-             // ====> INICIO: BLOQUE ACTUALIZADO PARA TODOS LOS REEMPLAZOS <====
-             // ===================================================================
-             // Maneja 'text_replace' y 'auto_text_replace' (disparan ejecución)
-             else if ((name === 'text_replace' || name === 'auto_text_replace') && (key === 'find' || key === 'replace')) {
-                 // console.log(`   *** ${name} condition MET for key '${key}' ***`);
-                 const lastInput = updatedNode.data.lastInput;
-                 if (lastInput !== null && lastInput !== undefined) {
-                     // console.log(`   ${name} (${id}): Input field '${key}' changed. Reprocessing with lastInput: "${lastInput}"`);
-                     const executionFunction = (name === 'auto_text_replace') ? executeAutoReplace : executeTextReplace;
-                     setTimeout(() => executionFunction(id, lastInput), 0);
-                     historySavedByExecution = true; // La ejecución llamará a updateNodeResult -> saveHistoryState
-                 } else {
-                     // console.log(`   ${name} (${id}): Input field '${key}' changed, but no lastInput to process yet.`);
-                     // Si no hay lastInput, solo el cambio en find/replace se guarda al final
-                 }
-             }
-             // Maneja 'hybrid_text_replace' (NO dispara ejecución)
-             else if (name === 'hybrid_text_replace' && ['original', 'find', 'replace'].includes(key)) {
-                 // console.log(`   Hybrid Replace (${id}): Field '${key}' changed by user. No automatic action.`);
-                 // No se hace nada más, la ejecución es manual vía botón.
-                 // El historial se guarda al final.
-             }
-             // ===================================================================
-             // ====> FIN: BLOQUE ACTUALIZADO <====
-             // ===================================================================
-
-             // --- Manejo de text_split (separado por si acaso) ---
-             else if (name === 'text_split' && key === 'separator') {
-                 const lastInput = updatedNode.data.lastInput;
-                 if (lastInput !== null && lastInput !== undefined) {
-                      // console.log(`   Text Split (${id}): Input field '${key}' changed. Reprocessing with lastInput: "${lastInput}"`);
-                      setTimeout(() => executeTextSplit(id, lastInput), 0);
-                      historySavedByExecution = true; // La ejecución llamará a updateNodeResult -> saveHistoryState
-                 } else {
-                     // console.log(`   Text Split (${id}): Input field '${key}' changed, but no lastInput to process yet.`);
-                 }
-             }
-             // --- FIN MANEJO NODOS DE TEXTO ---
-
-            // Guardar historial para cambios que no dispararon una ejecución que ya guarda.
-            if (!historySavedByExecution) {
-                // ¿Realmente hubo un cambio en los datos? (Drawflow actualiza node.data antes de llamar a esto via rAF)
-                // Podríamos comparar el valor 'val' con el valor original antes del rAF, pero es complejo.
-                // Por simplicidad, guardamos si no fue manejado por una ejecución.
-                // console.log(`   Saving history directly from handleNodeDataChange for ${name} (key: ${key})`);
-                saveHistoryState();
-            } else {
-                 // console.log(`   History save deferred or handled by execution for ${name} (key: ${key})`);
+            else if (name === 'hybrid_text_replace' && ['original', 'find', 'replace'].includes(key)) { /* No auto execution */ }
+            else if (name === 'input_json' && key === 'json') { handleJsonInputChange(event); historySavedByInternalLogic = true; } // Moved from separate func
+            // Handle range specifically for display update
+            else if (name === 'input_range' && key === 'range') {
+                const rangeValSpan = nodeEl.querySelector('span[df-rangeval]');
+                if(rangeValSpan) rangeValSpan.textContent = val;
+                propagateData(id, name, key, val);
+                historySavedByInternalLogic = true;
             }
 
 
-        } catch (e) {
-            console.error(`Error handleNodeDataChange (Node: ${id}, Key: ${key}):`, e);
-        }
+            if (!historySavedByInternalLogic) { saveHistoryState(); }
+        } catch (e) { console.error(`Error handleNodeDataChange (${id}/${key}):`, e); }
     });
 }
-  
-  function applyTextSplit(event) {
-    const id = getNodeIdFromEvent(event);
-    const node = editor.getNodeFromId(id);
-    const txt = node.data.lastInput ?? '';
-    const sep = node.data.separator;
-    const res = txt.split(sep).join('\n');
-    updateNodeResult(id, res);
-  }
-  
-  function applyTextCase(event, mode) {
-    const id = getNodeIdFromEvent(event);
-    const node = editor.getNodeFromId(id);
-    const txt = node.data.lastInput ?? '';
-    const res = mode === 'upper' ? txt.toUpperCase() : txt.toLowerCase();
-    updateNodeResult(id, res);
-  }
-  
-  function applyTextLength(event) {
-    const id = getNodeIdFromEvent(event);
-    const node = editor.getNodeFromId(id);
-    const txt = node.data.lastInput ?? '';
-    updateNodeResult(id, txt.length);
-  }
-  
-  function applyHtmlStrip(event) {
-    const id = getNodeIdFromEvent(event);
-    const node = editor.getNodeFromId(id);
-    const txt = node.data.lastInput ?? '';
-    const res = txt.replace(/<[^>]*>/g, '');
-    updateNodeResult(id, res);
-  }
-  
-/**
- * Actualiza el resultado de un nodo (datos y UI), propaga y guarda historial.
- * Usada por nodos como text_replace, text_split, etc.
- * @param {string} nodeId - El ID del nodo.
- * @param {*} resultValue - El valor del resultado a guardar y propagar.
- */
+
+function applyTextSplit(event) { const id = getNodeIdFromEvent(event); const node = editor.getNodeFromId(id); const txt = node.data.lastInput ?? ''; const sep = node.data.separator; const res = txt.split(sep).join('\n'); updateNodeResult(id, res); }
+function applyTextCase(event, mode) { const id = getNodeIdFromEvent(event); const node = editor.getNodeFromId(id); const txt = node.data.lastInput ?? ''; const res = mode === 'upper' ? txt.toUpperCase() : txt.toLowerCase(); updateNodeResult(id, res); }
+function applyTextLength(event) { const id = getNodeIdFromEvent(event); const node = editor.getNodeFromId(id); const txt = node.data.lastInput ?? ''; updateNodeResult(id, txt.length); }
+function applyHtmlStrip(event) { const id = getNodeIdFromEvent(event); const node = editor.getNodeFromId(id); const txt = node.data.lastInput ?? ''; const res = txt.replace(/<[^>]*>/g, ''); updateNodeResult(id, res); }
+
 function updateNodeResult(nodeId, resultValue) {
-    const node = editor.getNodeFromId(nodeId);
-    if (!node) return;
-
-    // Solo actualizar si el resultado realmente cambió
+    const node = editor.getNodeFromId(nodeId); if (!node) return;
     if (node.data.result !== resultValue) {
-        // console.log(`Node ${nodeId} (${node.name}): Updating result data.`);
-        // Actualizamos el dato en el modelo de Drawflow
         editor.updateNodeDataFromId(nodeId, { result: resultValue });
-
-        // Actualizamos el elemento visual (textarea o input) en la UI
         const nodeElement = document.getElementById(`node-${nodeId}`);
         if (nodeElement) {
-            // Busca textarea o input con df-result
             const resultElement = nodeElement.querySelector('textarea[df-result], input[df-result]');
-            if (resultElement) {
-                resultElement.value = resultValue; // Asignar valor
-            } else {
-                // console.warn(`Node ${nodeId} (${node.name}): Result element (df-result) not found in UI.`);
-            }
-        } else {
-            //  console.warn(`Node ${nodeId} (${node.name}): Node element not found in DOM for UI update.`);
+            if (resultElement) { resultElement.value = resultValue; }
         }
-
-        // Propagamos el nuevo resultado a los nodos conectados
-        // Usamos el nombre del nodo actual para la propagación
-        // console.log(`Node ${nodeId} (${node.name}): Propagating new result.`);
         propagateData(nodeId, node.name, 'result', resultValue);
-
-        // Guardamos el estado para deshacer/rehacer porque el resultado cambió
         saveHistoryState();
-    } else {
-        //  console.log(`Node ${nodeId} (${node.name}): Result unchanged, no update needed.`);
     }
 }
-  
 
-  function handleJsonInputChange(event) {
-    const nodeId   = getNodeIdFromEvent(event);
-    const textarea = event.target;
-    const text     = textarea.value;
-    let parsed;
-    const nodeName = 'input_json'; // Nombre del nodo para propagateData
-
-    // 1) Parseo
-    try {
-        parsed = JSON.parse(text || '{}'); // Asegura que no sea vacío, parsea a objeto
-        textarea.classList.remove('error');
-    } catch (e) {
-        textarea.classList.add('error');
-        console.error(`Input JSON (${nodeId}) Parse Error:`, e);
-        // No propagar si hay error de parseo
-        // Podrías limpiar lastInput si quieres
-        // editor.updateNodeDataFromId(nodeId, { json: text, lastInput: null });
-        return;
-    }
-
-    // 2) Actualizo estado interno
-    // Guardamos tanto el texto original como el objeto parseado
-    editor.updateNodeDataFromId(nodeId, {
-        json: text,
-        lastInput: parsed // Guardamos el objeto parseado
-    });
-
-    // 3) ¡CAMBIO IMPORTANTE! Usar propagateData para enviar el OBJETO PARSEADO
-    // Esto activará la lógica que añadimos para 'template_engine' en propagateData.
-    // Usamos 'lastInput' como "changedKey" conceptual, y 'parsed' como el dato a enviar.
-    // console.log(`Input JSON (${nodeId}): Propagating parsed data object...`, parsed);
+function handleJsonInputChange(event) {
+    const nodeId = getNodeIdFromEvent(event); const textarea = event.target; const text = textarea.value;
+    let parsed; const nodeName = 'input_json';
+    try { parsed = JSON.parse(text || '{}'); textarea.classList.remove('error'); }
+    catch (e) { textarea.classList.add('error'); console.error(`Input JSON (${nodeId}) Parse Error:`, e); return; }
+    editor.updateNodeDataFromId(nodeId, { json: text, lastInput: parsed });
     propagateData(nodeId, nodeName, 'lastInput', parsed);
-
-    // Opcional: Si algún nodo necesita ser *ejecutado* específicamente
-    // por la llegada de este JSON (además de recibir los datos),
-    // podrías mantener la llamada a propagateExecution aquí también,
-    // pero para el nodo Plantilla, propagateData es la necesaria.
-    // propagateExecution(nodeId, parsed); // Podría ser redundante o innecesaria ahora
-
-    // Guardar historial porque el dato cambió y se propagó
     saveHistoryState();
 }
-  
-  
-  
 
-
-
-
-
-
-
-// NUEVO: Función para calcular y actualizar el nodo Suma
-/**
- * Calcula la suma de las entradas conectadas a un nodo 'sum' y actualiza su resultado.
- * @param {string} nodeId - El ID del nodo 'sum'.
- */
 function updateSumNode(nodeId) {
   try {
-      const node = editor.getNodeFromId(nodeId);
-      // Verificar que el nodo existe, es de tipo 'sum' y tiene el puerto de entrada definido
-      if (!node || node.name !== 'sum' || !node.inputs?.input_1) return;
-
-      const connections = node.inputs.input_1.connections || [];
-      let currentSum = 0;
-
-      // Recorrer todas las conexiones entrantes
+      const node = editor.getNodeFromId(nodeId); if (!node || node.name !== 'sum' || !node.inputs?.input_1) return;
+      const connections = node.inputs.input_1.connections || []; let currentSum = 0;
       connections.forEach(conn => {
-          const sourceNode = editor.getNodeFromId(conn.node);
-          if (sourceNode?.data) {
-              let value = 0;
-              // Intentar obtener el valor numérico de la fuente
-              // Prioridad: 'number' (de input_number), luego 'result' (de otros nodos), luego 'range'
-              if (sourceNode.data.hasOwnProperty('number')) {
-                  value = parseFloat(sourceNode.data.number);
-              } else if (sourceNode.data.hasOwnProperty('result')) {
-                   value = parseFloat(sourceNode.data.result);
-              } else if (sourceNode.data.hasOwnProperty('range')) { // Añadido para input_range
-                   value = parseFloat(sourceNode.data.range);
-              } // Puedes añadir más campos 'else if' si tienes otros nodos que emiten números con claves diferentes
-
-              // Si es un número válido, añadirlo a la suma
-              if (!isNaN(value)) {
-                  currentSum += value;
-              } else {
-                  // console.warn(`Node sum (${nodeId}): Input from ${conn.node} is not a number. Ignored.`);
-              }
+          const sourceNode = editor.getNodeFromId(conn.node); if (sourceNode?.data) { let value = 0;
+              if (sourceNode.data.hasOwnProperty('number')) value = parseFloat(sourceNode.data.number);
+              else if (sourceNode.data.hasOwnProperty('result')) value = parseFloat(sourceNode.data.result);
+              else if (sourceNode.data.hasOwnProperty('range')) value = parseFloat(sourceNode.data.range);
+              if (!isNaN(value)) currentSum += value;
           }
       });
-
-      // Actualizar los datos internos del nodo y la UI solo si el resultado ha cambiado
       if (node.data.result !== currentSum) {
-          // console.log(`Node sum (${nodeId}): Updating result from ${node.data.result} to ${currentSum}`);
           editor.updateNodeDataFromId(nodeId, { result: currentSum });
-
-          // Actualizar el textarea visual dentro del nodo
-          const nodeElement = document.getElementById(`node-${nodeId}`);
-          const resultTextarea = nodeElement?.querySelector('textarea[df-result]');
-          if (resultTextarea) {
-              resultTextarea.value = currentSum;
-          }
-
-          // Propagar el nuevo resultado a los nodos conectados a la salida del nodo Suma
-          propagateData(nodeId, 'sum', 'result', currentSum);
-          saveHistoryState(); // Guardar estado porque el resultado cambió
+          const nodeElement = document.getElementById(`node-${nodeId}`); const resultTextarea = nodeElement?.querySelector('textarea[df-result]'); if (resultTextarea) resultTextarea.value = currentSum;
+          propagateData(nodeId, 'sum', 'result', currentSum); saveHistoryState();
       }
-  } catch (error) {
-      console.error(`Error updating sum node ${nodeId}:`, error);
-      showToast('error', 'Error en Suma', `No se pudo calcular la suma para el nodo ${nodeId}.`);
-  }
+  } catch (error) { console.error(`Error updating sum node ${nodeId}:`, error); showToast('error', 'Error en Suma', `No se pudo calcular la suma.`); }
 }
-// FIN NUEVA FUNCIÓN
 
-
-// Añade esta función junto a updateSumNode y updateConcatenateNode
-
-// NUEVO: Función para calcular y actualizar el nodo Resta
-/**
- * Calcula la resta de las entradas conectadas a un nodo 'subtract' y actualiza su resultado.
- * El orden se basa en la posición Y de los nodos de entrada (el superior menos los inferiores).
- * @param {string} nodeId - El ID del nodo 'subtract'.
- */
 function updateSubtractNode(nodeId) {
   try {
-      const node = editor.getNodeFromId(nodeId);
-      // Verificar que el nodo existe, es de tipo 'subtract' y tiene el puerto de entrada definido
-      if (!node || node.name !== 'subtract' || !node.inputs?.input_1) return;
-
+      const node = editor.getNodeFromId(nodeId); if (!node || node.name !== 'subtract' || !node.inputs?.input_1) return;
       const connectionsRaw = node.inputs.input_1.connections || [];
-
-      // Ordenar conexiones por posición Y del nodo origen (el más alto primero)
-      const connectionsSorted = connectionsRaw.slice().sort((a, b) => {
-          const nodeA_Y = editor.getNodeFromId(a.node)?.pos_y ?? Infinity;
-          const nodeB_Y = editor.getNodeFromId(b.node)?.pos_y ?? Infinity;
-          return nodeA_Y - nodeB_Y;
-      });
-
-      let currentResult = 0;
-      let isFirstNode = true;
-
-      // Recorrer todas las conexiones entrantes ordenadas
+      const connectionsSorted = connectionsRaw.slice().sort((a, b) => (editor.getNodeFromId(a.node)?.pos_y ?? Infinity) - (editor.getNodeFromId(b.node)?.pos_y ?? Infinity));
+      let currentResult = 0; let isFirstNode = true;
       connectionsSorted.forEach(conn => {
-          const sourceNode = editor.getNodeFromId(conn.node);
-          let value = 0; // Valor por defecto si no es número
-
+          const sourceNode = editor.getNodeFromId(conn.node); let value = 0;
           if (sourceNode?.data) {
-              // Intentar obtener el valor numérico de la fuente
-              if (sourceNode.data.hasOwnProperty('number')) {
-                  value = parseFloat(sourceNode.data.number);
-              } else if (sourceNode.data.hasOwnProperty('result')) {
-                   value = parseFloat(sourceNode.data.result);
-              } else if (sourceNode.data.hasOwnProperty('range')) {
-                   value = parseFloat(sourceNode.data.range);
-              } // Añadir más 'else if' si es necesario
-
-              // Asegurarse de que el valor sea numérico, si no, usar 0
-              if (isNaN(value)) {
-                  value = 0;
-                  // console.warn(`Node subtract (${nodeId}): Input from ${conn.node} is not a valid number. Using 0.`);
-              }
+              if (sourceNode.data.hasOwnProperty('number')) value = parseFloat(sourceNode.data.number);
+              else if (sourceNode.data.hasOwnProperty('result')) value = parseFloat(sourceNode.data.result);
+              else if (sourceNode.data.hasOwnProperty('range')) value = parseFloat(sourceNode.data.range);
+              if (isNaN(value)) value = 0;
           }
-
-          // Si es el primer nodo (el más arriba), establecerlo como valor inicial
-          if (isFirstNode) {
-              currentResult = value;
-              isFirstNode = false;
-          } else {
-              // Restar los valores de los nodos subsiguientes
-              currentResult -= value;
-          }
+          if (isFirstNode) { currentResult = value; isFirstNode = false; }
+          else { currentResult -= value; }
       });
-
-      // Si no hubo conexiones, el resultado es 0
-      if (connectionsSorted.length === 0) {
-          currentResult = 0;
-      }
-
-      // Actualizar los datos internos del nodo y la UI solo si el resultado ha cambiado
+      if (connectionsSorted.length === 0) currentResult = 0;
       if (node.data.result !== currentResult) {
-          // console.log(`Node subtract (${nodeId}): Updating result from ${node.data.result} to ${currentResult}`);
           editor.updateNodeDataFromId(nodeId, { result: currentResult });
-
-          // Actualizar el textarea visual dentro del nodo
-          const nodeElement = document.getElementById(`node-${nodeId}`);
-          const resultTextarea = nodeElement?.querySelector('textarea[df-result]');
-          if (resultTextarea) {
-              resultTextarea.value = currentResult;
-          }
-
-          // Propagar el nuevo resultado
-          propagateData(nodeId, 'subtract', 'result', currentResult);
-          saveHistoryState(); // Guardar estado porque el resultado cambió
+          const nodeElement = document.getElementById(`node-${nodeId}`); const resultTextarea = nodeElement?.querySelector('textarea[df-result]'); if (resultTextarea) resultTextarea.value = currentResult;
+          propagateData(nodeId, 'subtract', 'result', currentResult); saveHistoryState();
       }
-  } catch (error) {
-      console.error(`Error updating subtract node ${nodeId}:`, error);
-      showToast('error', 'Error en Resta', `No se pudo calcular la resta para el nodo ${nodeId}.`);
-  }
+  } catch (error) { console.error(`Error updating subtract node ${nodeId}:`, error); showToast('error', 'Error en Resta', `No se pudo calcular.`); }
 }
-// FIN NUEVA FUNCIÓN RESTA
 
-
-
-// Añade esta función
-
-// NUEVO: Función para calcular y actualizar el nodo Multiplicación
-/**
- * Calcula el producto de las entradas conectadas a un nodo 'multiply' y actualiza su resultado.
- * @param {string} nodeId - El ID del nodo 'multiply'.
- */
 function updateMultiplyNode(nodeId) {
   try {
-      const node = editor.getNodeFromId(nodeId);
-      // Verificar que el nodo existe, es de tipo 'multiply' y tiene el puerto de entrada definido
-      if (!node || node.name !== 'multiply' || !node.inputs?.input_1) return;
-
-      const connections = node.inputs.input_1.connections || [];
-      let currentResult = 1; // Empezar con la identidad multiplicativa
-      let hasValidInput = false; // Flag para saber si se encontró al menos un número
-
-      // Recorrer todas las conexiones entrantes
+      const node = editor.getNodeFromId(nodeId); if (!node || node.name !== 'multiply' || !node.inputs?.input_1) return;
+      const connections = node.inputs.input_1.connections || []; let currentResult = 1; let hasValidInput = false;
       connections.forEach(conn => {
-          const sourceNode = editor.getNodeFromId(conn.node);
-          let value = NaN; // Inicializar como NaN para forzar validación
-
+          const sourceNode = editor.getNodeFromId(conn.node); let value = NaN;
           if (sourceNode?.data) {
-              // Intentar obtener el valor numérico de la fuente
-              if (sourceNode.data.hasOwnProperty('number')) {
-                  value = parseFloat(sourceNode.data.number);
-              } else if (sourceNode.data.hasOwnProperty('result')) {
-                   value = parseFloat(sourceNode.data.result);
-              } else if (sourceNode.data.hasOwnProperty('range')) {
-                   value = parseFloat(sourceNode.data.range);
-              } // Añadir más 'else if' si es necesario
-
-              // Si es un número válido, multiplicarlo
-              if (!isNaN(value)) {
-                  currentResult *= value;
-                  hasValidInput = true; // Marcamos que encontramos al menos un número
-              } else {
-                  // console.warn(`Node multiply (${nodeId}): Input from ${conn.node} is not a valid number. Ignored.`);
-                  // No multiplicamos si no es un número válido
-              }
+              if (sourceNode.data.hasOwnProperty('number')) value = parseFloat(sourceNode.data.number);
+              else if (sourceNode.data.hasOwnProperty('result')) value = parseFloat(sourceNode.data.result);
+              else if (sourceNode.data.hasOwnProperty('range')) value = parseFloat(sourceNode.data.range);
+              if (!isNaN(value)) { currentResult *= value; hasValidInput = true; }
           }
       });
-
-      // Si no hubo ninguna conexión válida, el resultado podría ser 0 o 1.
-      // Decidimos que si no hay conexiones O ninguna válida, el resultado es 0.
-      // Si hubo conexiones pero resultaron en NaN (ej. texto * texto), el resultado será NaN.
-      // Si solo hubo conexiones no numéricas (ignoradas), el resultado se quedó en 1.
-      // Para consistencia, si no hubo inputs válidos conectados, forzamos a 0.
-      if (connections.length === 0 || !hasValidInput) {
-           currentResult = 0;
-      }
-
-      // Actualizar los datos internos del nodo y la UI solo si el resultado ha cambiado
-      // Manejar comparación con NaN (NaN !== NaN siempre es true)
+      if (connections.length === 0 || !hasValidInput) currentResult = 0;
       const previousResult = node.data.result;
       if (previousResult !== currentResult && !(isNaN(previousResult) && isNaN(currentResult))) {
-          // console.log(`Node multiply (${nodeId}): Updating result from ${previousResult} to ${currentResult}`);
           editor.updateNodeDataFromId(nodeId, { result: currentResult });
-
-          // Actualizar el textarea visual dentro del nodo
-          const nodeElement = document.getElementById(`node-${nodeId}`);
-          const resultTextarea = nodeElement?.querySelector('textarea[df-result]');
-          if (resultTextarea) {
-              resultTextarea.value = isNaN(currentResult) ? "NaN" : currentResult; // Mostrar NaN si es el caso
-          }
-
-          // Propagar el nuevo resultado
-          propagateData(nodeId, 'multiply', 'result', currentResult);
-          saveHistoryState(); // Guardar estado porque el resultado cambió
+          const nodeElement = document.getElementById(`node-${nodeId}`); const resultTextarea = nodeElement?.querySelector('textarea[df-result]'); if (resultTextarea) resultTextarea.value = isNaN(currentResult) ? "NaN" : currentResult;
+          propagateData(nodeId, 'multiply', 'result', currentResult); saveHistoryState();
       }
-  } catch (error) {
-      console.error(`Error updating multiply node ${nodeId}:`, error);
-      showToast('error', 'Error en Multiplicación', `No se pudo calcular el producto para el nodo ${nodeId}.`);
-  }
+  } catch (error) { console.error(`Error updating multiply node ${nodeId}:`, error); showToast('error', 'Error en Multiplicación', `No se pudo calcular.`); }
 }
-// FIN NUEVA FUNCIÓN MULTIPLICACIÓN
 
-
-
-// Añade esta función
-
-// NUEVO: Función para calcular y actualizar el nodo División
-/**
- * Calcula la división secuencial de las entradas conectadas a un nodo 'divide' y actualiza su resultado.
- * El orden se basa en la posición Y de los nodos de entrada (el superior dividido por los inferiores).
- * Maneja la división por cero resultando en Infinity.
- * @param {string} nodeId - El ID del nodo 'divide'.
- */
 function updateDivideNode(nodeId) {
   try {
-      const node = editor.getNodeFromId(nodeId);
-      // Verificar que el nodo existe, es de tipo 'divide' y tiene el puerto de entrada definido
-      if (!node || node.name !== 'divide' || !node.inputs?.input_1) return;
-
+      const node = editor.getNodeFromId(nodeId); if (!node || node.name !== 'divide' || !node.inputs?.input_1) return;
       const connectionsRaw = node.inputs.input_1.connections || [];
-
-      // Ordenar conexiones por posición Y del nodo origen (el más alto primero)
-      const connectionsSorted = connectionsRaw.slice().sort((a, b) => {
-          const nodeA_Y = editor.getNodeFromId(a.node)?.pos_y ?? Infinity;
-          const nodeB_Y = editor.getNodeFromId(b.node)?.pos_y ?? Infinity;
-          return nodeA_Y - nodeB_Y;
-      });
-
-      let currentResult = NaN; // Empezar como Indefinido
-      let isFirstNode = true;
-      let divisionByZero = false;
-
-      // Se necesitan al menos dos entradas para dividir
-      if (connectionsSorted.length < 2) {
-           currentResult = NaN; // Resultado indefinido si hay menos de 2 entradas
-      } else {
+      const connectionsSorted = connectionsRaw.slice().sort((a, b) => (editor.getNodeFromId(a.node)?.pos_y ?? Infinity) - (editor.getNodeFromId(b.node)?.pos_y ?? Infinity));
+      let currentResult = NaN; let isFirstNode = true; let divisionByZero = false;
+      if (connectionsSorted.length < 2) currentResult = NaN;
+      else {
           connectionsSorted.forEach(conn => {
-              const sourceNode = editor.getNodeFromId(conn.node);
-              let value = NaN; // Valor por defecto
-
+              const sourceNode = editor.getNodeFromId(conn.node); let value = NaN;
               if (sourceNode?.data) {
-                  // Intentar obtener el valor numérico de la fuente
-                  if (sourceNode.data.hasOwnProperty('number')) {
-                      value = parseFloat(sourceNode.data.number);
-                  } else if (sourceNode.data.hasOwnProperty('result')) {
-                       value = parseFloat(sourceNode.data.result);
-                  } else if (sourceNode.data.hasOwnProperty('range')) {
-                       value = parseFloat(sourceNode.data.range);
-                  } // Añadir más 'else if'
-
-                  // Si no es un número válido, tratar como NaN para el cálculo
-                  if (isNaN(value)) {
-                      value = NaN;
-                      // console.warn(`Node divide (${nodeId}): Input from ${conn.node} is not a valid number. Result will be NaN.`);
-                  }
-              } else {
-                  value = NaN; // Si no hay nodo o datos, es NaN
-              }
-
-              // Establecer el dividendo inicial (primer nodo)
-              if (isFirstNode) {
-                  currentResult = value;
-                  isFirstNode = false;
-              } else {
-                  // Dividir por los valores subsiguientes (divisores)
-                  // Comprobar división por cero
-                  if (value === 0) {
-                      divisionByZero = true;
-                      currentResult = Infinity; // O puedes poner NaN o un string de error
-                      // console.warn(`Node divide (${nodeId}): Division by zero detected from node ${conn.node}. Result set to Infinity.`);
-                      return; // Salir del forEach si hay división por cero (opcional, podría continuar y dar NaN/Infinity)
-                  }
-                  // Si el resultado actual o el divisor es NaN, el resultado sigue siendo NaN
-                  if (isNaN(currentResult) || isNaN(value)) {
-                      currentResult = NaN;
-                  } else {
-                       currentResult /= value;
-                  }
-              }
+                  if (sourceNode.data.hasOwnProperty('number')) value = parseFloat(sourceNode.data.number);
+                  else if (sourceNode.data.hasOwnProperty('result')) value = parseFloat(sourceNode.data.result);
+                  else if (sourceNode.data.hasOwnProperty('range')) value = parseFloat(sourceNode.data.range);
+                  if (isNaN(value)) value = NaN;
+              } else value = NaN;
+              if (isFirstNode) { currentResult = value; isFirstNode = false; }
+              else { if (value === 0) { divisionByZero = true; currentResult = Infinity; return; } if (isNaN(currentResult) || isNaN(value)) currentResult = NaN; else currentResult /= value; }
           });
       }
-
-      // Actualizar los datos internos y la UI solo si el resultado ha cambiado
       const previousResult = node.data.result;
-      // Comparación especial para NaN (NaN !== NaN es true)
       if (previousResult !== currentResult && !(isNaN(previousResult) && isNaN(currentResult))) {
-          // console.log(`Node divide (${nodeId}): Updating result from ${previousResult} to ${currentResult}`);
           editor.updateNodeDataFromId(nodeId, { result: currentResult });
-
-          // Actualizar el textarea visual dentro del nodo
-          const nodeElement = document.getElementById(`node-${nodeId}`);
-          const resultTextarea = nodeElement?.querySelector('textarea[df-result]');
-          if (resultTextarea) {
-              let displayValue = "N/A"; // Valor por defecto para mostrar
-              if (divisionByZero) {
-                   displayValue = "Infinity"; // O "Error Div/0"
-              } else if (!isNaN(currentResult)) {
-                   displayValue = currentResult;
-              } else if (connectionsSorted.length >= 2) {
-                   displayValue = "NaN"; // Si hubo cálculo pero dio NaN
-              }
-              resultTextarea.value = displayValue;
-          }
-
-          // Propagar el nuevo resultado (puede ser NaN o Infinity)
-          propagateData(nodeId, 'divide', 'result', currentResult);
-          saveHistoryState(); // Guardar estado porque el resultado cambió
+          const nodeElement = document.getElementById(`node-${nodeId}`); const resultTextarea = nodeElement?.querySelector('textarea[df-result]');
+          if (resultTextarea) { let displayValue = "N/A"; if (divisionByZero) displayValue = "Infinity"; else if (!isNaN(currentResult)) displayValue = currentResult; else if (connectionsSorted.length >= 2) displayValue = "NaN"; resultTextarea.value = displayValue; }
+          propagateData(nodeId, 'divide', 'result', currentResult); saveHistoryState();
       }
-  } catch (error) {
-      console.error(`Error updating divide node ${nodeId}:`, error);
-      showToast('error', 'Error en División', `No se pudo calcular la división para el nodo ${nodeId}.`);
-  }
+  } catch (error) { console.error(`Error updating divide node ${nodeId}:`, error); showToast('error', 'Error en División', `No se pudo calcular.`); }
 }
-// FIN NUEVA FUNCIÓN DIVISIÓN
 
-
-
-
-
-// --- Añade estas nuevas funciones en la sección de Helpers o Node Specific UI ---
-
-/**
- * Función central para procesar una imagen cargada (desde cualquier fuente).
- * Actualiza los datos del nodo, la UI y redimensiona el nodo.
- * @param {string} nodeId El ID del nodo.
- * @param {string} imageDataUrl La imagen como Data URL.
- */
 function processMinimalImageLoad(nodeId, imageDataUrl) {
   if (!editor || !nodeId || !imageDataUrl) return;
-
-  // console.log(`Processing image load for node ${nodeId}...`);
   const nodeElement = document.getElementById(`node-${nodeId}`);
   const imgTag = nodeElement?.querySelector('img[df-imgsrc]');
   const placeholder = nodeElement?.querySelector('.image-placeholder');
-
-  if (!nodeElement || !imgTag || !placeholder) {
-      console.error(`Minimal Image Node elements not found for ID ${nodeId}.`);
-      showToast('error', 'Error Interno', 'No se encontraron elementos del nodo imagen.');
-      return;
-  }
-
-  // Crear imagen en memoria para obtener dimensiones
+  if (!nodeElement || !imgTag || !placeholder) { console.error(`Minimal Image Node elements not found for ID ${nodeId}.`); showToast('error', 'Error Interno', 'No se encontraron elementos.'); return; }
   const tempImg = new Image();
   tempImg.onload = () => {
       try {
-          const w = tempImg.naturalWidth;
-          const h = tempImg.naturalHeight;
-          // console.log(`Image loaded: ${w}x${h}`);
-
-          if (w === 0 || h === 0) throw new Error("Invalid image dimensions (0x0).");
-
-          // 1. Actualizar datos internos del nodo en Drawflow
-          editor.updateNodeDataFromId(nodeId, {
-              imgsrc: imageDataUrl,
-              naturalWidth: w,
-              naturalHeight: h,
-              nodeWidth: `${w}px`, // Guardar también como nodeWidth/Height para consistencia
-              nodeHeight: `${h}px`
-          });
-
-          // 2. Actualizar UI del nodo
-          imgTag.src = imageDataUrl;
-          imgTag.style.display = 'block';
-          placeholder.style.display = 'none';
-          if (nodeElement.style.border.includes('dashed')) { // Quitar borde punteado si lo tenía
-               nodeElement.style.border = 'none';
-          }
-
-
-          // 3. Redimensionar el elemento del nodo
-          nodeElement.style.width = `${w}px`;
-          nodeElement.style.height = `${h}px`;
-
-          // 4. Forzar actualización de conexiones
-          // Usar un pequeño timeout puede ayudar a que el DOM se actualice antes de redibujar líneas
-          setTimeout(() => {
-              editor.updateConnectionNodes(`node-${nodeId}`);
-              // console.log(`Node ${nodeId} connections updated after resize.`);
-          }, 50);
-
-
-          // 5. Guardar historial
-          saveHistoryState();
-          showToast('success', 'Imagen Cargada', `${w}x${h}px`);
-
+          const w = tempImg.naturalWidth; const h = tempImg.naturalHeight; if (w === 0 || h === 0) throw new Error("Invalid image dimensions (0x0).");
+          editor.updateNodeDataFromId(nodeId, { imgsrc: imageDataUrl, naturalWidth: w, naturalHeight: h, nodeWidth: `${w}px`, nodeHeight: `${h}px` });
+          imgTag.src = imageDataUrl; imgTag.style.display = 'block'; placeholder.style.display = 'none';
+          if (nodeElement.style.border.includes('dashed')) nodeElement.style.border = 'none';
+          nodeElement.style.width = `${w}px`; nodeElement.style.height = `${h}px`;
+          setTimeout(() => { editor.updateConnectionNodes(`node-${nodeId}`); }, 50);
+          saveHistoryState(); showToast('success', 'Imagen Cargada', `${w}x${h}px`);
       } catch (error) {
-           console.error(`Error processing image dimensions or updating node ${nodeId}:`, error);
-           showToast('error', 'Error Imagen', 'No se pudo procesar la imagen.');
-           // Resetear si falla
-           imgTag.src = '';
-           imgTag.style.display = 'none';
-           placeholder.style.display = 'flex'; // O 'block' según tu layout de placeholder
+           console.error(`Error processing image dimensions or updating node ${nodeId}:`, error); showToast('error', 'Error Imagen', 'No se pudo procesar.');
+           imgTag.src = ''; imgTag.style.display = 'none'; placeholder.style.display = 'flex';
            editor.updateNodeDataFromId(nodeId, { imgsrc: '', naturalWidth: 0, naturalHeight: 0, nodeWidth: '80px', nodeHeight: '60px' });
-           nodeElement.style.width = '80px';
-           nodeElement.style.height = '60px';
-           nodeElement.style.border = '2px dashed #cccccc';
-
+           nodeElement.style.width = '80px'; nodeElement.style.height = '60px'; nodeElement.style.border = '2px dashed #cccccc';
       }
   };
   tempImg.onerror = (err) => {
-      console.error("Error loading image data into temp Image object:", err);
-      showToast('error', 'Error Carga', 'El formato de imagen no es válido o está corrupto.');
-      // Resetear UI
-      imgTag.src = '';
-      imgTag.style.display = 'none';
-      placeholder.style.display = 'flex';
+      console.error("Error loading image data into temp Image object:", err); showToast('error', 'Error Carga', 'Formato inválido.');
+      imgTag.src = ''; imgTag.style.display = 'none'; placeholder.style.display = 'flex';
       editor.updateNodeDataFromId(nodeId, { imgsrc: '', naturalWidth: 0, naturalHeight: 0, nodeWidth: '80px', nodeHeight: '60px' });
-      nodeElement.style.width = '80px';
-      nodeElement.style.height = '60px';
-      nodeElement.style.border = '2px dashed #cccccc';
+      nodeElement.style.width = '80px'; nodeElement.style.height = '60px'; nodeElement.style.border = '2px dashed #cccccc';
   };
-  tempImg.src = imageDataUrl; // Iniciar la carga en memoria
+  tempImg.src = imageDataUrl;
 }
 
-/**
-* Inicia la selección de archivo para el nodo imagen minimalista.
-* @param {Event} event Evento click en el placeholder.
-*/
 function triggerMinimalImageFileSelect(event) {
-  const placeholder = event.currentTarget; // El placeholder que recibió el clic
-  const nodeElement = placeholder.closest('.drawflow-node');
-  if (!nodeElement) return;
+  const placeholder = event.currentTarget; const nodeElement = placeholder.closest('.drawflow-node'); if (!nodeElement) return;
   const nodeId = nodeElement.id.split('-')[1];
-
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = 'image/*';
-  input.style.display = 'none';
-
+  const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*'; input.style.display = 'none';
   input.onchange = (e) => {
-      const file = e.target.files?.[0];
-      if (file) {
-          const reader = new FileReader();
-          reader.onload = (loadEvent) => {
-              processMinimalImageLoad(nodeId, loadEvent.target.result);
-          };
-          reader.onerror = () => {
-              showToast('error', 'Error Lectura', 'No se pudo leer el archivo.');
-          };
-          reader.readAsDataURL(file);
-      }
-      document.body.removeChild(input); // Limpiar input
+      const file = e.target.files?.[0]; if (file) { const reader = new FileReader(); reader.onload = (loadEvent) => processMinimalImageLoad(nodeId, loadEvent.target.result); reader.onerror = () => showToast('error', 'Error Lectura', 'No se pudo leer.'); reader.readAsDataURL(file); }
+      document.body.removeChild(input);
   };
-
-  document.body.appendChild(input);
-  input.click();
+  document.body.appendChild(input); input.click();
 }
-
-/**
-* Maneja el evento dragover sobre el placeholder de imagen.
-* @param {DragEvent} event
-*/
-function handleMinimalImageDragOver(event) {
-   event.preventDefault();
-   event.stopPropagation();
-   event.dataTransfer.dropEffect = 'copy';
-   event.currentTarget.classList.add('dragover'); // currentTarget es el placeholder
-}
-
-/**
-* Maneja el evento dragleave sobre el placeholder de imagen.
-* @param {DragEvent} event
-*/
-function handleMinimalImageDragLeave(event) {
-  event.stopPropagation();
-  event.currentTarget.classList.remove('dragover');
-}
-
-/**
-* Maneja el evento drop sobre el placeholder de imagen.
-* @param {DragEvent} event
-*/
+function handleMinimalImageDragOver(event) { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = 'copy'; event.currentTarget.classList.add('dragover'); }
+function handleMinimalImageDragLeave(event) { event.stopPropagation(); event.currentTarget.classList.remove('dragover'); }
 function handleMinimalImageDrop(event) {
-  event.preventDefault();
-  event.stopPropagation();
-  const placeholder = event.currentTarget;
-  placeholder.classList.remove('dragover');
-  const nodeElement = placeholder.closest('.drawflow-node');
-  if (!nodeElement) return;
-  const nodeId = nodeElement.id.split('-')[1];
-
-  const files = event.dataTransfer.files;
+  event.preventDefault(); event.stopPropagation();
+  const placeholder = event.currentTarget; placeholder.classList.remove('dragover'); const nodeElement = placeholder.closest('.drawflow-node'); if (!nodeElement) return;
+  const nodeId = nodeElement.id.split('-')[1]; const files = event.dataTransfer.files;
   if (files.length > 0) {
-      // Buscar el primer archivo de imagen
-      let imageFile = null;
-      for (let i = 0; i < files.length; i++) {
-          if (files[i].type.startsWith('image/')) {
-              imageFile = files[i];
-              break;
-          }
-      }
-
-      if (imageFile) {
-          const reader = new FileReader();
-          reader.onload = (loadEvent) => {
-              processMinimalImageLoad(nodeId, loadEvent.target.result);
-          };
-          reader.onerror = () => {
-              showToast('error', 'Error Lectura', 'No se pudo leer el archivo arrastrado.');
-          };
-          reader.readAsDataURL(imageFile);
-      } else {
-          showToast('warning', 'Archivo Inválido', 'Arrastra un archivo de imagen.');
-      }
+      let imageFile = null; for (let i = 0; i < files.length; i++) if (files[i].type.startsWith('image/')) { imageFile = files[i]; break; }
+      if (imageFile) { const reader = new FileReader(); reader.onload = (loadEvent) => processMinimalImageLoad(nodeId, loadEvent.target.result); reader.onerror = () => showToast('error', 'Error Lectura', 'No se pudo leer.'); reader.readAsDataURL(imageFile); }
+      else { showToast('warning', 'Archivo Inválido', 'Arrastra una imagen.'); }
   }
 }
-
-/**
-* Maneja el evento paste sobre el nodo imagen minimalista.
-* @param {ClipboardEvent} event
-*/
 function handleMinimalImagePaste(event) {
-  const nodeElement = event.currentTarget; // El nodo que tiene el listener
-  if (!nodeElement || !nodeElement.classList.contains('image-minimal-node')) return; // Doble check
-
-  const nodeId = nodeElement.id.split('-')[1];
-  const items = (event.clipboardData || window.clipboardData)?.items;
-  if (!items) return;
-
+  const nodeElement = event.currentTarget; if (!nodeElement || !nodeElement.classList.contains('image-minimal-node')) return;
+  const nodeId = nodeElement.id.split('-')[1]; const items = (event.clipboardData || window.clipboardData)?.items; if (!items) return;
   let foundImage = false;
   for (let i = 0; i < items.length; i++) {
       if (items[i].kind === 'file' && items[i].type.startsWith('image/')) {
-          event.preventDefault(); // Prevenir pegado default solo si encontramos imagen
-          const blob = items[i].getAsFile();
-          if (blob) {
-               foundImage = true;
-               const reader = new FileReader();
-               reader.onload = (loadEvent) => {
-                   processMinimalImageLoad(nodeId, loadEvent.target.result);
-               };
-               reader.onerror = () => {
-                   showToast('error', 'Error Lectura', 'No se pudo leer la imagen pegada.');
-               };
-               reader.readAsDataURL(blob);
-               break; // Procesar solo la primera imagen encontrada
-          }
+          event.preventDefault(); const blob = items[i].getAsFile(); if (blob) { foundImage = true; const reader = new FileReader(); reader.onload = (loadEvent) => processMinimalImageLoad(nodeId, loadEvent.target.result); reader.onerror = () => showToast('error', 'Error Lectura', 'No se pudo leer.'); reader.readAsDataURL(blob); break; }
       }
   }
-  // Si no se encontró imagen en el portapapeles, no hacemos nada (ni prevenimos default)
 }
-
-
-// --- Modificar o añadir esta función para registrar los listeners ---
-
-/**
-* Registra los listeners específicos para el nodo imagen minimalista.
-* Debe llamarse DESPUÉS de que el nodo se añade al DOM.
-* @param {string} nodeId El ID del nodo recién añadido.
-*/
 function setupMinimalImageNodeListeners(nodeId) {
-  const nodeElement = document.getElementById(`node-${nodeId}`);
-  const placeholder = nodeElement?.querySelector('.image-placeholder');
-
-  if (!nodeElement || !placeholder) {
-      console.warn(`Could not find elements to attach listeners for minimal image node ${nodeId}`);
-      return;
-  }
-
-  // console.log(`Attaching listeners to minimal image node ${nodeId}`);
-
-  // Click en placeholder para seleccionar archivo
+  const nodeElement = document.getElementById(`node-${nodeId}`); const placeholder = nodeElement?.querySelector('.image-placeholder');
+  if (!nodeElement || !placeholder) { console.warn(`Could not find elements for minimal image node ${nodeId}`); return; }
   placeholder.onclick = triggerMinimalImageFileSelect;
-
-  // Drag and Drop en placeholder
-  placeholder.ondragover = handleMinimalImageDragOver;
-  placeholder.ondragleave = handleMinimalImageDragLeave;
-  placeholder.ondrop = handleMinimalImageDrop;
-
-  // Paste EN EL NODO (funciona mejor que solo en el placeholder)
-  // Usamos captura para asegurar que lo cojamos aunque el foco esté dentro
-  nodeElement.addEventListener('paste', handleMinimalImagePaste, true); // 'true' para fase de captura
-
-  // Opcional: Listener para borrar la imagen (ej. doble clic en la imagen?)
-  // const imgTag = nodeElement.querySelector('img[df-imgsrc]');
-  // imgTag.ondblclick = (event) => {
-  //    event.stopPropagation();
-  //    clearMinimalImage(nodeId); // Necesitarías crear esta función
-  // };
+  placeholder.ondragover = handleMinimalImageDragOver; placeholder.ondragleave = handleMinimalImageDragLeave; placeholder.ondrop = handleMinimalImageDrop;
+  nodeElement.addEventListener('paste', handleMinimalImagePaste, true);
 }
 
-
-/**
- * Ejecuta la transformación de mayúsculas/minúsculas directamente.
- * @param {string} nodeId - ID del nodo.
- * @param {string} inputValue - El texto de entrada.
- * @param {'upper' | 'lower'} mode - 'upper' para mayúsculas, 'lower' para minúsculas.
- */
-function executeTextCase(nodeId, inputValue, mode) {
-    // console.log(`Executing Text Case: Node ${nodeId}, Mode: ${mode}`);
-    const inputText = String(inputValue ?? ''); // Asegurar que sea string
-    const result = mode === 'upper' ? inputText.toUpperCase() : inputText.toLowerCase();
-    updateNodeResult(nodeId, result); // Actualiza y propaga el resultado
-}
-
-
-// START: Updated Execution Functions for Capitalize Nodes
-/**
- * Pone en mayúscula la primera letra de cada palabra en el texto de entrada.
- * @param {string} nodeId - ID del nodo.
- * @param {string} inputValue - El texto de entrada.
- */
-function executeCapitalizeWords(nodeId, inputValue) {
-    // console.log(`Executing Capitalize Words: Node ${nodeId}`);
-    const text = String(inputValue ?? '');
-    let result = text.toLowerCase().replace(/\b\w/g, char => char.toUpperCase());
-    updateNodeResult(nodeId, result);
-}
-
-/**
- * Pone en mayúscula la primera letra del texto y el resto en minúsculas.
- * @param {string} nodeId - ID del nodo.
- * @param {string} inputValue - El texto de entrada.
- */
-function executeCapitalizeFirstLetter(nodeId, inputValue) {
-    // console.log(`Executing Capitalize First Letter: Node ${nodeId}`);
-    const text = String(inputValue ?? '');
-    let result = '';
-    if (text.length > 0) {
-        result = text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
-    }
-    updateNodeResult(nodeId, result);
-}
-// END: Updated Execution Functions for Capitalize Nodes
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/**
- * Escapa caracteres especiales para usar en expresiones regulares.
- * @param {string} string - El string a escapar.
- * @returns {string} - El string escapado.
- */
-function escapeRegExp(string) {
-    // Escapar caracteres especiales para RegExp
-    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
- * Trunca un texto largo para mostrarlo en logs.
- * @param {string} text - El texto a truncar.
- * @param {number} maxLength - Longitud máxima (por defecto 100).
- * @returns {string} - El texto truncado.
- */
-function truncateForLog(text, maxLength = 100) {
-    if (!text) return '';
-    if (text.length <= maxLength) return text;
-    return text.substring(0, maxLength) + '... [truncado]';
-}
-
-/**
- * Ejecuta la división de texto directamente.
- * @param {string} nodeId - ID del nodo.
- * @param {string} inputValue - El texto de entrada.
- */
-function executeTextSplit(nodeId, inputValue) {
-    // console.log(`Executing Text Split: Node ${nodeId}`);
-    const nodeData = editor.getNodeFromId(nodeId)?.data;
-    if (!nodeData) return;
-    const inputText = String(inputValue ?? '');
-    const separator = nodeData.separator ?? ''; // Obtener 'separator'
-    // Si el separador está vacío, simplemente devuelve el texto original
-    // o decide un comportamiento (ej. dividir por caracter? Por ahora, original).
-    // Dividir y unir con salto de línea para mostrar en textarea.
-    const result = (separator === '') ? inputText : inputText.split(separator).join('\n');
-    // Nota: El dato propagado será un string con saltos de línea.
-    // Si necesitaras propagar un array, la lógica cambiaría aquí y en updateNodeResult.
-    updateNodeResult(nodeId, result);
-}
-
-/**
- * Calcula la longitud del texto directamente.
- * @param {string} nodeId - ID del nodo.
- * @param {string} inputValue - El texto de entrada.
- */
-function executeTextLength(nodeId, inputValue) {
-    // console.log(`Executing Text Length: Node ${nodeId}`);
-    const inputText = String(inputValue ?? '');
-    const result = inputText.length; // El resultado es un número
-    updateNodeResult(nodeId, result); // Actualiza (mostrará número) y propaga (número)
-}
-
-/**
- * Ejecuta la eliminación de etiquetas HTML directamente.
- * @param {string} nodeId - ID del nodo.
- * @param {string} inputValue - El texto de entrada (HTML).
- */
-function executeHtmlStrip(nodeId, inputValue) {
-    // console.log(`Executing HTML Strip: Node ${nodeId}`);
-    const inputText = String(inputValue ?? '');
-    const result = inputText.replace(/<[^>]*>/g, ''); // Regex para quitar etiquetas
-    updateNodeResult(nodeId, result);
-}
-
-
-/**
- * Obtiene de forma segura un valor anidado de un objeto usando una cadena de ruta.
- * Ejemplo: getValueFromJson(obj, 'user.address.city')
- * @param {object|null} obj - El objeto fuente.
- * @param {string} keyPath - La ruta de la clave (ej. 'nombre', 'pedido.id').
- * @returns {*} El valor encontrado, o undefined si la ruta no existe o el objeto no es válido.
- */
-function getValueFromJson(obj, keyPath) {
-    // Validaciones iniciales
-    if (!obj || typeof obj !== 'object' || obj === null || typeof keyPath !== 'string' || keyPath === '') {
-        return undefined;
-    }
-    const keys = keyPath.split('.'); // Dividir la ruta por puntos
-    let current = obj;
-    for (const key of keys) {
-        // Verificar si el nivel actual es un objeto válido antes de acceder
-        if (current === null || current === undefined || typeof current !== 'object') {
-            return undefined; // Ruta no encontrada
-        }
-        // Verificar si la clave existe en el nivel actual
-        if (!Object.prototype.hasOwnProperty.call(current, key)) {
-             return undefined; // Clave específica no encontrada
-        }
-        current = current[key]; // Moverse al siguiente nivel
-    }
-    // Devolver el valor final encontrado (puede ser null, string, number, etc.)
-    return current;
-}
-
-/**
- * Procesa la plantilla de un nodo 'template_engine'.
- * @param {string} nodeId - El ID del nodo a procesar.
- * @param {object} [directInputJson] - (Opcional) El objeto JSON pasado directamente.
- */
+function executeTextCase(nodeId, inputValue, mode) { const inputText = String(inputValue ?? ''); const result = mode === 'upper' ? inputText.toUpperCase() : inputText.toLowerCase(); updateNodeResult(nodeId, result); }
+function executeCapitalizeWords(nodeId, inputValue) { const text = String(inputValue ?? ''); let result = text.toLowerCase().replace(/\b\w/g, char => char.toUpperCase()); updateNodeResult(nodeId, result); }
+function executeCapitalizeFirstLetter(nodeId, inputValue) { const text = String(inputValue ?? ''); let result = ''; if (text.length > 0) result = text.charAt(0).toUpperCase() + text.slice(1).toLowerCase(); updateNodeResult(nodeId, result); }
+function escapeRegExp(string) { return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+function truncateForLog(text, maxLength = 100) { if (!text) return ''; if (text.length <= maxLength) return text; return text.substring(0, maxLength) + '... [truncado]'; }
+function executeTextSplit(nodeId, inputValue) { const nodeData = editor.getNodeFromId(nodeId)?.data; if (!nodeData) return; const inputText = String(inputValue ?? ''); const separator = nodeData.separator ?? ''; const result = (separator === '') ? inputText : inputText.split(separator).join('\n'); updateNodeResult(nodeId, result); }
+function executeTextLength(nodeId, inputValue) { const inputText = String(inputValue ?? ''); const result = inputText.length; updateNodeResult(nodeId, result); }
+function executeHtmlStrip(nodeId, inputValue) { const inputText = String(inputValue ?? ''); const result = inputText.replace(/<[^>]*>/g, ''); updateNodeResult(nodeId, result); }
+function getValueFromJson(obj, keyPath) { if (!obj || typeof obj !== 'object' || obj === null || typeof keyPath !== 'string' || keyPath === '') return undefined; const keys = keyPath.split('.'); let current = obj; for (const key of keys) { if (current === null || current === undefined || typeof current !== 'object') return undefined; if (!Object.prototype.hasOwnProperty.call(current, key)) return undefined; current = current[key]; } return current; }
 function processTemplateNode(nodeId, directInputJson) {
-    const node = editor.getNodeFromId(nodeId);
-    if (!node || node.name !== 'template_engine') return;
-
-    const nodeElement = document.getElementById(`node-${nodeId}`);
-    if (!nodeElement) { console.error(`Template Node (${nodeId}): Element not found.`); return; }
-    const templateTextarea = nodeElement.querySelector('textarea[df-template]');
-    if (!templateTextarea) { console.error(`Template Node (${nodeId}): Template textarea not found.`); return; }
+    const node = editor.getNodeFromId(nodeId); if (!node || node.name !== 'template_engine') return;
+    const nodeElement = document.getElementById(`node-${nodeId}`); if (!nodeElement) { console.error(`Template Node (${nodeId}): Element not found.`); return; }
+    const templateTextarea = nodeElement.querySelector('textarea[df-template]'); if (!templateTextarea) { console.error(`Template Node (${nodeId}): Template textarea not found.`); return; }
     const currentTemplate = templateTextarea.value || '';
-
-    if (node.data.template !== currentTemplate) {
-         editor.updateNodeDataFromId(nodeId, { template: currentTemplate });
-    }
-
-    const nodeData = editor.getNodeFromId(nodeId).data;
-    let inputJson = directInputJson !== undefined ? directInputJson : nodeData.lastInput;
-
-    // Convertir inputJson de string a objeto si es necesario
-    if (typeof inputJson === 'string') {
-        try {
-            inputJson = JSON.parse(inputJson);
-        } catch (error) {
-            console.error(`Template Node (${nodeId}): Failed to parse JSON input`, error);
-            editor.updateNodeDataFromId(nodeId, { result: `Error: JSON inválido - ${error.message}` });
-            return;
-        }
-    }
-
-    // *** LOGS IMPORTANTES ***
-    // console.log(`--- Processing Template Node ${nodeId} ---`);
-    // console.log("   Template String (Read from UI):", JSON.stringify(currentTemplate));
-    // console.log("   Input JSON (Effective):", inputJson ? JSON.stringify(inputJson) : inputJson);
-    // *** FIN LOGS IMPORTANTES ***
-
-    let processedTemplate = '';
-    let errorOccurred = false;
-
+    if (node.data.template !== currentTemplate) editor.updateNodeDataFromId(nodeId, { template: currentTemplate });
+    const nodeData = editor.getNodeFromId(nodeId).data; let inputJson = directInputJson !== undefined ? directInputJson : nodeData.lastInput;
+    if (typeof inputJson === 'string') { try { inputJson = JSON.parse(inputJson); } catch (error) { console.error(`Template Node (${nodeId}): Failed to parse JSON input`, error); editor.updateNodeDataFromId(nodeId, { result: `Error: JSON inválido - ${error.message}` }); return; } }
+    let processedTemplate = ''; let errorOccurred = false;
     if (inputJson && typeof inputJson === 'object' && inputJson !== null) {
         const regex = /{{\s*([\w.-]+)\s*}}/g;
         try {
             processedTemplate = currentTemplate.replace(regex, (match, key) => {
-                const cleanKey = key.trim();
-                const value = getValueFromJsonPath(inputJson, cleanKey);
-                // *** LOG IMPORTANTE ***
-                // console.log(`   -> Replacing {{${cleanKey}}}: Found value:`, value, `(Type: ${typeof value})`);
-                // *** FIN LOG IMPORTANTE ***
-                if (value === undefined) { return match; } // Dejar sin cambiar
-                else if (value === null) { return ''; }
-                else if (typeof value === 'object') { return JSON.stringify(value); }
-                else { return String(value); }
+                const cleanKey = key.trim(); const value = getValueFromJsonPath(inputJson, cleanKey);
+                if (value === undefined) return match; else if (value === null) return ''; else if (typeof value === 'object') return JSON.stringify(value); else return String(value);
             });
-        } catch (error) {
-            console.error(`Template Node (${nodeId}): Error during replace`, error);
-            processedTemplate = `Error: ${error.message}`;
-            errorOccurred = true;
-        }
-    } else {
-        processedTemplate = currentTemplate;
-        // console.warn(`Template Node (${nodeId}): No effective input JSON.`);
-    }
-
-    // *** LOG IMPORTANTE ***
-    // console.log(`   Final Processed Template:`, JSON.stringify(processedTemplate));
-    // *** FIN LOG IMPORTANTE ***
-
+        } catch (error) { console.error(`Template Node (${nodeId}): Error during replace`, error); processedTemplate = `Error: ${error.message}`; errorOccurred = true; }
+    } else { processedTemplate = currentTemplate; }
     if (nodeData.result !== processedTemplate || errorOccurred) {
-        // console.log(`Template Node (${nodeId}): Updating result.`);
         editor.updateNodeDataFromId(nodeId, { result: processedTemplate });
-
-        const resultTextarea = nodeElement.querySelector('textarea[df-result]');
-        if (resultTextarea) {
-            // *** LOG IMPORTANTE ***
-            // console.log(`   Attempting to set UI textarea[df-result] value.`);
-            resultTextarea.value = processedTemplate;
-            // console.log(`   UI textarea[df-result] value set.`);
-            // *** FIN LOG IMPORTANTE ***
-        } else {
-            // *** ERROR IMPORTANTE ***
-            console.error(`   CRITICAL: UI textarea[df-result] NOT FOUND for node ${nodeId}. Check HTML definition.`);
-            // *** FIN ERROR IMPORTANTE ***
-        }
-        // *** LOG IMPORTANTE ***
-        // console.log(`   Attempting to propagate final result...`);
-        propagateData(nodeId, 'template_engine', 'result', processedTemplate);
-        // console.log(`   Propagation called.`);
-        // *** FIN LOG IMPORTANTE ***
-        saveHistoryState();
-    } else {
-        // console.log(`Template Node (${nodeId}): Result unchanged.`);
+        const resultTextarea = nodeElement.querySelector('textarea[df-result]'); if (resultTextarea) resultTextarea.value = processedTemplate; else console.error(`CRITICAL: UI textarea[df-result] NOT FOUND for node ${nodeId}.`);
+        propagateData(nodeId, 'template_engine', 'result', processedTemplate); saveHistoryState();
     }
-    // console.log(`--- Finished Processing Template Node ${nodeId} ---`);
 }
-
-/**
- * Obtiene un valor de un objeto JSON usando una ruta de acceso con notación de punto.
- * @param {object} json - El objeto JSON.
- * @param {string} path - La ruta de acceso (ej: "usuario.direccion.calle").
- * @returns {*} El valor encontrado o undefined si no existe.
- */
-function getValueFromJsonPath(json, path) {
-    if (!json || !path) return undefined;
-    
-    const keys = path.split('.');
-    let current = json;
-    
-    for (const key of keys) {
-        if (current === null || typeof current !== 'object') {
-            return undefined;
-        }
-        current = current[key];
-        if (current === undefined) {
-            return undefined;
-        }
-    }
-    
-    return current;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+function getValueFromJsonPath(json, path) { if (!json || !path) return undefined; const keys = path.split('.'); let current = json; for (const key of keys) { if (current === null || typeof current !== 'object') return undefined; current = current[key]; if (current === undefined) return undefined; } return current; }
 
 // --- Interval Management ---
 function cleanupNodeIntervals(nodeId) { if (nodeIntervals[nodeId]) { nodeIntervals[nodeId].forEach(clearInterval); delete nodeIntervals[nodeId]; } }
 function cleanupAllModuleIntervals() { const keys = Object.keys(nodeIntervals); if (keys.length > 0) { console.log(`Cleaning intervals for ${keys.length} nodes...`); keys.forEach(cleanupNodeIntervals); nodeIntervals = {}; } }
 
 // --- Execution & Propagation Logic ---
-const EXECUTE_NODE_SYSTEM_TYPES = [
-    'url_input', 'timer_fetch', 'fetch_html', 'display_text',
-    'loop', 'repeat', 'timer_download', 'download_file', 'extract_value'
-  ];
-  
-  async function executeNode(nodeId, payload) {
-    let node;
-    try {
-      node = editor.getNodeFromId(nodeId);
-      if (!node) {
-        cleanupNodeIntervals(nodeId);
-        return;
-      }
-    } catch (error) {
-      console.error(`Err get node ${nodeId}:`, error);
-      return;
-    }
-    const nName = node.name;
-    let outP = payload;
-    if (node._executing) return;
-    node._executing = true;
-  
+const EXECUTE_NODE_SYSTEM_TYPES = ['url_input', 'timer_fetch', 'fetch_html', 'display_text', 'loop', 'repeat', 'timer_download', 'download_file', 'extract_value'];
+async function executeNode(nodeId, payload) {
+    let node; try { node = editor.getNodeFromId(nodeId); if (!node) { cleanupNodeIntervals(nodeId); return; } } catch (error) { console.error(`Err get node ${nodeId}:`, error); return; }
+    const nName = node.name; let outP = payload; if (node._executing) return; node._executing = true;
     try {
       switch (nName) {
-        // —————————————————————————————————————————————
-        case 'timer_fetch':
-        case 'timer_download':
-        case 'loop': {
-          cleanupNodeIntervals(nodeId);
-          let intMs = parseInt(readField(nodeId, 'df-interval') || node.data?.interval, 10);
-          const defInt = nName === 'loop'
-            ? 1000
-            : (nName === 'timer_fetch' ? 60000 : 10000);
-          if (isNaN(intMs) || intMs < 100) intMs = defInt;
-          const initP = payload;
-          // console.log(`Start ${nName} ${nodeId} every ${intMs} ms.`);
-          const execInt = async () => {
-            const currN = editor.getNodeFromId(nodeId);
-            if (!currN) { cleanupNodeIntervals(nodeId); return; }
+        case 'timer_fetch': case 'timer_download': case 'loop': {
+          cleanupNodeIntervals(nodeId); let intMs = parseInt(readField(nodeId, 'df-interval') || node.data?.interval, 10);
+          const defInt = nName === 'loop' ? 1000 : (nName === 'timer_fetch' ? 60000 : 10000); if (isNaN(intMs) || intMs < 100) intMs = defInt;
+          const initP = payload; const execInt = async () => {
+            const currN = editor.getNodeFromId(nodeId); if (!currN) { cleanupNodeIntervals(nodeId); return; }
             if (nName === 'timer_fetch') {
-              let url = readField(nodeId, 'df-url');
-              if (!url?.trim()) {
-                const cs = getConnections(nodeId, 'input');
-                for (const c of cs) {
-                  const src = editor.getNodeFromId(c.node);
-                  if (src?.name === 'url_input') {
-                    url = readField(c.node, 'df-url');
-                    if (url?.trim()) break;
-                  }
-                }
-              }
-              if (url?.trim()) {
-                url = url.trim();
-                if (!url.startsWith('http')) url = 'https://' + url;
-                try {
-                  const r = await fetch(CORS_PROXY + encodeURIComponent(url));
-                  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                  const d = await r.json();
-                  propagateExecution(nodeId, d.contents);
-                } catch (err) {
-                  console.error(`TFetch ${nodeId} err:`, err);
-                  propagateExecution(nodeId, `// ERR Fetch:\n// ${err.message}`);
-                }
-              } else propagateExecution(nodeId, '// ERR: No URL');
-            }
-            else if (nName === 'loop') {
-              propagateExecution(nodeId, initP);
-            }
-            else {
-              propagateExecution(nodeId, Date.now());
-            }
+              let url = readField(nodeId, 'df-url'); if (!url?.trim()) { const cs = getConnections(nodeId, 'input'); for (const c of cs) { const src = editor.getNodeFromId(c.node); if (src?.name === 'url_input') { url = readField(c.node, 'df-url'); if (url?.trim()) break; } } }
+              if (url?.trim()) { url = url.trim(); if (!url.startsWith('http')) url = 'https://' + url; try { const r = await fetch(CORS_PROXY + encodeURIComponent(url)); if (!r.ok) throw new Error(`HTTP ${r.status}`); const d = await r.json(); propagateExecution(nodeId, d.contents); } catch (err) { console.error(`TFetch ${nodeId} err:`, err); propagateExecution(nodeId, `// ERR Fetch:\n// ${err.message}`); } } else propagateExecution(nodeId, '// ERR: No URL');
+            } else if (nName === 'loop') { propagateExecution(nodeId, initP); } else { propagateExecution(nodeId, Date.now()); }
           };
-          const intId = setInterval(execInt, intMs);
-          nodeIntervals[nodeId] = nodeIntervals[nodeId] || [];
-          nodeIntervals[nodeId].push(intId);
-          if (nName === 'timer_fetch') await execInt();
-          break;
+          const intId = setInterval(execInt, intMs); nodeIntervals[nodeId] = nodeIntervals[nodeId] || []; nodeIntervals[nodeId].push(intId); if (nName === 'timer_fetch') await execInt(); break;
         }
-  
-        // —————————————————————————————————————————————
         case 'fetch_html': {
-          let url = payload;
-          if (typeof url !== 'string' || !url?.trim()) {
-            propagateExecution(nodeId, '// ERR: Invalid URL');
-            return;
-          }
-          url = url.trim();
-          if (!url.startsWith('http')) url = 'https://' + url;
-          try {
-            const r = await fetch(CORS_PROXY + encodeURIComponent(url));
-            if (!r.ok) throw new Error(`HTTP ${r.status}`);
-            const d = await r.json();
-            outP = d.contents;
-          } catch (err) {
-            console.error(`Fetch ${nodeId} err:`, err);
-            outP = `// ERR Fetch:\n// ${err.message}`;
-          }
-          propagateExecution(nodeId, outP);
-          break;
+          let url = payload; if (typeof url !== 'string' || !url?.trim()) { propagateExecution(nodeId, '// ERR: Invalid URL'); return; } url = url.trim(); if (!url.startsWith('http')) url = 'https://' + url;
+          try { const r = await fetch(CORS_PROXY + encodeURIComponent(url)); if (!r.ok) throw new Error(`HTTP ${r.status}`); const d = await r.json(); outP = d.contents; } catch (err) { console.error(`Fetch ${nodeId} err:`, err); outP = `// ERR Fetch:\n// ${err.message}`; } propagateExecution(nodeId, outP); break;
         }
-  
-        // —————————————————————————————————————————————
-        case 'display_text': {
-          const txt = String(payload ?? '(null)');
-          editor.updateNodeDataFromId(nodeId, { display: txt });
-          const el = document.getElementById(`node-${nodeId}`);
-          const ta = el?.querySelector('textarea[df-display]');
-          if (ta) ta.value = txt;
-          outP = payload;
-          propagateExecution(nodeId, outP);
-          break;
-        }
-  
-        // —————————————————————————————————————————————
-        case 'repeat': {
-          let c = parseInt(readField(nodeId, 'df-count') || node.data?.count, 10);
-          if (isNaN(c) || c <= 0) return;
-          const p = payload;
-          for (let i = 0; i < c; i++) {
-            setTimeout(() => propagateExecution(nodeId, p), 0);
-          }
-          return;
-        }
-  
-        // —————————————————————————————————————————————
+        case 'display_text': { const txt = String(payload ?? '(null)'); editor.updateNodeDataFromId(nodeId, { display: txt }); const el = document.getElementById(`node-${nodeId}`); const ta = el?.querySelector('textarea[df-display]'); if (ta) ta.value = txt; outP = payload; propagateExecution(nodeId, outP); break; }
+        case 'repeat': { let c = parseInt(readField(nodeId, 'df-count') || node.data?.count, 10); if (isNaN(c) || c <= 0) return; const p = payload; for (let i = 0; i < c; i++) { setTimeout(() => propagateExecution(nodeId, p), 0); } return; }
         case 'download_file': {
-          if (payload == null) return;
-          const f = (readField(nodeId, 'df-filename')?.trim() || 'd.txt');
-          const s = String(payload);
-          editor.updateNodeDataFromId(nodeId, { contentfordownload: s, filename: f });
-          try {
-            const sf = f.replace(/[^a-zA-Z0-9._-]/g, '_') || 'd.txt';
-            const m  = getMimeType(sf.split('.').pop().toLowerCase());
-            const b  = new Blob([s], { type: m });
-            const l  = document.createElement('a');
-            l.href = URL.createObjectURL(b);
-            l.download = sf;
-            document.body.appendChild(l);
-            l.click();
-            document.body.removeChild(l);
-            URL.revokeObjectURL(l.href);
-          } catch (err) {
-            console.error(`Download ${nodeId} error:`, err);
-            showToast('error', 'Error', 'Error descarga.');
-          }
-          return;
+          if (payload == null) return; const f = (readField(nodeId, 'df-filename')?.trim() || 'd.txt'); const s = String(payload); editor.updateNodeDataFromId(nodeId, { contentfordownload: s, filename: f });
+          try { const sf = f.replace(/[^a-zA-Z0-9._-]/g, '_') || 'd.txt'; const m = getMimeType(sf.split('.').pop().toLowerCase()); const b = new Blob([s], { type: m }); const l = document.createElement('a'); l.href = URL.createObjectURL(b); l.download = sf; document.body.appendChild(l); l.click(); document.body.removeChild(l); URL.revokeObjectURL(l.href); } catch (err) { console.error(`Download ${nodeId} error:`, err); showToast('error', 'Error', 'Error descarga.'); } return;
         }
-  
-        // —————————————————————————————————————————————
-        case 'url_input': {
-          const u = readField(nodeId, 'df-url');
-          outP = u;
-          propagateExecution(nodeId, outP);
-          break;
-        }
-  
-        // —————————————————————————————————————————————
+        case 'url_input': { const u = readField(nodeId, 'df-url'); outP = u; propagateExecution(nodeId, outP); break; }
         case 'extract_value': {
-          const txt = String(payload ?? '');
-          const pat = readField(nodeId, 'df-selector_received') || '';
-          let val = null, res = '(Esperando)';
-          if (txt && pat) {
-            try {
-              const r = new RegExp(pat);
-              const m = txt.match(r);
-              if (m) { val = m[1] ?? m[0]; res = val; }
-              else res = '(No encontrado)';
-            } catch {
-              res = '(Error Regex)';
-            }
-          } else if (!pat) res = '(Esperando patrón)';
-          else res = '(Esperando texto)';
-  
-          editor.updateNodeDataFromId(nodeId, { result: res });
-          const el = document.getElementById(`node-${nodeId}`);
-          const rt = el?.querySelector('textarea[df-result]');
-          if (rt) rt.value = res;
-  
-          outP = val;
-          propagateExecution(nodeId, outP);
-          break;
+          const txt = String(payload ?? ''); const pat = readField(nodeId, 'df-selector_received') || ''; let val = null, res = '(Esperando)';
+          if (txt && pat) { try { const r = new RegExp(pat); const m = txt.match(r); if (m) { val = m[1] ?? m[0]; res = val; } else res = '(No encontrado)'; } catch { res = '(Error Regex)'; } } else if (!pat) res = '(Esperando patrón)'; else res = '(Esperando texto)';
+          editor.updateNodeDataFromId(nodeId, { result: res }); const el = document.getElementById(`node-${nodeId}`); const rt = el?.querySelector('textarea[df-result]'); if (rt) rt.value = res; outP = val; propagateExecution(nodeId, outP); break;
         }
-  
-        // —————————————————————————————————————————————
-        default: {
-          // en cualquier otro caso, si es nodo “de sistema” vuelve a propagar
-          if (!baseNodeDefinitions[nName] || EXECUTE_NODE_SYSTEM_TYPES.includes(nName)) {
-            propagateExecution(nodeId, outP);
-          }
-        }
+        default: { if (!baseNodeDefinitions[nName] || EXECUTE_NODE_SYSTEM_TYPES.includes(nName)) { propagateExecution(nodeId, outP); } }
       }
-    } catch (error) {
-      console.error(`Error executing ${nName} (${nodeId}):`, error);
-      showToast('error', `Error ${nName}`, error.message.substring(0,50), 4000);
-    } finally {
-      if (node) node._executing = false;
-    }
-  }
-  
-  
-  function propagateExecution(sourceNodeId, payload) {
+    } catch (error) { console.error(`Error executing ${nName} (${nodeId}):`, error); showToast('error', `Error ${nName}`, error.message.substring(0,50), 4000); } finally { if (node) node._executing = false; }
+}
+
+function propagateExecution(sourceNodeId, payload) {
     const conns = getConnections(sourceNodeId, 'output');
     conns.forEach(conn => {
-      const targetId   = conn.node;
-      const targetNode = editor.getNodeFromId(targetId);
-      if (!targetNode) return;
-      const targetPort = conn.output;
-  
-      // — Nodos de sistema que disparan executeNode ——
+      const targetId = conn.node; const targetNode = editor.getNodeFromId(targetId); if (!targetNode) return; const targetPort = conn.output;
       if (EXECUTE_NODE_SYSTEM_TYPES.includes(targetNode.name)) {
-        if (targetNode.name === 'extract_value') {
-          if (targetPort === 'input_1') {
-            setTimeout(() => executeNode(targetId, payload), 0);
-          } else if (targetPort === 'input_2') {
-            const s = String(payload ?? '');
-            editor.updateNodeDataFromId(targetId, { selector_received: s });
-            const el = document.getElementById(`node-${targetId}`);
-            const i  = el?.querySelector('input[df-selector_received]');
-            if (i) i.value = s;
-          }
-        } else {
-          setTimeout(() => executeNode(targetId, payload), 0);
-        }
-  
-      // — Nodo JS: actualizamos lastInput y ejecutamos instantáneamente ——
-      } else if (targetNode.name === 'javascript_code') {
-        editor.updateNodeDataFromId(targetId, { lastInput: payload });
-        setTimeout(() => executeNode(targetId, payload), 0);
-  
-      // — Resto de nodos personalizados —————————
-      } else if (['mostrarPasar', 'guardarTexto', 'concatenar'].includes(targetNode.name)) {
-        const val = String(payload ?? '');
-        if (targetPort === 'input_1') {
-          // mostrarPasar
-          if (targetNode.name === 'mostrarPasar') {
-            editor.updateNodeDataFromId(targetId, { result: val });
-            const el = document.getElementById(`node-${targetId}`);
-            const ta = el?.querySelector('textarea[df-result]');
-            if (ta) ta.value = val;
-            setTimeout(() => propagateData(targetId, targetNode.name, 'result', val), 0);
-  
-          // guardarTexto
-          } else if (targetNode.name === 'guardarTexto') {
-            editor.updateNodeDataFromId(targetId, { savecontent: val });
-            const el = document.getElementById(`node-${targetId}`);
-            const ta = el?.querySelector('textarea[df-savecontent]');
-            if (ta) ta.value = val;
-  
-          // concatenar
-          } else if (targetNode.name === 'concatenar') {
-            setTimeout(() => updateConcatenateNode(targetId), 0);
-          }
+        if (targetNode.name === 'extract_value') { if (targetPort === 'input_1') setTimeout(() => executeNode(targetId, payload), 0); else if (targetPort === 'input_2') { const s = String(payload ?? ''); editor.updateNodeDataFromId(targetId, { selector_received: s }); const el = document.getElementById(`node-${targetId}`); const i = el?.querySelector('input[df-selector_received]'); if (i) i.value = s; } } else setTimeout(() => executeNode(targetId, payload), 0);
+      } else if (targetNode.name === 'javascript_code') { editor.updateNodeDataFromId(targetId, { lastInput: payload }); setTimeout(() => executeNode(targetId, payload), 0); }
+      else if (['mostrarPasar', 'guardarTexto', 'concatenar'].includes(targetNode.name)) {
+        const val = String(payload ?? ''); if (targetPort === 'input_1') {
+          if (targetNode.name === 'mostrarPasar') { editor.updateNodeDataFromId(targetId, { result: val }); const el = document.getElementById(`node-${targetId}`); const ta = el?.querySelector('textarea[df-result]'); if (ta) ta.value = val; setTimeout(() => propagateData(targetId, targetNode.name, 'result', val), 0); }
+          else if (targetNode.name === 'guardarTexto') { editor.updateNodeDataFromId(targetId, { savecontent: val }); const el = document.getElementById(`node-${targetId}`); const ta = el?.querySelector('textarea[df-savecontent]'); if (ta) ta.value = val; }
+          else if (targetNode.name === 'concatenar') setTimeout(() => updateConcatenateNode(targetId), 0);
         }
       }
     });
-  }
-// MODIFICADO: handleNodeDataChange para propagar cambios de nodos de entrada básicos
-function handleNodeDataChange(event) {
-  if (!editor || !event?.target) return;
-  const el = event.target;
-  const nodeEl = el.closest('.drawflow-node');
-  if (!nodeEl) return;
-  const id = nodeEl.id.split('-')[1];
-  const node = editor.getNodeFromId(id);
-  if (!node) return;
-  let key = null;
-  for (const attr of el.attributes) if (attr.name.startsWith('df-')) { key = attr.name.substring(3); break; }
-  if (!key) return;
-
-  // Usar requestAnimationFrame para asegurar que el valor en node.data esté actualizado
-  requestAnimationFrame(() => {
-      try {
-          const updatedNode = editor.getNodeFromId(id);
-          if (!updatedNode?.data?.hasOwnProperty(key)) return; // Verifica que la clave exista en los datos
-          const val = updatedNode.data[key]; // Obtiene el valor actualizado de los datos del nodo
-          const name = updatedNode.name;
-
-          let historySavedByInternalLogic = false;
-
-          // Lógica específica para ciertos nodos que necesitan ejecutar/propagar al cambiar
-          if ((name === 'url_input' && key === 'url')) {
-               executeNode(id, val);
-               historySavedByInternalLogic = true;
-          } else if (name === 'cargarTexto' && key === 'filecontent') {
-               propagateData(id, name, key, val);
-               historySavedByInternalLogic = true;
-          } else if (name === 'imagen' && ['imgsrc', 'imgalt', 'imgwidth', 'imgheight'].includes(key)) {
-               handleImageInputChange(event); // Llama a la función que actualiza la imagen y propaga (y guarda historial)
-               historySavedByInternalLogic = true;
-          } else if (name === 'nota' && key === 'notecontent') {
-               updateCharacterCount(event); // Actualiza contador, no necesita propagar
-          } else if ((name === 'timer_fetch' || name === 'timer_download' || name === 'loop') && key === 'interval') {
-               executeNode(id, null); // Reinicia el timer con el nuevo intervalo
-               historySavedByInternalLogic = true;
-          } else if (name === 'timer_fetch' && key === 'url') {
-               executeNode(id, null); // Reinicia el fetch timer (usará la nueva URL en la próxima ejecución)
-               historySavedByInternalLogic = true;
-          }
-          else if (['input_number', 'input_text', 'input_range', 'input_date', 'input_time', 'input_color'].includes(name)) {
-               // console.log(`Propagating data from ${name} node ${id}, key: ${key}, value:`, val);
-               propagateData(id, name, key, val); // Propaga el valor cambiado (propagateData guarda historial si es necesario)
-               historySavedByInternalLogic = true; 
-          }
-          else if (name === 'template_engine' && key === 'template') {
-                processTemplateNode(id); // Llama a processTemplateNode que llama a updateNodeResult que guarda historial
-                historySavedByInternalLogic = true;
-          }
-          else if (name === 'local_image' && (key === 'imagewidth' || key === 'imageheight')) {
-                updateLocalImageStyle(event); // Llama a handleNodeDataChange internamente -> saveHistoryState
-                historySavedByInternalLogic = true; // Ya lo guarda
-          }
-          else if (name === 'local_image' && (key === 'nodewidth' || key === 'nodeheight')) {
-                updateLocalNodeSize(event); // Llama a handleNodeDataChange internamente -> saveHistoryState
-                historySavedByInternalLogic = true; // Ya lo guarda
-          }
-          else if ((name === 'text_replace' || name === 'auto_text_replace') && (key === 'find' || key === 'replace')) {
-                const lastInput = updatedNode.data.lastInput;
-                if (lastInput !== null && lastInput !== undefined) {
-                    const executionFunction = (name === 'auto_text_replace') ? executeAutoReplace : executeTextReplace;
-                    setTimeout(() => executionFunction(id, lastInput), 0);
-                    historySavedByInternalLogic = true; 
-                }
-          }
-          else if (name === 'text_split' && key === 'separator') {
-                const lastInput = updatedNode.data.lastInput;
-                if (lastInput !== null && lastInput !== undefined) {
-                     setTimeout(() => executeTextSplit(id, lastInput), 0);
-                     historySavedByInternalLogic = true; 
-                }
-          }
-
-
-          // Guardar historial para cambios que no dispararon una ejecución que ya guarda.
-          if (!historySavedByInternalLogic) {
-            // console.log(`   Saving history directly from handleNodeDataChange for ${name} (key: ${key})`);
-            saveHistoryState();
-          }
-
-
-      } catch (e) {
-          console.error(`Error handleNodeDataChange (${id}/${key}):`, e);
-      }
-  });
 }
 
-
-
-
-// MODIFICADO: propagateData con manejo de nodos aritméticos, texto (auto) y PLANTILLA
-// ACTUALIZADO: propagateData con manejo de nodos aritméticos, texto (auto) y PLANTILLA (corregido)
-// --- USA ESTA VERSIÓN COMPLETA Y MODIFICADA ---
 function propagateData(sourceNodeId, sourceNodeName, changedKey, outputData) {
     try {
-        const sourceNode = editor.getNodeFromId(sourceNodeId);
-        if (!sourceNode) { console.warn(`propagateData: Source node ${sourceNodeId} not found.`); return; }
-        const outputPortInfo = sourceNode.outputs?.output_1; // Asumimos que la mayoría de nodos usan 'output_1'
-        
-        if (!outputPortInfo?.connections || outputPortInfo.connections.length === 0) {
-            // console.log(`PropagateData: Node ${sourceNodeId} (${sourceNodeName}) has no outgoing connections from output_1.`);
-            return;
-        }
-
-        const connections = outputPortInfo.connections;
-        const sourceData = sourceNode.data || {};
+        const sourceNode = editor.getNodeFromId(sourceNodeId); if (!sourceNode) return;
+        const outputPortInfo = sourceNode.outputs?.output_1; if (!outputPortInfo?.connections || outputPortInfo.connections.length === 0) return;
+        const connections = outputPortInfo.connections; const sourceData = sourceNode.data || {};
         let dataToPropagate;
-
-        // --- Determinar el dato real a propagar ---
-        if (outputData !== undefined) {
-            dataToPropagate = outputData;
-        } else {
-            // Claves comunes de salida o el valor del df- attribute que cambió
+        if (outputData !== undefined) dataToPropagate = outputData;
+        else {
             const commonOutputKeys = ['result', 'content', 'codecontent', 'outputhtml', 'filecontent', 'display', 'url', 'jscode'];
             const inputNodeKeys = ['number', 'text', 'range', 'date', 'time', 'color', 'json', 'notecontent', 'original'];
-            
-            // Orden de prioridad para encontrar el dato a propagar:
-            // 1. El valor que acaba de cambiar (si changedKey está en sourceData)
-            // 2. Claves comunes de salida
-            // 3. Claves de nodos de entrada
-            // 4. Como último recurso, el primer dato no especial del nodo
             const searchKeys = [changedKey, ...commonOutputKeys, ...inputNodeKeys].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i);
-
-            for (const k of searchKeys) {
-                if (Object.prototype.hasOwnProperty.call(sourceData, k)) {
-                    dataToPropagate = sourceData[k];
-                    break;
-                }
-            }
-            if (dataToPropagate === undefined) { // Fallback
+            for (const k of searchKeys) { if (Object.prototype.hasOwnProperty.call(sourceData, k)) { dataToPropagate = sourceData[k]; break; } }
+            if (dataToPropagate === undefined) {
                 const validKeys = Object.keys(sourceData).filter(k => !['lastInput', 'lastInputs', 'selector_received', 'nodeWidth', 'nodeHeight', 'isMovementLocked'].includes(k));
-                if (validKeys.length > 0) {
-                    dataToPropagate = sourceData[validKeys[0]];
-                } else {
-                    // console.warn(`PropagateData: No suitable data found to propagate from ${sourceNodeId} (${sourceNodeName}) for key ${changedKey}.`);
-                    return; // No hay nada claro que propagar
-                }
+                if (validKeys.length > 0) dataToPropagate = sourceData[validKeys[0]]; else return;
             }
         }
-        // --- Fin determinación de dato ---
-
-        // console.log(`PropagateData from ${sourceNodeId} (${sourceNodeName}), key: ${changedKey}, effective data:`, dataToPropagate);
-
         connections.forEach(conn => {
-            const targetId = conn.node;
-            const targetNode = editor.getNodeFromId(targetId);
-            if (!targetNode) {
-                console.warn(`Target node ${targetId} not found during propagation from ${sourceNodeId}.`);
-                return;
+            const targetId = conn.node; const targetNode = editor.getNodeFromId(targetId); if (!targetNode) return;
+            const targetNodeName = targetNode.name; const targetInputPortName = conn.output;
+            if (EXECUTE_NODE_SYSTEM_TYPES.includes(targetNodeName)) {
+                if (targetNodeName === 'extract_value') { if (targetInputPortName === 'input_1') setTimeout(() => executeNode(targetId, dataToPropagate), 0); else if (targetInputPortName === 'input_2') { const s = String(dataToPropagate ?? ''); editor.updateNodeDataFromId(targetId, { selector_received: s }); const el = document.getElementById(`node-${targetId}`); const i = el?.querySelector('input[df-selector_received]'); if (i) i.value = s; } } else setTimeout(() => executeNode(targetId, dataToPropagate), 0);
             }
-            const targetNodeName = targetNode.name;
-            const targetInputPortName = conn.output; // Nombre del puerto de entrada del nodo destino (ej: 'input_1')
-
-            // === Lógica de Propagación Específica por Tipo de Nodo Destino ===
-
-            if (EXECUTE_NODE_SYSTEM_TYPES.includes(targetNodeName)) { 
-                if (targetNodeName === 'extract_value') {
-                    if (targetInputPortName === 'input_1') { // Texto a procesar
-                        setTimeout(() => executeNode(targetId, dataToPropagate), 0);
-                    } else if (targetInputPortName === 'input_2') { // Patrón Regex
-                        const s = String(dataToPropagate ?? '');
-                        editor.updateNodeDataFromId(targetId, { selector_received: s });
-                        const el = document.getElementById(`node-${targetId}`);
-                        const i = el?.querySelector('input[df-selector_received]');
-                        if (i) i.value = s;
-                        // No ejecutar automáticamente, extract_value se ejecuta cuando llega a input_1
-                    }
-                } else {
-                    setTimeout(() => executeNode(targetId, dataToPropagate), 0);
-                }
-            }
-            else if (targetNodeName === 'javascript_code') { 
-                editor.updateNodeDataFromId(targetId, { lastInput: dataToPropagate });
-                setTimeout(() => executeNode(targetId, dataToPropagate), 0); // executeJsNode se llama dentro de executeNode si es necesario
-            }
-            else if (targetNodeName === 'concatenar') { 
-                setTimeout(() => updateConcatenateNode(targetId), 0);
-            }
-            else if (['sum', 'subtract', 'multiply', 'divide'].includes(targetNodeName)) {
-                 setTimeout(() => { // Llama a la función de actualización específica del nodo aritmético
-                    if (targetNodeName === 'sum') updateSumNode(targetId);
-                    else if (targetNodeName === 'subtract') updateSubtractNode(targetId);
-                    else if (targetNodeName === 'multiply') updateMultiplyNode(targetId);
-                    else if (targetNodeName === 'divide') updateDivideNode(targetId);
-                 },0);
-            }
-            else if (targetNodeName === 'mostrarPasar' && targetInputPortName === 'input_1') { 
-                const v = String(dataToPropagate ?? '');
-                editor.updateNodeDataFromId(targetId, { result: v });
-                const el = document.getElementById(`node-${targetId}`);
-                const ta = el?.querySelector('textarea[df-result]');
-                if (ta) ta.value = v;
-                setTimeout(() => propagateData(targetId, targetNodeName, 'result', dataToPropagate), 0);
-            }
-            else if (targetNodeName === 'guardarTexto' && targetInputPortName === 'input_1') { 
-                const v = String(dataToPropagate ?? '');
-                editor.updateNodeDataFromId(targetId, { savecontent: v });
-                const el = document.getElementById(`node-${targetId}`);
-                const ta = el?.querySelector('textarea[df-savecontent]');
-                if (ta) ta.value = v;
-            }
-            // UPDATED: Included text_capitalize_words
-            else if (['text_replace', 'text_split', 'text_uppercase', 'text_lowercase', 'text_length', 'html_strip', 'text_capitalize_words', 'text_capitalize_first'].includes(targetNodeName) && targetInputPortName === 'input_1') { 
-                const inputText = String(dataToPropagate ?? '');
-                editor.updateNodeDataFromId(targetId, { lastInput: inputText }); // Guardar el input
-                setTimeout(() => {
-                    try {
-                        if (targetNodeName === 'text_uppercase') executeTextCase(targetId, inputText, 'upper');
-                        else if (targetNodeName === 'text_lowercase') executeTextCase(targetId, inputText, 'lower');
-                        else if (targetNodeName === 'text_replace') executeTextReplace(targetId, inputText);
-                        else if (targetNodeName === 'text_split') executeTextSplit(targetId, inputText);
-                        else if (targetNodeName === 'text_length') executeTextLength(targetId, inputText);
-                        else if (targetNodeName === 'html_strip') executeHtmlStrip(targetId, inputText);
-                        else if (targetNodeName === 'text_capitalize_words') executeCapitalizeWords(targetId, inputText); // Changed from _all to _words
-                        else if (targetNodeName === 'text_capitalize_first') executeCapitalizeFirstLetter(targetId, inputText); 
-                    } catch (execError) { console.error(`Error executing text op for ${targetNodeName} (${targetId}):`, execError); }
-                }, 0);
+            else if (targetNodeName === 'javascript_code') { editor.updateNodeDataFromId(targetId, { lastInput: dataToPropagate }); setTimeout(() => executeNode(targetId, dataToPropagate), 0); }
+            else if (targetNodeName === 'concatenar') { setTimeout(() => updateConcatenateNode(targetId), 0); }
+            else if (['sum', 'subtract', 'multiply', 'divide'].includes(targetNodeName)) { setTimeout(() => { if (targetNodeName === 'sum') updateSumNode(targetId); else if (targetNodeName === 'subtract') updateSubtractNode(targetId); else if (targetNodeName === 'multiply') updateMultiplyNode(targetId); else if (targetNodeName === 'divide') updateDivideNode(targetId); },0); }
+            else if (targetNodeName === 'mostrarPasar' && targetInputPortName === 'input_1') { const v = String(dataToPropagate ?? ''); editor.updateNodeDataFromId(targetId, { result: v }); const el = document.getElementById(`node-${targetId}`); const ta = el?.querySelector('textarea[df-result]'); if (ta) ta.value = v; setTimeout(() => propagateData(targetId, targetNodeName, 'result', dataToPropagate), 0); }
+            else if (targetNodeName === 'guardarTexto' && targetInputPortName === 'input_1') { const v = String(dataToPropagate ?? ''); editor.updateNodeDataFromId(targetId, { savecontent: v }); const el = document.getElementById(`node-${targetId}`); const ta = el?.querySelector('textarea[df-savecontent]'); if (ta) ta.value = v; }
+            else if (['text_replace', 'text_split', 'text_uppercase', 'text_lowercase', 'text_length', 'html_strip', 'text_capitalize_words', 'text_capitalize_first'].includes(targetNodeName) && targetInputPortName === 'input_1') {
+                const inputText = String(dataToPropagate ?? ''); editor.updateNodeDataFromId(targetId, { lastInput: inputText });
+                setTimeout(() => { try { if (targetNodeName === 'text_uppercase') executeTextCase(targetId, inputText, 'upper'); else if (targetNodeName === 'text_lowercase') executeTextCase(targetId, inputText, 'lower'); else if (targetNodeName === 'text_replace') executeTextReplace(targetId, inputText); else if (targetNodeName === 'text_split') executeTextSplit(targetId, inputText); else if (targetNodeName === 'text_length') executeTextLength(targetId, inputText); else if (targetNodeName === 'html_strip') executeHtmlStrip(targetId, inputText); else if (targetNodeName === 'text_capitalize_words') executeCapitalizeWords(targetId, inputText); else if (targetNodeName === 'text_capitalize_first') executeCapitalizeFirstLetter(targetId, inputText); } catch (execError) { console.error(`Error executing text op for ${targetNodeName} (${targetId}):`, execError); } }, 0);
             }
             else if (targetNodeName === 'auto_text_replace') {
-                if (targetInputPortName === 'input_1') { 
-                    const inputTextString = String(dataToPropagate ?? '');
-                    editor.updateNodeDataFromId(targetId, { lastInput: inputTextString }); 
-                    const targetNodeElement = document.getElementById(`node-${targetId}`);
-                    const lastInputElementUI = targetNodeElement?.querySelector('textarea[df-lastInput]');
-                    if (lastInputElementUI) lastInputElementUI.value = inputTextString;
-                    // console.log(`Auto Replace (${targetId}): Received text for input_1. Storing & Executing.`);
-                    setTimeout(() => executeAutoReplace(targetId, inputTextString), 0);
-                } else if (targetInputPortName === 'input_2') { // Disparador
-                    // console.log(`Auto Replace (${targetId}): Received TRIGGER on input_2.`);
-                    const existingLastInput = String(targetNode.data.lastInput ?? '');
-                    setTimeout(() => executeAutoReplace(targetId, existingLastInput), 0);
-                }
+                if (targetInputPortName === 'input_1') { const inputTextString = String(dataToPropagate ?? ''); editor.updateNodeDataFromId(targetId, { lastInput: inputTextString }); const targetNodeElement = document.getElementById(`node-${targetId}`); const lastInputElementUI = targetNodeElement?.querySelector('textarea[df-lastInput]'); if (lastInputElementUI) lastInputElementUI.value = inputTextString; setTimeout(() => executeAutoReplace(targetId, inputTextString), 0); }
+                else if (targetInputPortName === 'input_2') { const existingLastInput = String(targetNode.data.lastInput ?? ''); setTimeout(() => executeAutoReplace(targetId, existingLastInput), 0); }
             }
-            else if (targetNodeName === 'hybrid_text_replace' && targetInputPortName === 'input_1') {
-                editor.updateNodeDataFromId(targetId, { lastInput: dataToPropagate });
-                // console.log(`Hybrid Replace (${targetId}): Received input via connection. Storing in lastInput.`);
-            }
-            else if (targetNodeName === 'template_engine' && targetInputPortName === 'input_1') {
-                editor.updateNodeDataFromId(targetId, { lastInput: dataToPropagate });
-                setTimeout(() => processTemplateNode(targetId, dataToPropagate), 0);
-            }
-             // Aquí puedes añadir más `else if` para otros nodos personalizados que reaccionan a la entrada
-        }); 
-    } catch (error) {
-        console.error(`Error propagating data from node ${sourceNodeId} (${sourceNodeName}):`, error);
-    }
+            else if (targetNodeName === 'hybrid_text_replace' && targetInputPortName === 'input_1') { editor.updateNodeDataFromId(targetId, { lastInput: dataToPropagate }); }
+            else if (targetNodeName === 'template_engine' && targetInputPortName === 'input_1') { editor.updateNodeDataFromId(targetId, { lastInput: dataToPropagate }); setTimeout(() => processTemplateNode(targetId, dataToPropagate), 0); }
+        });
+    } catch (error) { console.error(`Error propagating data from node ${sourceNodeId} (${sourceNodeName}):`, error); }
 }
-
-
-
 
 function updateConcatenateNode(nodeId) { const n = editor.getNodeFromId(nodeId); if (!n || n.name !== 'concatenar' || !n.inputs?.input_1) return; const conns = (n.inputs.input_1.connections || []).slice().sort((a, b) => (editor.getNodeFromId(a.node)?.pos_y ?? 0) - (editor.getNodeFromId(b.node)?.pos_y ?? 0)); let str = ""; conns.forEach(c => { const sN = editor.getNodeFromId(c.node); if (!sN?.data) return; let dC = ''; const d = sN.data; const keys = ['result', 'content', 'codecontent', 'outputhtml', 'filecontent', 'display', 'url', 'jscode']; for(const k of keys){if(d.hasOwnProperty(k)){ dC = d[k]; break; }} if (dC === '' && Object.keys(d).length > 0) { const fk = Object.keys(d)[0]; if(!['lastInput', 'selector_received'].includes(fk)) dC = d[fk]; } str += String(dC ?? ''); }); if (n.data.result !== str) { editor.updateNodeDataFromId(nodeId, { result: str }); propagateData(nodeId, 'concatenar', 'result', str); saveHistoryState(); } }
 
@@ -2973,13 +1145,13 @@ function activateNodeIfNeeded(nodeId) { try { const node = editor.getNodeFromId(
 function activateExistingAutoNodes() { console.log("Activating initial/auto nodes..."); let nodes = {}; try { nodes = editor.export()?.drawflow?.[editor.module]?.data ?? {}; } catch (e) { console.error("Err get nodes for activation:", e); return; } cleanupAllModuleIntervals(); const ids = Object.keys(nodes); if (ids.length > 0) { ids.forEach(id => { activateNodeIfNeeded(id); }); ids.forEach(id => { if (nodes[id]?.name === 'concatenar') updateConcatenateNode(id); }); } console.log("Initial activation complete."); }
 
 // --- Node Search ---
-if (searchInput) searchInput.addEventListener('input', filterNodes);
+// searchInput listener moved to initializeApp
 function filterNodes() { if (!searchInput || !nodesListContainer) return; try { const s = searchInput.value.toLowerCase().trim(); const items = nodesListContainer.querySelectorAll('.drag-drawflow, .create-node-button'); items?.forEach(i => { const btn = i.classList.contains('create-node-button'); const type = i.dataset.node?.toLowerCase() || ''; const nameEl = i.querySelector('span'); const nameTxt = nameEl?.textContent.toLowerCase().trim() || ''; const defName = btn ? 'crear tipo nodo' : ''; const itemTxt = nameTxt || defName; const show = !s || itemTxt.includes(s) || (type && type.includes(s)) || (btn && 'crear'.includes(s)); i.style.display = show ? (btn ? 'block' : 'flex') : 'none'; }); } catch (e) { console.error("Error filterNodes:", e); } }
 
 // --- Custom Node Management ---
 function getStoredCustomNodeTypes() { try { const s = localStorage.getItem(LOCALSTORAGE_NODES_KEY); return JSON.parse(s || '{}'); } catch (e) { console.error("Err reading custom types:", e); return {}; } }
 function saveCustomNodeTypes(allTypes) { try { const custom = {}; for (const k in allTypes) if (!baseNodeDefinitions.hasOwnProperty(k)) custom[k] = allTypes[k]; localStorage.setItem(LOCALSTORAGE_NODES_KEY, JSON.stringify(custom)); } catch (e) { console.error("Err saving custom types:", e); showToast('error', 'Error', 'Cannot save custom nodes.'); } }
-function addDraggableItemToSidebar(nodeDef) { if (!nodesListContainer || !nodeDef?.name) return; if (nodesListContainer.querySelector(`.drag-drawflow[data-node="${nodeDef.name}"]`)) return; const div = document.createElement('div'); div.className = 'drag-drawflow'; div.style.display = 'flex'; div.draggable = true; div.dataset.node = nodeDef.name; let title = nodeDef.title || nodeDef.name; let iconHtml = '<i class="fas fa-puzzle-piece"></i>'; try { const tmp = document.createElement('div'); tmp.innerHTML = nodeDef.html || ''; const tb = tmp.querySelector('.title-box'); if (tb) { const i = tb.querySelector('i'); if (i) { const ci = i.cloneNode(true); ci.style.cssText = 'margin-right: 8px; color: #777; width: 16px; text-align: center; flex-shrink: 0;'; iconHtml = ci.outerHTML; } if (!nodeDef.title) { const txt = tb.textContent.replace(/<[^>]*>/g, '').trim(); if (txt) title = txt; } } } catch (e) { console.warn(`Err parsing sidebar HTML for ${nodeDef.name}:`, e); } div.innerHTML = `${iconHtml}<span style="flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(title)}</span>`; div.title = `Drag: ${title} (${nodeDef.name})`; if (!baseNodeDefinitions.hasOwnProperty(nodeDef.name)) { const del = document.createElement('button'); del.innerHTML = '<i class="fas fa-trash-alt"></i>'; del.className = 'delete-node-type-btn'; del.title = `Delete type: ${nodeDef.name}`; del.setAttribute('aria-label', `Delete type ${nodeDef.name}`); del.onclick = (ev) => { ev.stopPropagation(); promptDeleteNodeType(nodeDef.name); }; div.appendChild(del); } div.addEventListener('dragstart', drag); div.addEventListener('touchstart', drag, { passive: false }); div.addEventListener('touchmove', positionMobile, { passive: false }); div.addEventListener('touchend', drop); nodesListContainer.appendChild(div); }
+function addDraggableItemToSidebar(nodeDef) { if (!nodesListContainer || !nodeDef?.name) return; if (nodesListContainer.querySelector(`.drag-drawflow[data-node="${nodeDef.name}"]`)) return; const div = document.createElement('div'); div.className = 'drag-drawflow'; div.style.display = 'flex'; div.draggable = true; div.dataset.node = nodeDef.name; let title = nodeDef.title || nodeDef.name; let iconHtml = '<i class="fas fa-puzzle-piece"></i>'; try { const tmp = document.createElement('div'); tmp.innerHTML = nodeDef.html || ''; const tb = tmp.querySelector('.title-box, .youtube-placeholder, .image-placeholder'); if (tb) { const i = tb.querySelector('i'); if (i) { const ci = i.cloneNode(true); ci.style.cssText = 'margin-right: 8px; color: #777; width: 16px; text-align: center; flex-shrink: 0;'; iconHtml = ci.outerHTML; } if (!nodeDef.title && tb.classList.contains('title-box')) { const txt = tb.textContent.replace(/<[^>]*>/g, '').trim(); if (txt) title = txt; } } } catch (e) { console.warn(`Err parsing sidebar HTML for ${nodeDef.name}:`, e); } div.innerHTML = `${iconHtml}<span style="flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(title)}</span>`; div.title = `Drag: ${title} (${nodeDef.name})`; if (!baseNodeDefinitions.hasOwnProperty(nodeDef.name)) { const del = document.createElement('button'); del.innerHTML = '<i class="fas fa-trash-alt"></i>'; del.className = 'delete-node-type-btn'; del.title = `Delete type: ${nodeDef.name}`; del.setAttribute('aria-label', `Delete type ${nodeDef.name}`); del.onclick = (ev) => { ev.stopPropagation(); promptDeleteNodeType(nodeDef.name); }; div.appendChild(del); } div.addEventListener('dragstart', drag); div.addEventListener('touchstart', drag, { passive: false }); div.addEventListener('touchmove', positionMobile, { passive: false }); div.addEventListener('touchend', drop); nodesListContainer.appendChild(div); }
 function loadCustomNodesToSidebar() { if (!nodesListContainer) return; try { const stored = getStoredCustomNodeTypes(); customNodeTypes = { ...baseNodeDefinitions, ...stored }; console.log("Node types loaded:", Object.keys(customNodeTypes).length); nodesListContainer.innerHTML = ''; if (nodeDefinitionModal) { const btn = document.createElement('div'); btn.className = 'create-node-button'; btn.setAttribute('role', 'button'); btn.innerHTML = '<i class="fas fa-plus-circle"></i><span>&nbsp;&nbsp;Create Node Type</span>'; btn.title = 'Define new custom node type'; btn.onclick = openNodeDefinitionModal; nodesListContainer.appendChild(btn); } const defs = Object.values(customNodeTypes).sort((a, b) => (a.title || a.name).localeCompare(b.title || b.name)); defs.forEach(addDraggableItemToSidebar); filterNodes(); } catch (e) { console.error("Fatal sidebar load error:", e); showToast('error', 'Sidebar Error', 'Error loading nodes.'); } }
 function openNodeDefinitionModal() { if (!nodeDefinitionModal || !modalBackdrop) { showToast('error','Error','Modal not available.'); return; } document.getElementById('newNodeTypeName').value = ''; document.getElementById('newNodeTypeTitle').value = ''; document.getElementById('newNodeInputs').value = '1'; document.getElementById('newNodeOutputs').value = '1'; document.getElementById('newNodeCssClass').value = ''; document.getElementById('newNodeHtmlContent').value = `<div>\n  <div class="title-box"><i class="fas fa-cogs"></i> My Node</div>\n  <div class="box">\n    <label>Data:</label>\n    <input type="text" df-mydata placeholder="Value...">\n  </div>\n <div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div></div>`; document.getElementById('newNodeInitialData').value = `{ "mydata": "", "nodeWidth": "220px", "nodeHeight": "auto" }`; nodeDefinitionModal.style.display = 'block'; modalBackdrop.style.display = 'block'; document.getElementById('newNodeTypeName').focus(); }
 function closeNodeDefinitionModal() { if (!nodeDefinitionModal || !modalBackdrop) return; nodeDefinitionModal.style.display = 'none'; modalBackdrop.style.display = 'none'; }
@@ -2994,593 +1166,241 @@ function redo() { if (historyIndex >= historyStack.length - 1 || isLocked()) ret
 
 // --- Project Management ---
 function triggerLoad() { if (fileInputElement) fileInputElement.click(); else showToast('error', 'Error', 'File input missing.'); }
-// if (fileInputElement) fileInputElement.addEventListener('change', loadProjectFromFile); // Moved to initializeApp
 
-/**
- * Carga un proyecto Xocoflow desde un archivo JSON seleccionado por el usuario.
- * @param {Event} event - El evento 'change' del input de tipo 'file'.
- */
 function loadProjectFromFile(event) {
-    // console.log(">>> loadProjectFromFile FUNCTION CALLED <<<");
-    const fileInput = event.target;
-    const file = fileInput?.files?.[0];
-  
-    if (!file) {
-        if(fileInput) fileInput.value = null;
-        return;
-    }
-  
+    const fileInput = event.target; const file = fileInput?.files?.[0];
+    if (!file) { if(fileInput) fileInput.value = null; return; }
     const expectedProjectName = file.name.replace(/\.json$/i, "");
-    // console.log(`Intentando cargar archivo: ${file.name}`);
     const reader = new FileReader();
-  
+
     reader.onload = (e) => {
-        let projectData;
-        const fileContent = e.target.result;
-  
+        let projectData; const fileContent = e.target.result;
         try {
-            try {
-                projectData = JSON.parse(fileContent);
-            } catch (parseError) { showToast('error', 'Error de Parseo', 'El archivo JSON no es válido.'); if (fileInput) fileInput.value = null; return; }
-  
-            if (!projectData?.drawflow) { showToast('error', 'Formato Inválido', 'El archivo no parece un proyecto Xocoflow válido.'); if (fileInput) fileInput.value = null; return;}
-  
-            // console.log("JSON parseado, procesando nodos personalizados...");
+            try { projectData = JSON.parse(fileContent); }
+            catch (parseError) { showToast('error', 'Error de Parseo', 'El archivo JSON no es válido.'); if (fileInput) fileInput.value = null; return; }
+            if (!projectData?.drawflow) { showToast('error', 'Formato Inválido', 'El archivo no parece un proyecto Xocoflow.'); if (fileInput) fileInput.value = null; return;}
+
             try {
                 const customDefsFromFile = projectData.customNodeDefinitions;
                 if (customDefsFromFile && typeof customDefsFromFile === 'object') {
-                    saveCustomNodeTypes(customDefsFromFile);
-                    customNodeTypes = { ...baseNodeDefinitions, ...customDefsFromFile };
-                } else {
-                    customNodeTypes = { ...baseNodeDefinitions, ...getStoredCustomNodeTypes() };
-                }
+                    saveCustomNodeTypes(customDefsFromFile); customNodeTypes = { ...baseNodeDefinitions, ...customDefsFromFile };
+                } else { customNodeTypes = { ...baseNodeDefinitions, ...getStoredCustomNodeTypes() }; }
                 loadCustomNodesToSidebar();
-            } catch (nodeError) { console.warn("Error procesando definiciones de nodos personalizados:", nodeError); showToast('warning', 'Advertencia Nodos', 'Problema al cargar algunas definiciones de nodos personalizados.');}
-  
-  
-            // console.log("Importando datos en Drawflow...");
+            } catch (nodeError) { console.warn("Error procesando nodos personalizados:", nodeError); showToast('warning', 'Advertencia Nodos', 'Problema al cargar definiciones.');}
+
             const currentModuleBeforeImport = editor.module;
             try {
-                cleanupAllModuleIntervals();
-                editor.import(projectData);
-  
-                // console.log("Sincronizando UI de nodos con datos importados...");
+                cleanupAllModuleIntervals(); editor.import(projectData);
                 const targetModule = editor.module || currentModuleBeforeImport;
                 const drawflowExportAfterImport = editor.export();
                 const currentModuleNodes = drawflowExportAfterImport?.drawflow?.[targetModule]?.data;
-  
+
                 if (currentModuleNodes) {
                     Object.keys(currentModuleNodes).forEach(nodeId => {
-                        const node = currentModuleNodes[nodeId];
-                        const nodeData = node.data || {};
-                        const nodeElement = document.getElementById(`node-${nodeId}`);
-                        const nodeName = node.name;
-  
+                        const node = currentModuleNodes[nodeId]; const nodeData = node.data || {}; const nodeElement = document.getElementById(`node-${nodeId}`); const nodeName = node.name;
                         if (nodeElement) {
-                            // General data-binding for df-* attributes
                             Object.keys(nodeData).forEach(dataKey => {
-                                if (['naturalWidth', 'naturalHeight'].includes(dataKey) && (nodeName === 'image_minimal' || nodeName === 'youtube_minimal')) return; // Handled by specific logic
-                                if (['lastInput', 'lastInputs', 'selector_received'].includes(dataKey)) return; // Internal state
-  
+                                if (['naturalWidth', 'naturalHeight'].includes(dataKey) && (nodeName === 'image_minimal' || nodeName === 'youtube_minimal')) return;
+                                if (['lastInput', 'lastInputs', 'selector_received'].includes(dataKey)) return;
                                 const inputElement = nodeElement.querySelector(`[df-${dataKey}]`);
                                 if (inputElement) {
                                     const value = nodeData[dataKey];
                                     if (inputElement.tagName === 'TEXTAREA' || (inputElement.tagName === 'INPUT' && ['text', 'number', 'url', 'email', 'password', 'range', 'date', 'time', 'color'].includes(inputElement.type))) {
                                         inputElement.value = value ?? '';
-                                        if (inputElement.type === 'range' && inputElement.nextElementSibling?.hasAttribute('df-rangeval')) {
-                                             inputElement.nextElementSibling.textContent = value ?? '0';
-                                        }
-                                    } else if (inputElement.tagName === 'SELECT'){
-                                        inputElement.value = value ?? '';
-                                        if (dataKey === 'notecolor' && nodeName === 'nota') {
-                                            const changeEvent = new Event('change', { bubbles: true });
-                                            inputElement.dispatchEvent(changeEvent);
-                                        }
-                                    } else if (inputElement.tagName === 'IMG' && dataKey === 'imgsrc' && nodeName !== 'image_minimal' && nodeName !== 'youtube_minimal') { // Exclude minimal nodes
-                                        inputElement.src = value ?? '';
-                                        inputElement.style.display = value ? 'block' : 'none';
-                                        const placeholder = nodeElement.querySelector('.placeholder-text'); // General placeholder
-                                        if(placeholder) placeholder.style.display = value ? 'none' : (placeholder.classList.contains('youtube-placeholder') ? 'flex' : 'block');
-                                    } else if (inputElement.tagName === 'SPAN' && dataKey === 'filename'){
-                                        inputElement.textContent = value ?? '';
-                                        inputElement.title = value ?? '';
-                                    } else if (inputElement.hasAttribute('df-charcount')  && nodeName === 'nota') {
-                                        inputElement.textContent = nodeElement.querySelector('[df-notecontent]')?.value?.length || '0';
-                                    }
+                                        if (inputElement.type === 'range' && inputElement.nextElementSibling?.hasAttribute('df-rangeval')) { inputElement.nextElementSibling.textContent = value ?? '0'; }
+                                    } else if (inputElement.tagName === 'SELECT'){ inputElement.value = value ?? ''; if (dataKey === 'notecolor' && nodeName === 'nota') { const changeEvent = new Event('change', { bubbles: true }); inputElement.dispatchEvent(changeEvent); } }
+                                    else if (inputElement.tagName === 'IMG' && dataKey === 'imgsrc' && nodeName !== 'image_minimal' && nodeName !== 'youtube_minimal') { inputElement.src = value ?? ''; inputElement.style.display = value ? 'block' : 'none'; const placeholder = nodeElement.querySelector('.placeholder-text'); if(placeholder) placeholder.style.display = value ? 'none' : (placeholder.classList.contains('youtube-placeholder') ? 'flex' : 'block'); }
+                                    else if (inputElement.tagName === 'SPAN' && dataKey === 'filename'){ inputElement.textContent = value ?? ''; inputElement.title = value ?? ''; }
+                                    else if (inputElement.hasAttribute('df-charcount')  && nodeName === 'nota') { inputElement.textContent = nodeElement.querySelector('[df-notecontent]')?.value?.length || '0'; }
                                 }
                             });
-  
-                            // Apply saved dimensions first
                             if (nodeData.nodeWidth) nodeElement.style.width = nodeData.nodeWidth;
                             if (nodeData.nodeHeight) nodeElement.style.height = nodeData.nodeHeight;
-  
                             const resizer = nodeElement.querySelector('.node-resizer');
-                            if (resizer) {
-                              resizer.removeEventListener('mousedown', startNodeResize); // Prevent duplicates
-                              resizer.addEventListener('mousedown', (e) => startNodeResize(e, nodeId, resizer));
-                            }
-  
-                            // Node-specific UI restoration
-                            if (nodeName === 'nota' && nodeData.notecolor) {
-                                nodeElement.style.backgroundColor = nodeData.notecolor;
-                                const tb = nodeElement.querySelector('.title-box');
-                                if(tb) {
-                                    const darkBgs = ['#ccccff', '#e0e0e0'];
-                                    tb.style.backgroundColor = darkBgs.includes(nodeData.notecolor) ? '#f0f0f0' : '';
-                                    tb.style.color = darkBgs.includes(nodeData.notecolor) ? '#333' : '';
-                                }
-                            }
-                            else if (nodeName === 'local_image') {
-                                const imgTag = nodeElement.querySelector('img[df-imagesrc]');
-                                if (imgTag){
-                                    if(nodeData.imagewidth) imgTag.style.width = nodeData.imagewidth;
-                                    if(nodeData.imageheight) imgTag.style.height = nodeData.imageheight;
-                                    imgTag.src = nodeData.imagesrc ?? '';
-                                    imgTag.style.display = nodeData.imagesrc ? 'block' : 'none';
-                                    const placeholder = nodeElement.querySelector('.placeholder-text');
-                                     if(placeholder) placeholder.style.display = nodeData.imagesrc ? 'none' : 'block';
-                                }
-                            }
+                            if (resizer) { resizer.removeEventListener('mousedown', startNodeResize); resizer.addEventListener('mousedown', (e) => startNodeResize(e, nodeId, resizer)); }
+
+                            if (nodeName === 'nota' && nodeData.notecolor) { nodeElement.style.backgroundColor = nodeData.notecolor; const tb = nodeElement.querySelector('.title-box'); if(tb) { const darkBgs = ['#ccccff', '#e0e0e0']; tb.style.backgroundColor = darkBgs.includes(nodeData.notecolor) ? '#f0f0f0' : ''; tb.style.color = darkBgs.includes(nodeData.notecolor) ? '#333' : ''; } }
+                            else if (nodeName === 'local_image') { const imgTag = nodeElement.querySelector('img[df-imagesrc]'); if (imgTag){ if(nodeData.imagewidth) imgTag.style.width = nodeData.imagewidth; if(nodeData.imageheight) imgTag.style.height = nodeData.imageheight; imgTag.src = nodeData.imagesrc ?? ''; imgTag.style.display = nodeData.imagesrc ? 'block' : 'none'; const placeholder = nodeElement.querySelector('.placeholder-text'); if(placeholder) placeholder.style.display = nodeData.imagesrc ? 'none' : 'block'; } }
                             else if (nodeName === 'image_minimal') {
-                                const imgTag = nodeElement.querySelector('img[df-imgsrc]');
-                                const placeholder = nodeElement.querySelector('.image-placeholder');
+                                const imgTag = nodeElement.querySelector('img[df-imgsrc]'); const placeholder = nodeElement.querySelector('.image-placeholder');
                                 if (imgTag && placeholder) {
                                     const hasValidImage = nodeData.imgsrc && nodeData.naturalWidth > 0 && nodeData.naturalHeight > 0;
-                                    if (hasValidImage) {
-                                        imgTag.src = nodeData.imgsrc;
-                                        imgTag.style.display = 'block';
-                                        placeholder.style.display = 'none';
-                                        // Apply saved dimensions, or dimensions from naturalWidth/Height if nodeWidth/Height weren't explicitly saved
-                                        nodeElement.style.width = nodeData.nodeWidth || `${nodeData.naturalWidth}px`;
-                                        nodeElement.style.height = nodeData.nodeHeight || `${nodeData.naturalHeight}px`;
-                                        nodeElement.style.border = 'none';
-                                    } else {
-                                        imgTag.src = '';
-                                        imgTag.style.display = 'none';
-                                        placeholder.style.display = 'flex';
-                                        // Apply saved dimensions, or default if not saved
-                                        nodeElement.style.width = nodeData.nodeWidth || baseNodeDefinitions['image_minimal'].data.nodeWidth;
-                                        nodeElement.style.height = nodeData.nodeHeight || baseNodeDefinitions['image_minimal'].data.nodeHeight;
-                                        nodeElement.style.border = '2px dashed #cccccc';
-                                    }
-                                    setTimeout(() => setupMinimalImageNodeListeners(nodeId), 50);
-                                    setTimeout(() => editor.updateConnectionNodes(`node-${nodeId}`), 100);
+                                    if (hasValidImage) { imgTag.src = nodeData.imgsrc; imgTag.style.display = 'block'; placeholder.style.display = 'none'; nodeElement.style.width = nodeData.nodeWidth || `${nodeData.naturalWidth}px`; nodeElement.style.height = nodeData.nodeHeight || `${nodeData.naturalHeight}px`; nodeElement.style.border = 'none'; }
+                                    else { imgTag.src = ''; imgTag.style.display = 'none'; placeholder.style.display = 'flex'; nodeElement.style.width = nodeData.nodeWidth || baseNodeDefinitions['image_minimal'].data.nodeWidth; nodeElement.style.height = nodeData.nodeHeight || baseNodeDefinitions['image_minimal'].data.nodeHeight; nodeElement.style.border = '2px dashed #cccccc'; }
+                                    setTimeout(() => setupMinimalImageNodeListeners(nodeId), 50); setTimeout(() => editor.updateConnectionNodes(`node-${nodeId}`), 100);
                                 }
                             }
-                            // START: ADDED/MODIFIED BLOCK FOR YOUTUBE_MINIMAL
-                            else if (nodeName === 'youtube_minimal') {
-                                const iframe = nodeElement.querySelector('iframe[df-youtubeiframe]');
-                                const placeholder = nodeElement.querySelector('.youtube-placeholder');
-                                if (iframe && placeholder) {
-                                    if (nodeData.videoid) {
-                                        iframe.src = `https://www.youtube.com/embed/${nodeData.videoid}`;
-                                        // iframe.style.display = 'block'; // CSS :has should handle this
-                                        // placeholder.style.display = 'none'; // CSS :has should handle this
-                                        nodeElement.style.border = 'none'; // Remove dashed border if video is present
-                                    } else {
-                                        iframe.src = ''; // Clear src to hide iframe
-                                        // iframe.style.display = 'none';
-                                        // placeholder.style.display = 'flex';
-                                        nodeElement.style.border = '2px dashed #cccccc'; // Show dashed border if no video
-                                    }
-                                    // Apply saved dimensions, or default if not saved
+                            else if (nodeName === 'youtube_minimal') { // ** UPDATED for API **
+                                const placeholder = nodeElement.querySelector('.youtube-placeholder'); const playerContainerDiv = nodeElement.querySelector('.yt-player-container');
+                                if (playerContainerDiv && placeholder) {
                                     nodeElement.style.width = nodeData.nodeWidth || baseNodeDefinitions['youtube_minimal'].data.nodeWidth;
                                     nodeElement.style.height = nodeData.nodeHeight || baseNodeDefinitions['youtube_minimal'].data.nodeHeight;
+                                    if (nodeData.videoid) createOrUpdateYouTubePlayer(nodeId, nodeData.videoid);
+                                    else { playerContainerDiv.style.display = 'none'; placeholder.style.display = 'flex'; nodeElement.style.border = '2px dashed #cccccc'; }
                                 }
-                                setTimeout(() => setupYouTubeMinimalNodeListeners(nodeId), 50);
-                                setTimeout(() => editor.updateConnectionNodes(`node-${nodeId}`), 100);
+                                setupYouTubeMinimalNodeListeners(nodeId);
                             }
-                            // END: ADDED/MODIFIED BLOCK FOR YOUTUBE_MINIMAL
-  
-                            // Movement lock state restoration
-                            if (nodeData.hasOwnProperty('isMovementLocked')) {
-                                  updateNodeVisualLockState(nodeId, nodeData.isMovementLocked);
-                            } else {
-                                  editor.updateNodeDataFromId(nodeId, { ...nodeData, isMovementLocked: false }); // Add if missing
-                                  updateNodeVisualLockState(nodeId, false);
-                            }
+                            if (nodeData.hasOwnProperty('isMovementLocked')) updateNodeVisualLockState(nodeId, nodeData.isMovementLocked);
+                            else { editor.updateNodeDataFromId(nodeId, { ...nodeData, isMovementLocked: false }); updateNodeVisualLockState(nodeId, false); }
                         }
                     });
                 }
-                // console.log("Post-import UI synchronization completed.");
-  
-            } catch (importError) { console.error("Error durante la importación:", importError); showToast('error', 'Error de Importación', 'No se pudo importar el proyecto.'); if (fileInput) fileInput.value = null; return; }
-  
-            // console.log("Importación completada. Actualizando estado de la aplicación.");
-            currentProjectName = expectedProjectName;
-            renderModuleTabs();
-            initializeHistory();
-            selectedNodeId = null;
-            copiedNodeData = null;
-            currentlyEditingNodeId = null;
-            updateUIDisabledStates();
-            closeCodeEditorSidebar(false);
-            document.title = `Xocoflow | ${currentProjectName} - ${editor.module}`;
-            saveHistoryState(true);
-            activateExistingAutoNodes();
-            showToast('success', 'Proyecto Cargado', `"${escapeHtml(currentProjectName)}" cargado.`);
-  
-        } catch (err) { console.error("Error en reader.onload:", err); showToast('error', 'Error de Archivo', 'No se pudo leer el archivo del proyecto.'); }
-        finally {
-            if (fileInput) fileInput.value = null;
-        }
+            } catch (importError) { console.error("Error durante la importación:", importError); showToast('error', 'Error de Importación', 'No se pudo importar.'); if (fileInput) fileInput.value = null; return; }
+
+            currentProjectName = expectedProjectName; renderModuleTabs(); initializeHistory();
+            selectedNodeId = null; copiedNodeData = null; currentlyEditingNodeId = null;
+            updateUIDisabledStates(); closeCodeEditorSidebar(false); document.title = `Xocoflow | ${currentProjectName} - ${editor.module}`;
+            saveHistoryState(true); activateExistingAutoNodes(); showToast('success', 'Proyecto Cargado', `"${escapeHtml(currentProjectName)}" cargado.`);
+        } catch (err) { console.error("Error en reader.onload:", err); showToast('error', 'Error de Archivo', 'No se pudo leer.'); }
+        finally { if (fileInput) fileInput.value = null; }
     };
-  
-    reader.onerror = (e) => { showToast('error', 'Error de Lectura', 'No se pudo leer el archivo.'); if (fileInput) fileInput.value = null;};
-  
+    reader.onerror = (e) => { showToast('error', 'Error de Lectura', 'No se pudo leer.'); if (fileInput) fileInput.value = null;};
     reader.readAsText(file);
-  }
+}
 
-// --- Project Management & Module Actions ---
-
-/**
- * Guarda el proyecto actual (estado de Drawflow, nodos personalizados, metadatos)
- * en un archivo JSON descargable.
- * @param {string} [filename] - Nombre base para el archivo (sin .json). Usa currentProjectName o 'xocoflow_project' si no se provee.
- */
 function saveProject(filename) {
     if (!editor) return;
-
-    // Gestiona el nombre del archivo
-    if (!filename || typeof filename !== 'string') {
-        filename = currentProjectName || 'xocoflow_project';
-    }
-    filename = filename.trim().replace(/\.json$/i,""); // Quita extensión si la tiene
-    if (!filename) {
-        filename = 'xocoflow_project'; // Nombre por defecto si queda vacío
-    }
-    filename += '.json'; // Añade la extensión
-
+    if (!filename || typeof filename !== 'string') filename = currentProjectName || 'xocoflow_project';
+    filename = filename.trim().replace(/\.json$/i,""); if (!filename) filename = 'xocoflow_project';
+    filename += '.json';
     try {
-        const drawflowData = editor.export(); // Obtiene datos de Drawflow (puede incluir HTML renderizado)
-        if (!drawflowData?.drawflow) {
-            throw new Error("Export failed or drawflow data missing.");
-        }
-
-        const customDefs = getStoredCustomNodeTypes(); // Obtiene definiciones personalizadas actuales
-
-        // Construye el objeto del proyecto a guardar
-        const project = {
-            appName: "Xocoflow",
-            version: "1.7.8", // Updated version
-            savedAt: new Date().toISOString(),
-            customNodeDefinitions: customDefs,
-            drawflow: drawflowData.drawflow 
-        };
-
-        const json = JSON.stringify(project, null, 2); 
-        const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
-
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(link.href); 
-
-        currentProjectName = filename.replace(/\.json$/i, ""); 
-        document.title = `Xocoflow | ${currentProjectName} - ${editor.module}`;
-        showToast('success', 'Guardado', `Proyecto "${filename}" guardado.`);
-
-    } catch (err) {
-        console.error("Error saving project:", err);
-        showToast('error', 'Error al Guardar', `No se pudo guardar el proyecto: ${err.message}`);
-    }
+        const drawflowData = editor.export(); if (!drawflowData?.drawflow) throw new Error("Export failed.");
+        const customDefs = getStoredCustomNodeTypes();
+        const project = { appName: "Xocoflow", version: "1.7.9", savedAt: new Date().toISOString(), customNodeDefinitions: customDefs, drawflow: drawflowData.drawflow };
+        const json = JSON.stringify(project, null, 2); const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+        const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = filename; document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(link.href);
+        currentProjectName = filename.replace(/\.json$/i, ""); document.title = `Xocoflow | ${currentProjectName} - ${editor.module}`; showToast('success', 'Guardado', `Proyecto "${filename}" guardado.`);
+    } catch (err) { console.error("Error saving project:", err); showToast('error', 'Error al Guardar', `${err.message}`); }
 }
 
-/**
- * Muestra un diálogo para que el usuario introduzca un nombre de archivo
- * y luego llama a saveProject con ese nombre.
- */
 async function promptSaveAs() {
-    if (!editor) return; 
+    if (!editor) return;
     try {
         const { value: inputName } = await Swal.fire({
-            title: 'Guardar Como...',
-            input: 'text',
-            inputLabel: 'Nombre del archivo (sin .json)',
-            inputValue: currentProjectName || 'mi_proyecto', 
-            showCancelButton: true,
-            confirmButtonText: 'Guardar',
-            cancelButtonText: 'Cancelar',
-            inputValidator: (v) => {
-                const trimmed = v?.trim();
-                if (!trimmed) return '¡El nombre es obligatorio!';
-                if (/[<>:"/\\|?*]/.test(trimmed)) return 'Nombre contiene caracteres inválidos.';
-                return null; 
-            }
+            title: 'Guardar Como...', input: 'text', inputLabel: 'Nombre del archivo (sin .json)', inputValue: currentProjectName || 'mi_proyecto',
+            showCancelButton: true, confirmButtonText: 'Guardar', cancelButtonText: 'Cancelar',
+            inputValidator: (v) => { const trimmed = v?.trim(); if (!trimmed) return '¡Nombre obligatorio!'; if (/[<>:"/\\|?*]/.test(trimmed)) return 'Caracteres inválidos.'; return null; }
         });
-
-        if (inputName) { 
-            saveProject(inputName.trim()); 
-        }
-    } catch (e) {
-        console.error("Error in Save As dialog:", e);
-        showToast('error', 'Error', 'No se pudo mostrar el diálogo Guardar Como.');
-    }
+        if (inputName) saveProject(inputName.trim());
+    } catch (e) { console.error("Error in Save As dialog:", e); showToast('error', 'Error', 'No se pudo mostrar diálogo.'); }
 }
 
-/**
- * Muestra el contenido completo devuelto por editor.export() en formato JSON
- * dentro de un modal para inspección.
- */
 function exportRawJson() {
     if (!editor) return;
     try {
-        const raw = editor.export(); 
-        if (!raw?.drawflow) { 
-            throw new Error("Export failed or drawflow data missing.");
-        }
-        const json = JSON.stringify(raw, null, 2); 
-
-        Swal.fire({
-            title: 'JSON Crudo de Drawflow',
-            width: '80%', 
-            html: `<textarea readonly style="width: 95%; height: 400px; white-space: pre; overflow-wrap: normal; overflow-x: auto; background-color:#f8f8f8; border:1px solid #ddd; font-family:monospace; font-size:12px;">${escapeHtml(json)}</textarea>`,
-            confirmButtonText: 'Cerrar'
-        });
-    } catch (e) {
-        console.error("Error exporting raw JSON:", e);
-        showToast('error', 'Error de Exportación', `No se pudo exportar el JSON: ${e.message}`);
-    }
+        const raw = editor.export(); if (!raw?.drawflow) throw new Error("Export failed.");
+        const json = JSON.stringify(raw, null, 2);
+        Swal.fire({ title: 'JSON Crudo de Drawflow', width: '80%', html: `<textarea readonly style="width: 95%; height: 400px; white-space: pre; overflow-wrap: normal; overflow-x: auto; background-color:#f8f8f8; border:1px solid #ddd; font-family:monospace; font-size:12px;">${escapeHtml(json)}</textarea>`, confirmButtonText: 'Cerrar' });
+    } catch (e) { console.error("Error exporting raw JSON:", e); showToast('error', 'Error de Exportación', `${e.message}`); }
 }
 
-/**
- * Limpia todos los nodos y conexiones del módulo actualmente activo,
- * previa confirmación del usuario.
- */
 function clearCurrentModule() {
-    if (!editor) return;
-    const mod = editor.module;
-    let nodeCount = 0;
+    if (!editor) return; const mod = editor.module; let nodeCount = 0;
+    try { nodeCount = Object.keys(editor.export()?.drawflow?.[mod]?.data ?? {}).length; } catch (e) { console.error("Error getting node count:", e); showToast('error', 'Error', 'No se pudo verificar contenido.'); return; }
+    if (nodeCount === 0) { showToast('info', 'Módulo Vacío', `"${escapeHtml(mod)}" ya está vacío.`); return; }
     try {
-        nodeCount = Object.keys(editor.export()?.drawflow?.[mod]?.data ?? {}).length;
-    } catch (e) {
-        console.error("Error getting node count for module:", mod, e);
-        showToast('error', 'Error', 'No se pudo verificar el contenido del módulo.');
-        return;
-    }
-
-    if (nodeCount === 0) {
-        showToast('info', 'Módulo Vacío', `El módulo "${escapeHtml(mod)}" ya está vacío.`);
-        return;
-    }
-
-    try {
-        Swal.fire({
-            title: `¿Limpiar Módulo "${escapeHtml(mod)}"?`,
-            text: `Se eliminarán ${nodeCount} nodos y todas sus conexiones. ¡Esta acción es irreversible!`,
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#d33',
-            cancelButtonColor: '#3085d6',
-            confirmButtonText: 'Sí, limpiar módulo',
-            cancelButtonText: 'Cancelar'
-        }).then((result) => {
-            if (result.isConfirmed) {
-                // console.log(`Clearing module: ${mod}`);
-                cleanupAllModuleIntervals(); 
-                editor.clearModuleSelected(); 
-                selectedNodeId = null;
-                copiedNodeData = null;
-                updateUIDisabledStates();
-                closeCodeEditorSidebar(false); 
-                if (mod === 'Home') { 
-                    addWelcomeNode(mod);
-                }
-                saveHistoryState(true); 
-                showToast('info', 'Módulo Limpiado', `Módulo "${escapeHtml(mod)}" limpiado.`);
-            }
-        });
-    } catch (e) {
-        console.error("Error during clear module confirmation:", e);
-        showToast('error', 'Error', 'No se pudo iniciar la limpieza del módulo.');
-    }
+        Swal.fire({ title: `¿Limpiar Módulo "${escapeHtml(mod)}"?`, text: `Se eliminarán ${nodeCount} nodos y conexiones. ¡Irreversible!`, icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33', cancelButtonColor: '#3085d6', confirmButtonText: 'Sí, limpiar', cancelButtonText: 'Cancelar' })
+        .then((result) => { if (result.isConfirmed) { cleanupAllModuleIntervals(); editor.clearModuleSelected(); selectedNodeId = null; copiedNodeData = null; updateUIDisabledStates(); closeCodeEditorSidebar(false); if (mod === 'Home') addWelcomeNode(mod); saveHistoryState(true); showToast('info', 'Módulo Limpiado', `Módulo "${escapeHtml(mod)}" limpiado.`); } });
+    } catch (e) { console.error("Error during clear module confirmation:", e); showToast('error', 'Error', 'No se pudo iniciar limpieza.'); }
 }
 
-// --- FIN Project Management & Module Actions ---
 // --- Node Actions ---
-function duplicateSelectedNode() { 
-    if (!selectedNodeId || isLocked()) return; 
-    try { 
-        const oNode = editor.getNodeFromId(selectedNodeId); 
-        if (!oNode) throw new Error("Node not found."); 
-        
+function duplicateSelectedNode() {
+    if (!selectedNodeId || isLocked()) return;
+    try {
+        const oNode = editor.getNodeFromId(selectedNodeId); if (!oNode) throw new Error("Node not found.");
         let cDataDuplicate = JSON.parse(JSON.stringify(oNode.data || {}));
-        cDataDuplicate.isMovementLocked = oNode.data.isMovementLocked === true; // Preserve lock state
-        // Preserve nodeWidth and nodeHeight if they exist
+        cDataDuplicate.isMovementLocked = oNode.data.isMovementLocked === true;
         if (oNode.data.nodeWidth) cDataDuplicate.nodeWidth = oNode.data.nodeWidth;
         if (oNode.data.nodeHeight) cDataDuplicate.nodeHeight = oNode.data.nodeHeight;
-
-
-        const ins = Object.keys(oNode.inputs || {}).length, outs = Object.keys(oNode.outputs || {}).length; 
-        const x = oNode.pos_x + 40, y = oNode.pos_y + 40; 
-        const newId = editor.addNode(oNode.name, ins, outs, x, y, oNode.class, cDataDuplicate, oNode.html); 
-        
-        setTimeout(() => { // Ensure node element exists before applying styles/listeners
+        const ins = Object.keys(oNode.inputs || {}).length, outs = Object.keys(oNode.outputs || {}).length;
+        const x = oNode.pos_x + 40, y = oNode.pos_y + 40;
+        const newId = editor.addNode(oNode.name, ins, outs, x, y, oNode.class, cDataDuplicate, oNode.html);
+        setTimeout(() => {
             const newNodeElement = document.getElementById(`node-${newId}`);
             if(newNodeElement) {
                 if (cDataDuplicate.nodeWidth) newNodeElement.style.width = cDataDuplicate.nodeWidth;
                 if (cDataDuplicate.nodeHeight) newNodeElement.style.height = cDataDuplicate.nodeHeight;
                 const resizer = newNodeElement.querySelector('.node-resizer');
-                if (resizer) {
-                    resizer.addEventListener('mousedown', (e) => startNodeResize(e, newId, resizer));
-                }
+                if (resizer) resizer.addEventListener('mousedown', (e) => startNodeResize(e, newId, resizer));
+                if(oNode.name === 'image_minimal') setupMinimalImageNodeListeners(newId);
+                else if(oNode.name === 'youtube_minimal') setupYouTubeMinimalNodeListeners(newId); // ** ADDED for YT API **
             }
             updateNodeVisualLockState(newId, cDataDuplicate.isMovementLocked);
-            activateNodeIfNeeded(newId); 
+            if (oNode.name === 'youtube_minimal' && cDataDuplicate.videoid) { createOrUpdateYouTubePlayer(newId, cDataDuplicate.videoid); } // ** ADDED for YT API **
+            else { activateNodeIfNeeded(newId); }
         },0);
-        saveHistoryState(); 
-    } catch (err) { showToast('error', 'Duplicate Error', `Error: ${err.message}`); } 
+        saveHistoryState();
+    } catch (err) { showToast('error', 'Duplicate Error', `Error: ${err.message}`); }
 }
 
-function copySelectedNode() { 
-    if (!selectedNodeId || isLocked()) return; 
-    try { 
-        const node = editor.getNodeFromId(selectedNodeId); 
-        if (!node) throw new Error("Node not found."); 
-        if (!customNodeTypes[node.name]) throw new Error(`Type "${node.name}" unknown.`); 
-        copiedNodeData = { 
-            name: node.name, 
-            data: JSON.parse(JSON.stringify(node.data || {})), // Deep copy data
-            html: node.html, 
-            class: node.class, 
-            inputs: Object.keys(node.inputs || {}).length, 
-            outputs: Object.keys(node.outputs || {}).length, 
-            title: node.title || node.name,
-            isMovementLocked: node.data.isMovementLocked === true, // Copy lock state
-            nodeWidth: node.data.nodeWidth, // Copy dimensions
-            nodeHeight: node.data.nodeHeight
-        }; 
-        updateUIDisabledStates(); 
-        showToast('success', 'Node Copied', `${copiedNodeData.title}`); 
-    } catch (err) { console.error("Error copying:", err); copiedNodeData = null; updateUIDisabledStates(); showToast('error', 'Copy Error', `Error: ${err.message}`); } 
+function copySelectedNode() {
+    if (!selectedNodeId || isLocked()) return;
+    try {
+        const node = editor.getNodeFromId(selectedNodeId); if (!node) throw new Error("Node not found."); if (!customNodeTypes[node.name]) throw new Error(`Type "${node.name}" unknown.`);
+        copiedNodeData = { name: node.name, data: JSON.parse(JSON.stringify(node.data || {})), html: node.html, class: node.class, inputs: Object.keys(node.inputs || {}).length, outputs: Object.keys(node.outputs || {}).length, title: node.title || node.name, isMovementLocked: node.data.isMovementLocked === true, nodeWidth: node.data.nodeWidth, nodeHeight: node.data.nodeHeight };
+        updateUIDisabledStates(); showToast('success', 'Node Copied', `${copiedNodeData.title}`);
+    } catch (err) { console.error("Error copying:", err); copiedNodeData = null; updateUIDisabledStates(); showToast('error', 'Copy Error', `Error: ${err.message}`); }
 }
 
-function pasteNode() { 
-    if (!copiedNodeData || isLocked()) return; 
-    if (!customNodeTypes[copiedNodeData.name]) { showToast('error', 'Paste Error', `Type "${copiedNodeData.name}" unknown.`); copiedNodeData = null; updateUIDisabledStates(); return; } 
-    try { 
-        const rect = editor.container.getBoundingClientRect(), zoom = editor.zoom || 1; 
-        const cx = (rect.width / 2 - editor.canvas_x) / zoom, cy = (rect.height / 2 - editor.canvas_y) / zoom; 
-        const ox = Math.random() * 40 - 20, oy = Math.random() * 40 - 20; 
-        
-        // Use copied dimensions if available, otherwise default
+function pasteNode() {
+    if (!copiedNodeData || isLocked()) return;
+    if (!customNodeTypes[copiedNodeData.name]) { showToast('error', 'Paste Error', `Type "${copiedNodeData.name}" unknown.`); copiedNodeData = null; updateUIDisabledStates(); return; }
+    try {
+        const rect = editor.container.getBoundingClientRect(), zoom = editor.zoom || 1; const cx = (rect.width / 2 - editor.canvas_x) / zoom, cy = (rect.height / 2 - editor.canvas_y) / zoom; const ox = Math.random() * 40 - 20, oy = Math.random() * 40 - 20;
         const nodeWidth = copiedNodeData.nodeWidth ? parseFloat(copiedNodeData.nodeWidth) : 220;
-        // const nodeHeight = copiedNodeData.nodeHeight ? parseFloat(copiedNodeData.nodeHeight) : 100; // Height can be auto
-
-        const x = cx - (nodeWidth / 2) + ox; 
-        const y = cy + oy; 
-        
+        const x = cx - (nodeWidth / 2) + ox; const y = cy + oy;
         let cDataPaste = JSON.parse(JSON.stringify(copiedNodeData.data));
         cDataPaste.isMovementLocked = copiedNodeData.isMovementLocked === true;
         if (copiedNodeData.nodeWidth) cDataPaste.nodeWidth = copiedNodeData.nodeWidth;
         if (copiedNodeData.nodeHeight) cDataPaste.nodeHeight = copiedNodeData.nodeHeight;
-
-        const newId = editor.addNode(copiedNodeData.name, copiedNodeData.inputs, copiedNodeData.outputs, x, y, copiedNodeData.class, cDataPaste, copiedNodeData.html); 
-        
+        const newId = editor.addNode(copiedNodeData.name, copiedNodeData.inputs, copiedNodeData.outputs, x, y, copiedNodeData.class, cDataPaste, copiedNodeData.html);
         setTimeout(() => {
             const newNodeElement = document.getElementById(`node-${newId}`);
             if(newNodeElement) {
                 if (cDataPaste.nodeWidth) newNodeElement.style.width = cDataPaste.nodeWidth;
-                if (cDataPaste.nodeHeight && cDataPaste.nodeHeight !== 'auto') {
-                     newNodeElement.style.height = cDataPaste.nodeHeight;
-                } else {
-                    // If auto, let content determine height, or set a default if needed
-                    // newNodeElement.style.height = 'auto'; // Or a min-height
-                }
+                if (cDataPaste.nodeHeight && cDataPaste.nodeHeight !== 'auto') newNodeElement.style.height = cDataPaste.nodeHeight; else newNodeElement.style.height = 'auto';
                 const resizer = newNodeElement.querySelector('.node-resizer');
-                if (resizer) {
-                    resizer.addEventListener('mousedown', (e) => startNodeResize(e, newId, resizer));
-                }
+                if (resizer) resizer.addEventListener('mousedown', (e) => startNodeResize(e, newId, resizer));
+                if(copiedNodeData.name === 'image_minimal') setupMinimalImageNodeListeners(newId);
+                else if(copiedNodeData.name === 'youtube_minimal') setupYouTubeMinimalNodeListeners(newId); // ** ADDED for YT API **
             }
             updateNodeVisualLockState(newId, cDataPaste.isMovementLocked);
-            activateNodeIfNeeded(newId); 
+            if (copiedNodeData.name === 'youtube_minimal' && cDataPaste.videoid) { createOrUpdateYouTubePlayer(newId, cDataPaste.videoid); } // ** ADDED for YT API **
+            else { activateNodeIfNeeded(newId); }
         },0);
-        saveHistoryState(); 
-    } catch (err) { showToast('error', 'Paste Error', `Error: ${err.message}`); } 
+        saveHistoryState();
+    } catch (err) { showToast('error', 'Paste Error', `Error: ${err.message}`); }
 }
-function deleteSelectedNode() { if (!selectedNodeId || isLocked()) return; try { editor.removeNodeId(`node-${selectedNodeId}`); /* State update handled by listener */ } catch (err) { showToast('error', 'Delete Error', `Error: ${err.message}`); } }
+function deleteSelectedNode() { if (!selectedNodeId || isLocked()) return; try { editor.removeNodeId(`node-${selectedNodeId}`); } catch (err) { showToast('error', 'Delete Error', `Error: ${err.message}`); } }
 
 // --- Module/Tab Management ---
-function renderModuleTabs() { 
+function renderModuleTabs() {
     if (!moduleListElement) return;
     try {
-        moduleListElement.innerHTML = '';
-        const modulesData = editor.export().drawflow || {};
-        const currentModule = editor.module;
-        let moduleNames = Object.keys(modulesData);
-        if (moduleNames.length === 0) {
-             if (!modulesData['Home']) { editor.addModule('Home'); moduleNames = ['Home']; }
-             else { moduleNames = ['Home']; }
-        }
+        moduleListElement.innerHTML = ''; const modulesData = editor.export().drawflow || {}; const currentModule = editor.module;
+        let moduleNames = Object.keys(modulesData); if (moduleNames.length === 0) { if (!modulesData['Home']) editor.addModule('Home'); moduleNames = ['Home']; }
         moduleNames.sort((a, b) => (a === 'Home' ? -1 : b === 'Home' ? 1 : a.localeCompare(b)));
-
         moduleNames.forEach(moduleName => {
-            const li = document.createElement('li');
-            li.textContent = moduleName;
-            li.dataset.moduleName = moduleName;
-            li.title = `Cambiar a: ${moduleName}`;
-            li.onclick = () => { editor.changeModule(moduleName); /* renderModuleTabs(); // Not always needed, moduleChanged event handles it */ };
+            const li = document.createElement('li'); li.textContent = moduleName; li.dataset.moduleName = moduleName; li.title = `Cambiar a: ${moduleName}`; li.onclick = () => editor.changeModule(moduleName);
             if (moduleName === currentModule) li.classList.add('selected');
-            if (moduleName !== 'Home' && moduleNames.length > 1) {
-                const closeBtn = document.createElement('span');
-                closeBtn.innerHTML = '×';
-                closeBtn.title = `Eliminar ${moduleName}`;
-                closeBtn.className = 'close-tab-btn';
-                closeBtn.style.cssText = ` margin-left: 8px; cursor: pointer; color: #aaa; font-weight: bold; padding: 0 4px; border-radius: 3px; font-size: 14px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; height: 16px; width: 16px; vertical-align: middle; transition: all 0.2s; `;
-                closeBtn.onmouseover = () => { closeBtn.style.color = '#fff'; closeBtn.style.backgroundColor = '#ffb3b3'; };
-                closeBtn.onmouseout = () => { closeBtn.style.color = '#aaa'; closeBtn.style.backgroundColor = 'transparent'; };
-                closeBtn.onclick = (ev) => { ev.stopPropagation(); removeModuleTab(moduleName); };
-                li.appendChild(closeBtn);
-            }
+            if (moduleName !== 'Home' && moduleNames.length > 1) { const closeBtn = document.createElement('span'); closeBtn.innerHTML = '×'; closeBtn.title = `Eliminar ${moduleName}`; closeBtn.className = 'close-tab-btn'; closeBtn.style.cssText = ` margin-left: 8px; cursor: pointer; color: #aaa; font-weight: bold; padding: 0 4px; border-radius: 3px; font-size: 14px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; height: 16px; width: 16px; vertical-align: middle; transition: all 0.2s; `; closeBtn.onmouseover = () => { closeBtn.style.color = '#fff'; closeBtn.style.backgroundColor = '#ffb3b3'; }; closeBtn.onmouseout = () => { closeBtn.style.color = '#aaa'; closeBtn.style.backgroundColor = 'transparent'; }; closeBtn.onclick = (ev) => { ev.stopPropagation(); removeModuleTab(moduleName); }; li.appendChild(closeBtn); }
             moduleListElement.appendChild(li);
         });
-        
-        const addBtn = document.createElement('li'); addBtn.innerHTML = '<i class="fas fa-plus"></i>';
-        addBtn.title = "Añadir módulo"; addBtn.className = 'add-tab-btn';
-        addBtn.style.cssText = `cursor: pointer; border-right: none; padding: 0 10px; background-color: transparent; margin-left: 5px; opacity: 0.7; transition: opacity 0.2s;`;
-        addBtn.onmouseover = () => { addBtn.style.opacity = '1'; }; addBtn.onmouseout = () => { addBtn.style.opacity = '0.7'; };
-        addBtn.onclick = promptAddModule;
-        moduleListElement.appendChild(addBtn);
+        const addBtn = document.createElement('li'); addBtn.innerHTML = '<i class="fas fa-plus"></i>'; addBtn.title = "Añadir módulo"; addBtn.className = 'add-tab-btn'; addBtn.style.cssText = `cursor: pointer; border-right: none; padding: 0 10px; background-color: transparent; margin-left: 5px; opacity: 0.7; transition: opacity 0.2s;`; addBtn.onmouseover = () => { addBtn.style.opacity = '1'; }; addBtn.onmouseout = () => { addBtn.style.opacity = '0.7'; }; addBtn.onclick = promptAddModule; moduleListElement.appendChild(addBtn);
     } catch (e) { console.error("Error en renderModuleTabs:", e); }
 }
 
-async function promptAddModule() { 
+async function promptAddModule() {
     try {
-        const { value: moduleNameInput } = await Swal.fire({
-             title: 'Nuevo Módulo', input: 'text', inputLabel: 'Nombre', inputValue: '',
-             showCancelButton: true, confirmButtonText: 'Crear', cancelButtonText: 'Cancelar',
-             inputValidator: (v) => {
-                const t = v?.trim(); if (!t) return 'Nombre vacío.';
-                const existing = Object.keys(editor.export().drawflow || {});
-                if (existing.some(m => m.toLowerCase() === t.toLowerCase())) return `"${t}" ya existe.`;
-                if (/[<>:"/\\|?*]/.test(t)) return 'Caracteres inválidos.';
-                return null;
-             }
-        });
-        const moduleName = moduleNameInput?.trim();
-        if (moduleName) {
-            // console.log(`Añadiendo módulo: ${moduleName}`);
-            editor.addModule(moduleName);
-            editor.changeModule(moduleName); 
-            addWelcomeNode(moduleName); 
-        } else { console.log("Creación cancelada."); }
+        const { value: moduleNameInput } = await Swal.fire({ title: 'Nuevo Módulo', input: 'text', inputLabel: 'Nombre', inputValue: '', showCancelButton: true, confirmButtonText: 'Crear', cancelButtonText: 'Cancelar', inputValidator: (v) => { const t = v?.trim(); if (!t) return 'Nombre vacío.'; const existing = Object.keys(editor.export().drawflow || {}); if (existing.some(m => m.toLowerCase() === t.toLowerCase())) return `"${t}" ya existe.`; if (/[<>:"/\\|?*]/.test(t)) return 'Caracteres inválidos.'; return null; } });
+        const moduleName = moduleNameInput?.trim(); if (moduleName) { editor.addModule(moduleName); editor.changeModule(moduleName); addWelcomeNode(moduleName); }
     } catch (e) { console.error("Error en promptAddModule:", e); }
 }
-function removeModuleTab(moduleName) { 
+function removeModuleTab(moduleName) {
     if (moduleName === 'Home') { Swal.fire('No permitido', 'No puedes eliminar "Home".', 'warning'); return; }
-    const moduleCount = Object.keys(editor.export().drawflow || {}).length;
-    if (moduleCount <= 1) { Swal.fire('No permitido', 'No puedes eliminar el último módulo.', 'warning'); return; }
-
-    try {
-        Swal.fire({
-            title: `¿Eliminar Módulo "${moduleName}"?`, text: "Acción permanente.", icon: 'warning',
-            showCancelButton: true, confirmButtonColor: '#d33', cancelButtonColor: '#3085d6',
-            confirmButtonText: 'Sí, eliminar', cancelButtonText: 'Cancelar'
-         }).then((result) => {
-            if (result.isConfirmed) {
-                // console.log(`Eliminando módulo: ${moduleName}`);
-                const currentActiveModule = editor.module;
-                if (currentActiveModule === moduleName) {
-                     cleanupAllModuleIntervals();
-                }
-                try {
-                     editor.removeModule(moduleName);
-                     // console.log(`Módulo "${moduleName}" eliminado.`);
-                     if (currentActiveModule === moduleName) {
-                         // console.log("Cambiando a 'Home' tras eliminar activo.");
-                         editor.changeModule('Home'); 
-                     } else {
-                         // console.log("Módulo inactivo eliminado. Renderizando pestañas.");
-                         renderModuleTabs(); 
-                         saveHistoryState(true); 
-                     }
-                 } catch (removeError) { console.error(`Error eliminando módulo:`, removeError); Swal.fire('Error', `No se pudo eliminar: ${removeError.message}`, 'error'); }
-            } else { console.log("Eliminación cancelada."); }
-        });
-    } catch (e) { console.error("Error confirmación eliminar:", e); }
+    const moduleCount = Object.keys(editor.export().drawflow || {}).length; if (moduleCount <= 1) { Swal.fire('No permitido', 'No puedes eliminar el último módulo.', 'warning'); return; }
+    try { Swal.fire({ title: `¿Eliminar Módulo "${moduleName}"?`, text: "Acción permanente.", icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33', cancelButtonColor: '#3085d6', confirmButtonText: 'Sí, eliminar', cancelButtonText: 'Cancelar' }).then((result) => { if (result.isConfirmed) { const currentActiveModule = editor.module; if (currentActiveModule === moduleName) cleanupAllModuleIntervals(); try { editor.removeModule(moduleName); if (currentActiveModule === moduleName) editor.changeModule('Home'); else { renderModuleTabs(); saveHistoryState(true); } } catch (removeError) { console.error(`Error eliminando módulo:`, removeError); Swal.fire('Error', `No se pudo eliminar: ${removeError.message}`, 'error'); } } }); } catch (e) { console.error("Error confirmación eliminar:", e); }
 }
 
 // --- UI Helpers ---
@@ -3591,299 +1411,88 @@ function updateUIDisabledStates() { const locked = isLocked(); const nodeSel = s
 var mobile_item_selec = ''; var mobile_last_move = null; function allowDrop(ev) { ev.preventDefault(); } function drag(ev) { try { const el = ev.target.closest(".drag-drawflow"); if (!el || !el.dataset.node) { ev.preventDefault(); return; } const nt = el.dataset.node; if (ev.type === "touchstart") { mobile_item_selec = nt; mobile_last_move = ev; el.style.opacity = '0.5';} else { ev.dataTransfer.setData("node", nt); ev.dataTransfer.effectAllowed = 'copy';} } catch(e){console.error("Drag error:",e);} } function positionMobile(ev) { mobile_last_move = ev; } function drop(ev) { let nodeName='',clientX=0,clientY=0,isTouch=false; try { if (ev.type === "touchend") { isTouch=true; const orig=nodesListContainer?.querySelector(`[data-node="${mobile_item_selec}"]`); if(orig) orig.style.opacity='1'; if(!mobile_last_move||!mobile_item_selec) return; clientX=mobile_last_move.changedTouches[0].clientX; clientY=mobile_last_move.changedTouches[0].clientY; nodeName=mobile_item_selec; mobile_item_selec=''; mobile_last_move=null; } else { ev.preventDefault(); nodeName=ev.dataTransfer.getData("node"); clientX=ev.clientX; clientY=ev.clientY; } const targetEl = document.elementFromPoint(clientX, clientY); if (nodeName && targetEl?.closest(`#${DRAWFLOW_CONTAINER_ID}`)) addNodeToDrawFlow(nodeName, clientX, clientY); } catch(e){console.error("Drop error:",e); if(isTouch){const orig=nodesListContainer?.querySelector(`[data-node="${mobile_item_selec}"]`); if(orig) orig.style.opacity='1'; mobile_item_selec=''; mobile_last_move=null;}} }
 
 function addNodeToDrawFlow(name, pos_x, pos_y) {
-    if (!editor || isLocked()) {
-        showToast('warning', 'Editor Bloqueado', 'Desbloquea para añadir nodos.');
-        return false;
-    }
+    if (!editor || isLocked()) { showToast('warning', 'Editor Bloqueado'); return false; }
     try {
-        const nodeDef = customNodeTypes[name];
-        if (!nodeDef) throw new Error(`Tipo de nodo "${name}" desconocido.`);
-  
-        // Deep copy data and set defaults
-        const data = JSON.parse(JSON.stringify(nodeDef.data || {}));
-        data.isMovementLocked = false; // Default for new nodes
-  
-        // Ensure nodeWidth/Height are in data for resizable nodes, with specific defaults
+        const nodeDef = customNodeTypes[name]; if (!nodeDef) throw new Error(`Tipo "${name}" desconocido.`);
+        const data = JSON.parse(JSON.stringify(nodeDef.data || {})); data.isMovementLocked = false;
         if (nodeDef.cssClass && nodeDef.cssClass.includes('resizable-node-class')) {
-            if (!data.nodeWidth) { // Only set if not already defined in nodeDef.data
-                if (name === 'image_minimal') {
-                    data.nodeWidth = '80px';
-                } else if (name === 'youtube_minimal') {
-                    data.nodeWidth = '320px';
-                } else {
-                    data.nodeWidth = '220px'; // General default for other resizable nodes
-                }
-            }
-            if (!data.nodeHeight) { // Only set if not already defined in nodeDef.data
-                if (name === 'image_minimal') {
-                    data.nodeHeight = '60px';
-                } else if (name === 'youtube_minimal') {
-                    data.nodeHeight = '180px';
-                } else {
-                    data.nodeHeight = 'auto'; // General default
-                }
-            }
+            if (!data.nodeWidth) data.nodeWidth = (name === 'image_minimal') ? '80px' : (name === 'youtube_minimal' ? '320px' : '220px');
+            if (!data.nodeHeight) data.nodeHeight = (name === 'image_minimal') ? '60px' : (name === 'youtube_minimal' ? '180px' : 'auto');
         }
-  
-        const rect = editor.container.getBoundingClientRect();
-        const zoom = editor.zoom || 1;
-  
-        // Determine initial width for centering based on data (which now has defaults)
-        let initialWidthPx = 220; // Fallback general default
-        if (data.nodeWidth) {
-            initialWidthPx = parseFloat(data.nodeWidth);
-        } else if (name === 'image_minimal') {
-            initialWidthPx = 80;
-        } else if (name === 'youtube_minimal') {
-            initialWidthPx = 320;
-        }
-        // Ensure it's a valid number
-        if (isNaN(initialWidthPx) || initialWidthPx <=0) initialWidthPx = 220;
-  
-  
-        const canvasX = (pos_x - rect.left - editor.canvas_x) / zoom;
-        const canvasY = (pos_y - rect.top - editor.canvas_y) / zoom;
-        const adjX = canvasX - (initialWidthPx / 2);
-        const adjY = canvasY;
-  
+        const rect = editor.container.getBoundingClientRect(); const zoom = editor.zoom || 1;
+        let initialWidthPx = 220; if (data.nodeWidth) initialWidthPx = parseFloat(data.nodeWidth); else if (name === 'image_minimal') initialWidthPx = 80; else if (name === 'youtube_minimal') initialWidthPx = 320; if (isNaN(initialWidthPx) || initialWidthPx <=0) initialWidthPx = 220;
+        const canvasX = (pos_x - rect.left - editor.canvas_x) / zoom; const canvasY = (pos_y - rect.top - editor.canvas_y) / zoom;
+        const adjX = canvasX - (initialWidthPx / 2); const adjY = canvasY;
         const nodeId = editor.addNode(name, nodeDef.inputs, nodeDef.outputs, adjX, adjY, nodeDef.cssClass || '', data, nodeDef.html );
-  
+
         setTimeout(() => {
              const nodeElement = document.getElementById(`node-${nodeId}`);
              if (nodeElement) {
-                  // Apply dimensions from data (which includes defaults if not set)
                   if (data.nodeWidth) nodeElement.style.width = data.nodeWidth;
-                  if (data.nodeHeight && data.nodeHeight !== 'auto') nodeElement.style.height = data.nodeHeight;
-                  else if (data.nodeHeight === 'auto') nodeElement.style.height = 'auto';
-  
-  
-                  const resizer = nodeElement.querySelector('.node-resizer');
-                  if (resizer) {
-                      resizer.addEventListener('mousedown', (e) => startNodeResize(e, nodeId, resizer));
-                  }
-  
-                  // Specific setup for image_minimal
-                  if (name === 'image_minimal') {
-                      // Apply initial border if not already styled (e.g., by CSS :has)
-                      if (getComputedStyle(nodeElement).borderStyle.includes('none') || getComputedStyle(nodeElement).borderStyle === '') {
-                           nodeElement.style.border = '2px dashed #cccccc';
-                      }
-                      const placeholder = nodeElement.querySelector('.image-placeholder');
-                      if(placeholder) placeholder.style.display = 'flex'; // Ensure placeholder is visible
-                      setupMinimalImageNodeListeners(nodeId);
-                  }
-                  // Specific setup for youtube_minimal
-                  else if (name === 'youtube_minimal') {
-                      if (getComputedStyle(nodeElement).borderStyle.includes('none') || getComputedStyle(nodeElement).borderStyle === '') {
-                          nodeElement.style.border = '2px dashed #cccccc';
-                      }
-                      const placeholder = nodeElement.querySelector('.youtube-placeholder');
-                      if (placeholder) placeholder.style.display = 'flex'; // Ensure placeholder is visible
+                  if (data.nodeHeight && data.nodeHeight !== 'auto') nodeElement.style.height = data.nodeHeight; else if (data.nodeHeight === 'auto') nodeElement.style.height = 'auto';
+                  const resizer = nodeElement.querySelector('.node-resizer'); if (resizer) resizer.addEventListener('mousedown', (e) => startNodeResize(e, nodeId, resizer));
+                  if (name === 'image_minimal') { if (getComputedStyle(nodeElement).borderStyle.includes('none')) nodeElement.style.border = '2px dashed #cccccc'; const placeholder = nodeElement.querySelector('.image-placeholder'); if(placeholder) placeholder.style.display = 'flex'; setupMinimalImageNodeListeners(nodeId); }
+                  else if (name === 'youtube_minimal') { // ** UPDATED for API **
+                      nodeElement.style.width = data.nodeWidth; nodeElement.style.height = data.nodeHeight;
+                      if (data.videoid) createOrUpdateYouTubePlayer(nodeId, data.videoid);
+                      else { const placeholder = nodeElement.querySelector('.youtube-placeholder'); const playerContainerDiv = nodeElement.querySelector('.yt-player-container'); if (placeholder) placeholder.style.display = 'flex'; if (playerContainerDiv) playerContainerDiv.style.display = 'none'; nodeElement.style.border = '2px dashed #cccccc'; }
                       setupYouTubeMinimalNodeListeners(nodeId);
                   }
-  
                   updateNodeVisualLockState(nodeId, data.isMovementLocked);
              }
+             // Activate after DOM is set up, unless it's YT (player creation handles activation implicitly)
+             if (name !== 'youtube_minimal') activateNodeIfNeeded(nodeId);
         }, 0);
-  
-        activateNodeIfNeeded(nodeId);
-        saveHistoryState();
-        // console.log(`Node ${name} (ID: ${nodeId}) added successfully at (${adjX.toFixed(0)}, ${adjY.toFixed(0)}).`);
-        return true;
-  
-    } catch (e) {
-        console.error(`Error adding node "${name}":`, e);
-        showToast('error', 'Error al Añadir Nodo', `Error: ${e.message}`);
-        return false;
-    }
-  }
+        saveHistoryState(); return true;
+    } catch (e) { console.error(`Error adding node "${name}":`, e); showToast('error', 'Error al Añadir Nodo', `${e.message}`); return false; }
+}
 
 // --- Recalculate All ---
 function recalculateAllNodesInCurrentModule() { if (!editor || isLocked()) { showToast('warning', 'Locked'); return; } const mod = editor.module; console.log(`%cRecalculating: ${mod}...`, 'color: orange;'); showToast('info', 'Recalculating...', `Module ${mod}.`, 2500); try { const nodes = editor.export()?.drawflow?.[mod]?.data ?? {}; const ids = Object.keys(nodes); if (ids.length === 0) return; cleanupAllModuleIntervals(); ids.forEach(id => { activateNodeIfNeeded(id); }); ids.forEach(id => { if (nodes[id]?.name === 'concatenar') updateConcatenateNode(id); }); showToast('success', 'Recalculated', `${mod} updated.`); } catch (err) { showToast('error', 'Error', 'Recalculation failed.'); } }
 
 // --- CodeMirror Sidebar ---
-
-/**
- * Inicializa la instancia del editor CodeMirror si aún no existe.
- * Se llama automáticamente la primera vez que se necesita o en initializeApp.
- */
 function initializeCodeMirror() {
-    if (codeMirrorEditor || !codeMirrorElement || typeof CodeMirror === 'undefined') {
-        if (!codeMirrorEditor && typeof CodeMirror !== 'undefined' && codeMirrorElement) {
-             // console.warn("CodeMirror element exists but editor instance is null. Retrying init.");
-        } else if (!codeMirrorElement) {
-             console.warn("CodeMirror container element not found. Cannot initialize.");
-             return; 
-        } else if (typeof CodeMirror === 'undefined') {
-             console.warn("CodeMirror library not loaded. Cannot initialize.");
-             return; 
-        } else {
-             return; 
-        }
-    }
-
+    if (codeMirrorEditor || !codeMirrorElement || typeof CodeMirror === 'undefined') return;
     try {
-        // console.log("Attempting to initialize CodeMirror...");
         codeMirrorContainer = codeMirrorElement;
-        codeMirrorEditor = CodeMirror(codeMirrorContainer, {
-            lineNumbers: true, mode: "javascript", theme: "material-darker",
-            matchBrackets: true, autoCloseBrackets: true, indentUnit: 2,
-            tabSize: 2, lineWrapping: true, gutters: ["CodeMirror-linenumbers"]
-        });
-
-        if (codeEditorSaveButton) codeEditorSaveButton.addEventListener('click', saveAndCloseCodeEditor);
-        else console.warn("Code editor save button not found.");
-        if (codeEditorCloseButton) codeEditorCloseButton.addEventListener('click', () => closeCodeEditorSidebar(true));
-        else console.warn("Code editor close button not found.");
-        // console.log("CodeMirror initialized successfully.");
-
-    } catch (e) {
-        console.error("Error initializing CodeMirror:", e);
-        codeMirrorEditor = null; 
-        showToast('error', 'Error Editor Código', 'Falló la inicialización del editor.');
-    }
+        codeMirrorEditor = CodeMirror(codeMirrorContainer, { lineNumbers: true, mode: "javascript", theme: "material-darker", matchBrackets: true, autoCloseBrackets: true, indentUnit: 2, tabSize: 2, lineWrapping: true, gutters: ["CodeMirror-linenumbers"] });
+        if (codeEditorSaveButton) codeEditorSaveButton.addEventListener('click', saveAndCloseCodeEditor); else console.warn("Code editor save button not found.");
+        if (codeEditorCloseButton) codeEditorCloseButton.addEventListener('click', () => closeCodeEditorSidebar(true)); else console.warn("Code editor close button not found.");
+    } catch (e) { console.error("Error initializing CodeMirror:", e); codeMirrorEditor = null; showToast('error', 'Error Editor Código', 'Falló inicialización.'); }
 }
-
-/**
- * Abre la barra lateral del editor CodeMirror para un nodo específico.
- * Carga el contenido correcto del nodo en el editor.
- * @param {string} nodeId - El ID del nodo a editar.
- */
 function openCodeEditorSidebar(nodeId) {
-    // console.log(`>>> openCodeEditorSidebar llamado para nodo ID: ${nodeId}`); 
     if (!codeEditorSidebar || !nodeId) { console.error("Sidebar element or Node ID missing."); return; }
-    if (!codeMirrorEditor) initializeCodeMirror();
-    if (!codeMirrorEditor) { showToast('error', 'Editor Error', 'CodeMirror no está disponible.'); return; }
-
-    let node;
-    try { node = editor.getNodeFromId(nodeId); } 
-    catch (e) { console.error(`Error getting node ${nodeId} to open editor:`, e); showToast('error', 'Error Nodo', 'No se pudo encontrar el nodo para editar.'); return; }
-
+    if (!codeMirrorEditor) initializeCodeMirror(); if (!codeMirrorEditor) { showToast('error', 'Editor Error', 'CodeMirror no disponible.'); return; }
+    let node; try { node = editor.getNodeFromId(nodeId); } catch (e) { console.error(`Error getting node ${nodeId}:`, e); showToast('error', 'Error Nodo', 'No se pudo encontrar nodo.'); return; }
     const editableNodeTypes = ['javascript_code', 'static_code_snippet', 'texto'];
-    if (!node || !editableNodeTypes.includes(node.name)) {
-        // console.warn(`Intento de abrir editor para nodo no editable o inexistente: ID ${nodeId}, Type ${node?.name}`);
-        if (codeEditorSidebar.classList.contains('visible')) closeCodeEditorSidebar(true); 
-        return;
-    }
-
+    if (!node || !editableNodeTypes.includes(node.name)) { if (codeEditorSidebar.classList.contains('visible')) closeCodeEditorSidebar(true); return; }
     let dataField = '', iconClass = '', editorTitle = '', editorMode = 'text/plain';
-    switch (node.name) {
-        case 'javascript_code': dataField = 'jscode'; iconClass = 'fab fa-js-square'; editorTitle = 'Editar Código JS'; editorMode = 'javascript'; break;
-        case 'static_code_snippet': dataField = 'codecontent'; iconClass = 'fas fa-code'; editorTitle = 'Editar Código Estático'; editorMode = 'text/html'; break;
-        case 'texto': dataField = 'content'; iconClass = 'fas fa-paragraph'; editorTitle = 'Editar Texto / HTML'; editorMode = 'text/html'; break;
-        default: console.error("Tipo de nodo inesperado en switch:", node.name); return;
-    }
-    // console.log(`Configuración para ${node.name}: dataField=${dataField}, mode=${editorMode}`);
+    switch (node.name) { case 'javascript_code': dataField = 'jscode'; iconClass = 'fab fa-js-square'; editorTitle = 'Editar Código JS'; editorMode = 'javascript'; break; case 'static_code_snippet': dataField = 'codecontent'; iconClass = 'fas fa-code'; editorTitle = 'Editar Código Estático'; editorMode = 'text/html'; break; case 'texto': dataField = 'content'; iconClass = 'fas fa-paragraph'; editorTitle = 'Editar Texto / HTML'; editorMode = 'text/html'; break; default: return; }
     const currentCode = node.data[dataField] || '';
-    // console.log(`Código interno a cargar: "${currentCode.substring(0, 70)}..." (Longitud: ${currentCode.length})`);
-
-    const currentEditorMode = codeMirrorEditor.getOption('mode');
-    if (currentEditorMode !== editorMode) codeMirrorEditor.setOption('mode', editorMode);
-    
-    try {
-        codeMirrorEditor.setValue(currentCode); 
-        codeMirrorEditor.clearHistory();      
-        // console.log("codeMirrorEditor.setValue() ejecutado con éxito.");
-    } catch (e) { console.error("¡ERROR durante codeMirrorEditor.setValue()!:", e); showToast('error', 'Error Editor', 'No se pudo cargar el contenido en el editor.'); }
-
-    if (codeEditorTitleSpan) codeEditorTitleSpan.textContent = editorTitle;
-    const titleIconElement = codeEditorSidebar.querySelector('.sidebar-header h3 i');
-    if (titleIconElement) titleIconElement.className = iconClass;
-    if (editingNodeIdSpan) editingNodeIdSpan.textContent = nodeId;
-
+    const currentEditorMode = codeMirrorEditor.getOption('mode'); if (currentEditorMode !== editorMode) codeMirrorEditor.setOption('mode', editorMode);
+    try { codeMirrorEditor.setValue(currentCode); codeMirrorEditor.clearHistory(); } catch (e) { console.error("Error during codeMirrorEditor.setValue:", e); showToast('error', 'Error Editor', 'No se pudo cargar contenido.'); }
+    if (codeEditorTitleSpan) codeEditorTitleSpan.textContent = editorTitle; const titleIconElement = codeEditorSidebar.querySelector('.sidebar-header h3 i'); if (titleIconElement) titleIconElement.className = iconClass; if (editingNodeIdSpan) editingNodeIdSpan.textContent = nodeId;
     currentlyEditingNodeId = nodeId;
-    if (!codeEditorSidebar.classList.contains('visible')) {
-        codeEditorSidebar.classList.add('visible');
-        codeEditorSidebar.setAttribute('aria-hidden', 'false');
-        // console.log("Sidebar hecha visible.");
-        setTimeout(() => {
-            if (codeMirrorEditor) {
-                //  console.log("Refrescando y enfocando editor (sidebar recién visible)...");
-                 codeMirrorEditor.refresh();
-                 codeMirrorEditor.focus();
-                 codeMirrorEditor.setCursor({ line: 0, ch: 0 });
-             }
-        }, 50);
-    } else {
-        // console.log("Sidebar ya visible, solo enfocando editor...");
-        if(codeMirrorEditor) codeMirrorEditor.focus();
-    }
-    // console.log(`>>> Fin openCodeEditorSidebar para nodo ID: ${nodeId}`);
+    if (!codeEditorSidebar.classList.contains('visible')) { codeEditorSidebar.classList.add('visible'); codeEditorSidebar.setAttribute('aria-hidden', 'false'); setTimeout(() => { if (codeMirrorEditor) { codeMirrorEditor.refresh(); codeMirrorEditor.focus(); codeMirrorEditor.setCursor({ line: 0, ch: 0 }); } }, 50); }
+    else { if(codeMirrorEditor) codeMirrorEditor.focus(); }
 }
-
-/**
- * Cierra la barra lateral del editor CodeMirror.
- * Opcionalmente guarda los cambios antes de cerrar.
- * @param {boolean} [save=false] - Indica si se deben guardar los cambios del editor.
- */
 function closeCodeEditorSidebar(save = false) {
-    // console.log(`>>> closeCodeEditorSidebar llamado. Save: ${save}, Editando ID: ${currentlyEditingNodeId}`);
-    if (!codeEditorSidebar || !codeEditorSidebar.classList.contains('visible')) {
-        if (currentlyEditingNodeId) currentlyEditingNodeId = null;
-        return;
-    }
-    const closingId = currentlyEditingNodeId; 
+    if (!codeEditorSidebar || !codeEditorSidebar.classList.contains('visible')) { if (currentlyEditingNodeId) currentlyEditingNodeId = null; return; }
+    const closingId = currentlyEditingNodeId;
     if (save && closingId && codeMirrorEditor) {
-        // console.log(`Intentando guardar cambios para nodo ${closingId}...`);
-        const codeFromEditor = codeMirrorEditor.getValue(); 
-        // console.log(`Código obtenido del editor (inicio): "${codeFromEditor.substring(0, 70)}..."`);
+        const codeFromEditor = codeMirrorEditor.getValue();
         try {
-            const node = editor.getNodeFromId(closingId); 
+            const node = editor.getNodeFromId(closingId);
             if (node) {
-                const nodeName = node.name;
-                let dataField = ''; 
-                switch (nodeName) {
-                    case 'javascript_code': dataField = 'jscode'; break;
-                    case 'static_code_snippet': dataField = 'codecontent'; break;
-                    case 'texto': dataField = 'content'; break;
-                }
-                if (dataField) {
-                    const currentInternalCode = node.data[dataField] || '';
-                    if (currentInternalCode !== codeFromEditor) {
-                        // console.log(`El código ha cambiado. Guardando en node.data.${dataField}...`);
-                        try {
-                            editor.updateNodeDataFromId(closingId, { [dataField]: codeFromEditor });
-                            // console.log(`Datos internos del nodo ${closingId} actualizados.`);
-                            const nodeElement = document.getElementById(`node-${closingId}`);
-                            const textareaInNode = nodeElement?.querySelector(`textarea[df-${dataField}]`);
-                            if (textareaInNode) {
-                                textareaInNode.value = codeFromEditor; 
-                                // console.log(`Textarea visual [df-${dataField}] dentro del nodo actualizado.`);
-                            } else {
-                                // console.warn(`No se encontró el textarea [df-${dataField}] visual dentro del nodo ${closingId}.`);
-                            }
-                            if (nodeName === 'texto' || nodeName === 'static_code_snippet') {
-                                // console.log(`Propagando datos actualizados para nodo ${closingId} (${nodeName})`);
-                                propagateData(closingId, nodeName, dataField, codeFromEditor);
-                            }
-                            saveHistoryState();
-                            // console.log("Estado guardado en el historial.");
-                        } catch (updateError) { console.error(`Error al actualizar datos del nodo ${closingId}:`, updateError); showToast('error', 'Error al Guardar', 'No se pudieron guardar los datos del nodo.'); }
-                    } else { 
-                        // console.log("El código no cambió respecto a los datos internos. No se requiere guardado."); 
-                    }
-                } else { 
-                    // console.warn(`Campo de datos desconocido para el tipo de nodo '${nodeName}' al intentar guardar.`); 
-                }
-            } else { console.error(`¡Nodo ${closingId} no encontrado al intentar guardar los cambios!`); showToast('error', 'Error al Guardar', 'No se encontró el nodo para guardar.'); }
-        } catch (getNodeError) { console.error(`Error al obtener el nodo ${closingId} para guardar:`, getNodeError); showToast('error', 'Error al Guardar', 'No se pudo obtener la información del nodo.'); }
-    } else if (save) { 
-        // console.warn("Guardado solicitado, pero faltan condiciones (ID de nodo o editor)."); 
+                const nodeName = node.name; let dataField = '';
+                switch (nodeName) { case 'javascript_code': dataField = 'jscode'; break; case 'static_code_snippet': dataField = 'codecontent'; break; case 'texto': dataField = 'content'; break; }
+                if (dataField) { const currentInternalCode = node.data[dataField] || ''; if (currentInternalCode !== codeFromEditor) { try { editor.updateNodeDataFromId(closingId, { [dataField]: codeFromEditor }); const nodeElement = document.getElementById(`node-${closingId}`); const textareaInNode = nodeElement?.querySelector(`textarea[df-${dataField}]`); if (textareaInNode) textareaInNode.value = codeFromEditor; if (nodeName === 'texto' || nodeName === 'static_code_snippet') propagateData(closingId, nodeName, dataField, codeFromEditor); saveHistoryState(); } catch (updateError) { console.error(`Error updating node ${closingId}:`, updateError); showToast('error', 'Error Guardar', 'No se pudieron guardar datos.'); } } }
+            } else { console.error(`Node ${closingId} not found!`); showToast('error', 'Error Guardar', 'Nodo no encontrado.'); }
+        } catch (getNodeError) { console.error(`Error getting node ${closingId} for save:`, getNodeError); showToast('error', 'Error Guardar', 'No se pudo obtener nodo.'); }
     }
-
-    codeEditorSidebar.classList.remove('visible');
-    codeEditorSidebar.setAttribute('aria-hidden', 'true');
-    currentlyEditingNodeId = null; 
-    if (editingNodeIdSpan) editingNodeIdSpan.textContent = 'N/A'; 
-    // console.log("Sidebar cerrada.");
+    codeEditorSidebar.classList.remove('visible'); codeEditorSidebar.setAttribute('aria-hidden', 'true'); currentlyEditingNodeId = null; if (editingNodeIdSpan) editingNodeIdSpan.textContent = 'N/A';
 }
-
-function saveAndCloseCodeEditor() {
-    // console.log("Botón 'Guardar y Cerrar' presionado.");
-    closeCodeEditorSidebar(true); 
-}
-
-// --- END CodeMirror Sidebar ---
+function saveAndCloseCodeEditor() { closeCodeEditorSidebar(true); }
 
 // --- Status Bar ---
 function updateZoomStatus(level) { if (zoomLevelSpan) zoomLevelSpan.textContent = `${Math.round(level * 100)}%`; }
@@ -3894,229 +1503,50 @@ function setupDrawflowListeners() {
     if (!editor) { console.error("Cannot setup listeners: Drawflow editor missing."); return; }
     try {
         editor.on('nodeRemoved', (id) => {
-            // console.log(`Event: Node Removed ${id}`);
-            cleanupNodeIntervals(id); 
-            hideCustomContextMenu(); 
-            if (selectedNodeId === id) { selectedNodeId = null; updateNodePositionStatus(null); }
-            if (currentlyEditingNodeId === id) closeCodeEditorSidebar(false); 
-            
-            let connectionsFromRemovedNode = [];
-            try {
-                const nodeDataBeforeRemoval = editor.getNodeFromId(id); 
-                if (nodeDataBeforeRemoval && nodeDataBeforeRemoval.outputs) { 
-                    Object.values(nodeDataBeforeRemoval.outputs).forEach(outputPort => {
-                        connectionsFromRemovedNode = connectionsFromRemovedNode.concat(outputPort.connections || []);
-                    });
-                }
-            } catch (e) { /* console.warn(`Could not reliably get connections from node ${id} during removal event.`); */ }
-  
+            cleanupNodeIntervals(id); hideCustomContextMenu();
+            if (youtubePlayers[id]) { // ** ADDED for YT API **
+                try { youtubePlayers[id].destroy(); delete youtubePlayers[id]; } catch (e) { console.error(`Error destroying YouTube player ${id}:`, e); }
+            }
+            if (selectedNodeId === id) { selectedNodeId = null; updateNodePositionStatus(null); } if (currentlyEditingNodeId === id) closeCodeEditorSidebar(false);
+            let connectionsFromRemovedNode = []; try { const nodeDataBeforeRemoval = editor.getNodeFromId(id); if (nodeDataBeforeRemoval?.outputs) Object.values(nodeDataBeforeRemoval.outputs).forEach(op => connectionsFromRemovedNode = connectionsFromRemovedNode.concat(op.connections || [])); } catch (e) {}
             if (connectionsFromRemovedNode.length > 0) {
-                connectionsFromRemovedNode.forEach(conn => {
-                    try { 
-                        const targetNode = editor.getNodeFromId(conn.node); 
-                        if (targetNode) { 
-                            const targetName = targetNode.name;
-                            const needsRecalc = ['sum', 'subtract', 'multiply', 'divide', 'concatenar'];
-                            if (needsRecalc.includes(targetName)) {
-                                // console.log(`Node ${id} removed, updating target ${targetName} node ${conn.node}`);
-                                switch (targetName) {
-                                    case 'sum': setTimeout(() => updateSumNode(conn.node), 0); break;
-                                    case 'subtract': setTimeout(() => updateSubtractNode(conn.node), 0); break;
-                                    case 'multiply': setTimeout(() => updateMultiplyNode(conn.node), 0); break;
-                                    case 'divide': setTimeout(() => updateDivideNode(conn.node), 0); break;
-                                    case 'concatenar': setTimeout(() => updateConcatenateNode(conn.node), 0); break;
-                                }
-                            }
-                        }
-                    } catch (findTargetError) { /* console.warn(`Error finding target node ${conn.node} during node ${id} removal cleanup.`); */ }
-                });
+                connectionsFromRemovedNode.forEach(conn => { try { const targetNode = editor.getNodeFromId(conn.node); if (targetNode) { const targetName = targetNode.name; const needsRecalc = ['sum', 'subtract', 'multiply', 'divide', 'concatenar']; if (needsRecalc.includes(targetName)) { switch (targetName) { case 'sum': setTimeout(() => updateSumNode(conn.node), 0); break; case 'subtract': setTimeout(() => updateSubtractNode(conn.node), 0); break; case 'multiply': setTimeout(() => updateMultiplyNode(conn.node), 0); break; case 'divide': setTimeout(() => updateDivideNode(conn.node), 0); break; case 'concatenar': setTimeout(() => updateConcatenateNode(conn.node), 0); break; } } } } catch (findTargetError) {} });
             }
-            updateUIDisabledStates();
-            saveHistoryState();
+            updateUIDisabledStates(); saveHistoryState();
         });
-  
-        editor.on('nodeSelected', (id) => {
-            // console.log(`Event: Node Selected ${id}`);
-            selectedNodeId = id;
-            updateUIDisabledStates();
-            updateNodePositionStatus(id);
-        });
-  
-        editor.on('nodeUnselected', (wasSelected) => {
-            // console.log(`Event: Node Unselected (was selected: ${wasSelected})`);
-            const prevSelected = selectedNodeId;
-            selectedNodeId = null;
-            updateUIDisabledStates();
-            updateNodePositionStatus(null);
-            if (prevSelected && prevSelected === currentlyEditingNodeId) {
-                closeCodeEditorSidebar(true);
-            }
-        });
-  
+        editor.on('nodeSelected', (id) => { selectedNodeId = id; updateUIDisabledStates(); updateNodePositionStatus(id); });
+        editor.on('nodeUnselected', (wasSelected) => { const prevSelected = selectedNodeId; selectedNodeId = null; updateUIDisabledStates(); updateNodePositionStatus(null); if (prevSelected && prevSelected === currentlyEditingNodeId) closeCodeEditorSidebar(true); });
         editor.on('nodeMoved', (id) => {
-            saveHistoryState();
-            if(id === selectedNodeId) updateNodePositionStatus(id);
-            try { 
-                const node = editor.getNodeFromId(id);
-                if(node) {
-                    const orderDependentTargets = ['concatenar', 'subtract', 'divide'];
-                    const nodeName = node.name;
-                    const outputConnections = getConnections(id, 'output');
-                    outputConnections.forEach(conn => {
-                        try { 
-                            const targetNode = editor.getNodeFromId(conn.node);
-                            if (targetNode && orderDependentTargets.includes(targetNode.name)) {
-                                // console.log(`Node ${id} moved, updating order-dependent target node ${conn.node} (${targetNode.name})`);
-                                switch (targetNode.name) {
-                                    case 'concatenar': setTimeout(() => updateConcatenateNode(conn.node), 0); break;
-                                    case 'subtract': setTimeout(() => updateSubtractNode(conn.node), 0); break;
-                                    case 'divide': setTimeout(() => updateDivideNode(conn.node), 0); break;
-                                }
-                            }
-                        } catch (e) { /* console.warn(`Error processing target node ${conn.node} on move of ${id}`); */ }
-                    });
-                    if (orderDependentTargets.includes(nodeName)) {
-                        // console.log(`Order-dependent node ${id} (${nodeName}) moved, recalculating...`);
-                        switch (nodeName) {
-                            case 'concatenar': setTimeout(() => updateConcatenateNode(id), 0); break;
-                            case 'subtract': setTimeout(() => updateSubtractNode(id), 0); break;
-                            case 'divide': setTimeout(() => updateDivideNode(id), 0); break;
-                        }
-                    }
-                }
-            } catch (e) { /* console.warn(`Error processing nodeMoved for ${id}: ${e.message}`); */ }
+            saveHistoryState(); if(id === selectedNodeId) updateNodePositionStatus(id);
+            try { const node = editor.getNodeFromId(id); if(node) { const orderDependentTargets = ['concatenar', 'subtract', 'divide']; const nodeName = node.name; const outputConnections = getConnections(id, 'output'); outputConnections.forEach(conn => { try { const targetNode = editor.getNodeFromId(conn.node); if (targetNode && orderDependentTargets.includes(targetNode.name)) { switch (targetNode.name) { case 'concatenar': setTimeout(() => updateConcatenateNode(conn.node), 0); break; case 'subtract': setTimeout(() => updateSubtractNode(conn.node), 0); break; case 'divide': setTimeout(() => updateDivideNode(conn.node), 0); break; } } } catch (e) {} }); if (orderDependentTargets.includes(nodeName)) { switch (nodeName) { case 'concatenar': setTimeout(() => updateConcatenateNode(id), 0); break; case 'subtract': setTimeout(() => updateSubtractNode(id), 0); break; case 'divide': setTimeout(() => updateDivideNode(id), 0); break; } } } } catch (e) {}
         });
-  
         editor.on('connectionCreated', (connectionInfo) => {
-            // console.log(`Event: Connection Created`, connectionInfo);
             setTimeout(() => {
-                try {
-                    const sourceNodeId = connectionInfo.output_id;
-                    const targetNodeId = connectionInfo.input_id;
-                    const sourceNode = editor.getNodeFromId(sourceNodeId);
-                    const targetNode = editor.getNodeFromId(targetNodeId);
-                    if (!sourceNode || !targetNode) throw new Error("Source or Target node missing after delay.");
-                    
-                    // console.log(`connectionCreated: Calling propagateData from ${sourceNodeId} to ${targetNodeId}`);
+                try { const sourceNodeId = connectionInfo.output_id; const targetNodeId = connectionInfo.input_id; const sourceNode = editor.getNodeFromId(sourceNodeId); const targetNode = editor.getNodeFromId(targetNodeId); if (!sourceNode || !targetNode) throw new Error("Source/Target missing.");
                     propagateData(sourceNodeId, sourceNode.name, null, undefined);
-  
-                    const targetNodeName = targetNode.name;
-                    const recalcNodes = ['sum', 'subtract', 'multiply', 'divide', 'concatenar'];
-                    if (recalcNodes.includes(targetNodeName)) {
-                        // console.log(`connectionCreated: Recalculating target node ${targetNodeId} (${targetNodeName})`);
-                        switch (targetNodeName) {
-                            case 'sum': updateSumNode(targetNodeId); break;
-                            case 'subtract': updateSubtractNode(targetNodeId); break;
-                            case 'multiply': updateMultiplyNode(targetNodeId); break;
-                            case 'divide': updateDivideNode(targetNodeId); break;
-                            case 'concatenar': updateConcatenateNode(targetNodeId); break;
-                        }
-                    }
+                    const targetNodeName = targetNode.name; const recalcNodes = ['sum', 'subtract', 'multiply', 'divide', 'concatenar']; if (recalcNodes.includes(targetNodeName)) { switch (targetNodeName) { case 'sum': updateSumNode(targetNodeId); break; case 'subtract': updateSubtractNode(targetNodeId); break; case 'multiply': updateMultiplyNode(targetNodeId); break; case 'divide': updateDivideNode(targetNodeId); break; case 'concatenar': updateConcatenateNode(targetNodeId); break; } }
                     saveHistoryState();
-                } catch (error) { console.error("Error processing connectionCreated event:", error, "Connection info:", connectionInfo); saveHistoryState(); }
+                } catch (error) { console.error("Error processing connectionCreated:", error, "Info:", connectionInfo); saveHistoryState(); }
             }, 50);
         });
-  
         editor.on('connectionRemoved', (connectionInfo) => {
-            // console.log(`Event: Connection Removed`, connectionInfo);
             setTimeout(() => {
-                 try { 
-                     const targetNodeId = connectionInfo.input_id; 
-                     const targetNode = editor.getNodeFromId(targetNodeId);
-                     if (targetNode) { 
-                         const targetName = targetNode.name;
-                         const recalcNodes = ['sum', 'subtract', 'multiply', 'divide', 'concatenar'];
-                         if (recalcNodes.includes(targetName)) {
-                            //  console.log(`connectionRemoved: Recalculating target node ${targetNodeId} (${targetName})`);
-                             switch (targetName) {
-                                 case 'sum': updateSumNode(targetNodeId); break;
-                                 case 'subtract': updateSubtractNode(targetNodeId); break;
-                                 case 'multiply': updateMultiplyNode(targetNodeId); break;
-                                 case 'divide': updateDivideNode(targetNodeId); break;
-                                 case 'concatenar': updateConcatenateNode(targetNodeId); break;
-                             }
-                         }
-                         if (targetName === 'hybrid_text_replace' && connectionInfo.input_class === 'input_1') {
-                            //  console.log(`Hybrid Replace (${targetNodeId}): Input connection removed. Clearing lastInput.`);
-                             editor.updateNodeDataFromId(targetNodeId, { lastInput: null });
-                         }
-                         if (targetName === 'auto_text_replace' && connectionInfo.input_class === 'input_1') {
-                            //  console.log(`Auto Replace (${targetNodeId}): Input_1 connection removed. Clearing lastInput & reprocessing.`);
-                             editor.updateNodeDataFromId(targetNodeId, { lastInput: "" });
-                             const targetNodeElement = document.getElementById(`node-${targetNodeId}`);
-                             const lastInputElementUI = targetNodeElement?.querySelector('textarea[df-lastInput]');
-                             if (lastInputElementUI) lastInputElementUI.value = "";
-                             setTimeout(() => executeAutoReplace(targetNodeId, ""), 0); 
-                         }
-
-
-                     } else { /* console.warn(`connectionRemoved: Target node ${targetNodeId} not found.`); */ }
-                     saveHistoryState(); 
-                 } catch (error) { console.error("Error processing connectionRemoved event:", error, "Connection info:", connectionInfo); saveHistoryState(); }
-            }, 50); 
+                 try { const targetNodeId = connectionInfo.input_id; const targetNode = editor.getNodeFromId(targetNodeId); if (targetNode) { const targetName = targetNode.name; const recalcNodes = ['sum', 'subtract', 'multiply', 'divide', 'concatenar']; if (recalcNodes.includes(targetName)) { switch (targetName) { case 'sum': updateSumNode(targetNodeId); break; case 'subtract': updateSubtractNode(targetNodeId); break; case 'multiply': updateMultiplyNode(targetNodeId); break; case 'divide': updateDivideNode(targetNodeId); break; case 'concatenar': updateConcatenateNode(targetNodeId); break; } } if (targetName === 'hybrid_text_replace' && connectionInfo.input_class === 'input_1') editor.updateNodeDataFromId(targetNodeId, { lastInput: null }); if (targetName === 'auto_text_replace' && connectionInfo.input_class === 'input_1') { editor.updateNodeDataFromId(targetNodeId, { lastInput: "" }); const targetNodeElement = document.getElementById(`node-${targetNodeId}`); const lastInputElementUI = targetNodeElement?.querySelector('textarea[df-lastInput]'); if (lastInputElementUI) lastInputElementUI.value = ""; setTimeout(() => executeAutoReplace(targetNodeId, ""), 0); } } saveHistoryState();
+                 } catch (error) { console.error("Error processing connectionRemoved:", error, "Info:", connectionInfo); saveHistoryState(); }
+            }, 50);
         });
-  
         editor.on('moduleChanged', (name) => {
-            console.log(`%cEVENT: Module Changed -> ${name}`, 'color: blue; font-weight: bold;');
-            hideCustomContextMenu(); 
-            const modulesData = editor.export()?.drawflow;
-            if (!modulesData || !modulesData[name]) {
-                 console.warn(`Module ${name} not found after moduleChanged event. Falling back to Home.`);
-                 name = 'Home';
-                 if (!modulesData || !modulesData[name]) editor.addModule('Home');
-                 editor.changeModule('Home');
-                 return;
-            }
-            renderModuleTabs();
-            initializeHistory();
-            selectedNodeId = null; copiedNodeData = null; currentlyEditingNodeId = null;
-            updateUIDisabledStates(); updateZoomStatus(editor.zoom); updateNodePositionStatus(null);
-            document.title = `Xocoflow | ${currentProjectName} - ${name}`;
-            closeCodeEditorSidebar(false);
-            setTimeout(() => {
-                if(editor.module === name){
-                    saveHistoryState(true);
-                    activateExistingAutoNodes();
-                    // console.log(` -> Module ${name} processing complete.`);
-                }
-            }, 100);
+            console.log(`%cEVENT: Module Changed -> ${name}`, 'color: blue; font-weight: bold;'); hideCustomContextMenu();
+            const modulesData = editor.export()?.drawflow; if (!modulesData || !modulesData[name]) { name = 'Home'; if (!modulesData || !modulesData[name]) editor.addModule('Home'); editor.changeModule('Home'); return; }
+            renderModuleTabs(); initializeHistory(); selectedNodeId = null; copiedNodeData = null; currentlyEditingNodeId = null;
+            updateUIDisabledStates(); updateZoomStatus(editor.zoom); updateNodePositionStatus(null); document.title = `Xocoflow | ${currentProjectName} - ${name}`; closeCodeEditorSidebar(false);
+            setTimeout(() => { if(editor.module === name) { saveHistoryState(true); activateExistingAutoNodes(); } }, 100);
         });
-  
         editor.on('zoom', (level) => { updateZoomStatus(level); });
-        editor.on('translate', (pos) => { /* No action needed currently */ });
-  
-        editor.on('contextmenu', (e) => {
-            const nodeElement = e.target.closest(".drawflow-node");
-            if (e.target.closest('.drawflow-delete')) {
-                e.preventDefault(); 
-                hideCustomContextMenu(); 
-                return;
-            }
-            if (nodeElement) {
-                const nodeId = nodeElement.id.slice(5); 
-                showCustomContextMenu(e, nodeId); 
-            } else {
-                e.preventDefault(); 
-                hideCustomContextMenu(); 
-            }
-        });
-  
-        editor.on('click', (e) => {
-            const target = e.target;
-            if (customContextMenu && !customContextMenu.contains(target)) hideCustomContextMenu();
-            if (codeEditorSidebar?.classList.contains('visible') && !target.closest('#code-editor-sidebar') && !target.closest('.drawflow-node')) {
-                 closeCodeEditorSidebar(true);
-            }
-            const ignoreClickTargets = '.drawflow-node, .controls-container, .menu, .swal2-container, #code-editor-sidebar, .nodes-list, .col header, .drawflow-delete, .point, .custom-context-menu'; 
-            if (!target.closest(ignoreClickTargets) && selectedNodeId) {
-                try { editor.removeSelection(); } catch { /* Ignorar */ }
-            }
-        });
-        // console.log("Drawflow event listeners attached.");
-    } catch (e) {
-        console.error("Error setting Drawflow listeners:", e);
-        showToast('error', 'Critical Error', 'Failed to setup editor events.');
-    }
+        editor.on('translate', (pos) => { /* No action */ });
+        editor.on('contextmenu', (e) => { const nodeElement = e.target.closest(".drawflow-node"); if (e.target.closest('.drawflow-delete')) { e.preventDefault(); hideCustomContextMenu(); return; } if (nodeElement) { const nodeId = nodeElement.id.slice(5); showCustomContextMenu(e, nodeId); } else { e.preventDefault(); hideCustomContextMenu(); } });
+        editor.on('click', (e) => { const target = e.target; if (customContextMenu && !customContextMenu.contains(target)) hideCustomContextMenu(); if (codeEditorSidebar?.classList.contains('visible') && !target.closest('#code-editor-sidebar') && !target.closest('.drawflow-node')) closeCodeEditorSidebar(true); const ignoreClickTargets = '.drawflow-node, .controls-container, .menu, .swal2-container, #code-editor-sidebar, .nodes-list, .col header, .drawflow-delete, .point, .custom-context-menu'; if (!target.closest(ignoreClickTargets) && selectedNodeId) { try { editor.removeSelection(); } catch {} } });
+    } catch (e) { console.error("Error setting Drawflow listeners:", e); showToast('error', 'Critical Error', 'Failed setup.'); }
 }
 
 // --- Keyboard Shortcuts ---
@@ -4127,205 +1557,21 @@ function isLocked() { return editor?.editor_mode === 'fixed'; }
 function initializeApp() {
     try {
         console.log("🚀 Initializing Xocoflow...");
-        drawflowElement = checkElement(`#${DRAWFLOW_CONTAINER_ID}`, true);
-        moduleListElement = checkElement('.menu ul#module-tabs', true);
-        nodesListContainer = checkElement('.nodes-list', true);
-        undoButton = checkElement('#undo-button');
-        redoButton = checkElement('#redo-button');
-        duplicateButton = checkElement('#duplicate-button');
-        copyButton = checkElement('#copy-button');
-        pasteButton = checkElement('#paste-button');
-        recalculateButton = checkElement('#recalculate-button');
-        lockButton = checkElement('#lock-button');
-        unlockButton = checkElement('#unlock-button');
-        statusBar = checkElement('#editor-status-bar');
-        zoomLevelSpan = checkElement('#zoom-level');
-        nodePositionSpan = checkElement('#node-position');
-        searchInput = checkElement('#node-search');
-        fileInputElement = checkElement('#file-input');
-        nodeDefinitionModal = checkElement('#nodeDefinitionModal');
-        modalBackdrop = checkElement('#modalBackdrop');
-        codeEditorSidebar = checkElement('#code-editor-sidebar');
-        codeMirrorElement = checkElement('#codemirror-container');
-        codeEditorSaveButton = checkElement('#save-code-sidebar-btn');
-        codeEditorCloseButton = checkElement('#close-code-sidebar-btn');
-        editingNodeIdSpan = checkElement('#editing-node-id');
-        codeEditorTitleSpan = checkElement('#code-editor-title');
-
-        if (searchInput) searchInput.addEventListener('input', filterNodes);
-        if (fileInputElement) fileInputElement.addEventListener('change', loadProjectFromFile);
-
-        if (typeof Drawflow === 'undefined') throw new Error("Drawflow library failed to load.");
-        if (typeof CodeMirror === 'undefined') console.warn("CodeMirror library not loaded.");
-        if (typeof Swal === 'undefined') console.warn("SweetAlert2 library not loaded.");
-
-        try {
-            editor = new Drawflow(drawflowElement);
-            editor.reroute = true; editor.editor_mode = 'edit';
-            editor.zoom_max = 1.8; editor.zoom_min = 0.25; editor.zoom_value = 0.08;
-            // console.log("Drawflow instance created successfully.");
-        } catch (e) { throw new Error(`Failed to create Drawflow editor: ${e.message}`); }
-        
-        editor.start(); 
-        // console.log("Drawflow started.");
-        setupDrawflowListeners(); 
-
-        const initialExport = editor.export(); const initialModules = initialExport?.drawflow;
-        let homeExists = initialModules?.hasOwnProperty('Home');
-        if (!initialModules || Object.keys(initialModules).length === 0 || !homeExists) { if (!homeExists) editor.addModule('Home'); if (editor.module !== 'Home') editor.changeModule('Home'); }
-        else if (!editor.module || !initialModules[editor.module]) editor.changeModule('Home');
-        // console.log(`Initial active module: ${editor.module}`);
-
-        if (drawflowElement) {
-            drawflowElement.addEventListener('mousedown', (e) => {
-                // Descomenta logs para depuración intensiva si es necesario
-                // console.log("%cMOUSEDOWN CAPTURE:", "color: orange; font-weight:bold;", e.target, "Button:", e.button);
-        
-                // 1. Ignorar clics en los puertos de input/output (para crear conexiones)
-                if (e.target.closest('.input') || e.target.closest('.output')) {
-                    // console.log("  LOCK: Click on port, allowing.");
-                    return;
-                }
-        
-                const nodeElement = e.target.closest(".drawflow-node");
-                if (!nodeElement) {
-                    // console.log("  LOCK: Click on canvas background.");
-                    return; // Clic en el fondo del canvas, no en un nodo
-                }
-        
-                const nodeId = nodeElement.id.slice(5);
-                // console.log(`  LOCK: Click targeted node ${nodeId}`);
-        
-                try {
-                    const node = editor.getNodeFromId(nodeId);
-                    if (!node) {
-                        console.warn(`  LOCK: Node data for ${nodeId} not found!`);
-                        return;
-                    }
-                    
-                    const isNodeMovementLocked = node.data && node.data.isMovementLocked === true;
-                    // console.log(`  LOCK: Node ${nodeId} isMovementLocked: ${isNodeMovementLocked}`);
-        
-                    if (isNodeMovementLocked) {
-                        // Elementos que, si se hace clic en ellos, DEBEN permitir su interacción normal
-                        // y NO deben ser afectados por el bloqueo de movimiento del nodo.
-                        const trulyInteractiveSelector = `
-                            input[type="color"], input[type="range"], input[type="date"], input[type="time"],
-                            select, button, 
-                            a[href], 
-                            .lock-indicator, 
-                            .node-resizer, 
-                            details, summary, /* Para permitir abrir/cerrar <details> */
-                            .image-placeholder, /* Para el nodo image_minimal */
-                            .CodeMirror, /* Si tuvieras un CodeMirror dentro de un nodo */
-                            [contenteditable="true"]
-                        `; 
-                        // Nota: Los inputs de texto y textareas se manejan de forma especial abajo.
-        
-                        const clickedTrulyInteractive = e.target.closest(trulyInteractiveSelector);
-        
-                        if (clickedTrulyInteractive) {
-                            // Si se hizo clic en el indicador de candado (izquierdo)
-                            if (e.button === 0 && clickedTrulyInteractive.closest('.lock-indicator')) {
-                                // console.log(`  LOCK: Click on lock indicator for node ${nodeId}. Toggling lock.`);
-                                toggleNodeMovementLock(nodeId);
-                                e.stopPropagation(); 
-                                e.preventDefault();  
-                                return; 
-                            }
-                            // Si se hizo clic en el resizer (izquierdo)
-                            // El resizer tiene su propio mousedown listener que llama a startNodeResize,
-                            // y startNodeResize hace stopPropagation.
-                            // Así que aquí simplemente permitimos que el evento del resizer se dispare.
-                            if (e.button === 0 && clickedTrulyInteractive.closest('.node-resizer')) {
-                                // console.log(`  LOCK: Click on resizer for node ${nodeId}. Allowing resize mousedown.`);
-                                return; 
-                            }
-        
-                            // console.log(`  LOCK: Click on TRULY interactive element inside locked node ${nodeId}. Allowing. Target:`, e.target);
-                            return; // Permitir que el evento continúe para estos elementos verdaderamente interactivos
-                        }
-        
-                        // MANEJO ESPECIAL PARA INPUTS DE TEXTO Y TEXTAREAS:
-                        // Queremos permitir que el usuario haga clic para enfocar y escribir,
-                        // pero NO queremos que un mousedown + drag sobre ellos mueva el nodo.
-                        const isTextInputElement = e.target.matches('input[type="text"], input[type="number"], input[type="url"], input[type="email"], input[type="password"], textarea');
-                        
-                        if (isTextInputElement) {
-                            // Si es un clic izquierdo (para enfocar/seleccionar texto)
-                            if (e.button === 0) {
-                                // console.log(`  LOCK: Left click on text input/textarea in locked node ${nodeId}. Allowing focus/text selection. Target:`, e.target);
-                                // NO detenemos la propagación aquí para permitir el foco y la selección.
-                                // PERO, Drawflow podría aún así capturar el mousemove para arrastrar el nodo.
-                                // Este es el caso difícil.
-                                // Una opción es que Drawflow internamente ya respete el no arrastrar si el target es input/textarea.
-                                // Si no, necesitaríamos una lógica más compleja en mousemove.
-        
-                                // Por ahora, intentaremos una estrategia: si el clic es en un input/textarea,
-                                // asumimos que es para editarlo, y detenemos la propagación para EVITAR que Drawflow mueva el NODO.
-                                // El foco y la edición del input/textarea deberían seguir funcionando.
-                                // console.log(`  LOCK: Click on text input/textarea, stopping propagation to prevent node drag, but allowing input interaction.`);
-                                e.stopPropagation();
-                                // NO hacemos e.preventDefault() aquí para permitir que el input reciba el foco.
-                                return; 
-                            }
-                            // Si es otro botón (ej. clic derecho para menú contextual del navegador sobre el textarea), permitir.
-                            // console.log(`  LOCK: Non-left click on text input/textarea in locked node ${nodeId}. Allowing. Target:`, e.target);
-                            return;
-                        }
-        
-        
-                        // Si el nodo está bloqueado Y el clic NO fue en un elemento de `trulyInteractiveSelector`
-                        // NI en un `isTextInputElement` manejado arriba (o sea, es un clic en el "cuerpo" del nodo):
-                        // console.log(`  LOCK: NODE ${nodeId} IS LOCKED. Click was on node body. STOPPING PROPAGATION.`);
-                        e.stopPropagation(); // ¡CLAVE! Detener el evento de mousedown
-        
-                        if (e.button === 0 && !nodeElement.classList.contains('selected')) {
-                            // console.log(`  LOCK: Programmatically selecting locked node ${nodeId}.`);
-                            editor.selectNode(nodeElement.id);
-                        }
-                        
-                        if (e.button !== 2) {
-                            // console.log("  LOCK: Preventing default browser action for non-right click on locked node body.");
-                            e.preventDefault();
-                        }
-                    } else {
-                        // console.log(`  LOCK: Node ${nodeId} is NOT locked. Allowing default Drawflow behavior.`);
-                    }
-                } catch (error) {
-                    console.warn(`  LOCK: Error during mousedown logic for node ${nodeId}:`, error);
-                }
-            }, true); // ¡MUY IMPORTANTE: true para usar la fase de captura!
-            console.log("Mousedown listener for movement lock (REVISED V2) attached to drawflowElement in CAPTURE phase.");
-        } else {
-            console.error("drawflowElement (editor container) not found! Cannot attach mousedown listener for movement lock.");
-        }
-        loadCustomNodesToSidebar();
-        renderModuleTabs();
-        initializeHistory();
-        updateUIDisabledStates();
-        updateZoomStatus(editor.zoom);
-        updateNodePositionStatus(null);
-        document.title = `Xocoflow | ${currentProjectName} - ${editor.module}`;
-        changeMode('edit'); 
-
-        const currentModuleData = editor.export()?.drawflow?.[editor.module]?.data ?? {};
-        if (Object.keys(currentModuleData).length === 0) { addWelcomeNode(editor.module); saveHistoryState(true); }
-        else { saveHistoryState(true); activateExistingAutoNodes(); }
-
-        if (recalculateButton) recalculateButton.addEventListener('click', recalculateAllNodesInCurrentModule);
-        initializeCodeMirror();
-
-        console.log("%cXocoflow Ready.", "color: green; font-weight: bold;");
-        showToast('success', 'Ready', '', 1500);
-
-    } catch (error) {
-        console.error("❌ FATAL INITIALIZATION ERROR:", error);
-        showInitializationError(`Initialization failed: ${error.message}`);
-    }
+        drawflowElement = checkElement(`#${DRAWFLOW_CONTAINER_ID}`, true); moduleListElement = checkElement('.menu ul#module-tabs', true); nodesListContainer = checkElement('.nodes-list', true); undoButton = checkElement('#undo-button'); redoButton = checkElement('#redo-button'); duplicateButton = checkElement('#duplicate-button'); copyButton = checkElement('#copy-button'); pasteButton = checkElement('#paste-button'); recalculateButton = checkElement('#recalculate-button'); lockButton = checkElement('#lock-button'); unlockButton = checkElement('#unlock-button'); statusBar = checkElement('#editor-status-bar'); zoomLevelSpan = checkElement('#zoom-level'); nodePositionSpan = checkElement('#node-position'); searchInput = checkElement('#node-search'); fileInputElement = checkElement('#file-input'); nodeDefinitionModal = checkElement('#nodeDefinitionModal'); modalBackdrop = checkElement('#modalBackdrop'); codeEditorSidebar = checkElement('#code-editor-sidebar'); codeMirrorElement = checkElement('#codemirror-container'); codeEditorSaveButton = checkElement('#save-code-sidebar-btn'); codeEditorCloseButton = checkElement('#close-code-sidebar-btn'); editingNodeIdSpan = checkElement('#editing-node-id'); codeEditorTitleSpan = checkElement('#code-editor-title');
+        if (searchInput) searchInput.addEventListener('input', filterNodes); if (fileInputElement) fileInputElement.addEventListener('change', loadProjectFromFile);
+        if (typeof Drawflow === 'undefined') throw new Error("Drawflow library failed to load."); if (typeof CodeMirror === 'undefined') console.warn("CodeMirror library not loaded."); if (typeof Swal === 'undefined') console.warn("SweetAlert2 library not loaded.");
+        try { editor = new Drawflow(drawflowElement); editor.reroute = true; editor.editor_mode = 'edit'; editor.zoom_max = 1.8; editor.zoom_min = 0.25; editor.zoom_value = 0.08; } catch (e) { throw new Error(`Failed to create Drawflow editor: ${e.message}`); }
+        editor.start(); setupDrawflowListeners();
+        const initialExport = editor.export(); const initialModules = initialExport?.drawflow; let homeExists = initialModules?.hasOwnProperty('Home'); if (!initialModules || Object.keys(initialModules).length === 0 || !homeExists) { if (!homeExists) editor.addModule('Home'); if (editor.module !== 'Home') editor.changeModule('Home'); } else if (!editor.module || !initialModules[editor.module]) editor.changeModule('Home');
+        if (drawflowElement) { drawflowElement.addEventListener('mousedown', (e) => { if (e.target.closest('.input') || e.target.closest('.output')) return; const nodeElement = e.target.closest(".drawflow-node"); if (!nodeElement) return; const nodeId = nodeElement.id.slice(5); try { const node = editor.getNodeFromId(nodeId); if (!node) return; const isNodeMovementLocked = node.data?.isMovementLocked === true; if (isNodeMovementLocked) { const trulyInteractiveSelector = `input[type="color"], input[type="range"], input[type="date"], input[type="time"], select, button, a[href], .lock-indicator, .node-resizer, details, summary, .image-placeholder, .youtube-placeholder, .CodeMirror, [contenteditable="true"]`; const clickedTrulyInteractive = e.target.closest(trulyInteractiveSelector); if (clickedTrulyInteractive) { if (e.button === 0 && clickedTrulyInteractive.closest('.lock-indicator')) { toggleNodeMovementLock(nodeId); e.stopPropagation(); e.preventDefault(); return; } if (e.button === 0 && clickedTrulyInteractive.closest('.node-resizer')) return; return; } const isTextInputElement = e.target.matches('input[type="text"], input[type="number"], input[type="url"], input[type="email"], input[type="password"], textarea'); if (isTextInputElement) { if (e.button === 0) { e.stopPropagation(); return; } return; } e.stopPropagation(); if (e.button === 0 && !nodeElement.classList.contains('selected')) editor.selectNode(nodeElement.id); if (e.button !== 2) e.preventDefault(); } } catch (error) { console.warn(`Lock mousedown error for ${nodeId}:`, error); } }, true); console.log("Mousedown listener for movement lock attached."); } else console.error("drawflowElement not found! Cannot attach mousedown listener.");
+        loadCustomNodesToSidebar(); renderModuleTabs(); initializeHistory(); updateUIDisabledStates(); updateZoomStatus(editor.zoom); updateNodePositionStatus(null); document.title = `Xocoflow | ${currentProjectName} - ${editor.module}`; changeMode('edit');
+        const currentModuleData = editor.export()?.drawflow?.[editor.module]?.data ?? {}; if (Object.keys(currentModuleData).length === 0) { addWelcomeNode(editor.module); saveHistoryState(true); } else { saveHistoryState(true); activateExistingAutoNodes(); }
+        if (recalculateButton) recalculateButton.addEventListener('click', recalculateAllNodesInCurrentModule); initializeCodeMirror();
+        console.log("%cXocoflow Ready.", "color: green; font-weight: bold;"); showToast('success', 'Ready', '', 1500);
+    } catch (error) { console.error("❌ FATAL INITIALIZATION ERROR:", error); showInitializationError(`Initialization failed: ${error.message}`); }
 }
 
-function addWelcomeNode(moduleName) { if (!editor || !moduleName || isLocked()) return; try { const exported = editor.export(); const existing = exported?.drawflow?.[moduleName]?.data ?? {}; if (Object.keys(existing).length > 0) return; const html = `<div><div class="title-box welcome-title"><i class="fas fa-rocket"></i> Welcome to ${escapeHtml(moduleName)}!</div><div class="box welcome-box"><p><strong>Quick Start:</strong></p><ul><li><i class="fas fa-mouse-pointer"></i> Drag nodes.</li><li><i class="fas fa-link"></i> Connect outputs <i class="fas fa-arrow-right"></i> to inputs <i class="fas fa-arrow-left"></i>.</li><li><i class="fas fa-edit"></i> Click "Edit Content/Code".</li><li><i class="fas fa-save"></i> Save work.</li><li><i class="fas fa-plus-circle"></i> Explore "Create Node Type".</li></ul></div><div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div></div>`; const w=280, h=210; const rect = editor.container.getBoundingClientRect(), z=editor.zoom||1; const cx=(rect.width/2-editor.canvas_x)/z, cy=(rect.height/2-editor.canvas_y)/z; const x=cx-w/2, y=cy-h/2; const name='xocoflow_welcome_info'; const nodeData = { nodeWidth: `${w}px`, nodeHeight: `${h}px`, isMovementLocked: false }; if (!customNodeTypes[name]) editor.registerNode(name, null , {}, {}); const id = editor.addNode(name, 0, 0, x, y, 'welcome-node resizable-node-class', nodeData, html); setTimeout(() => { const nodeElement = document.getElementById(`node-${id}`); if (nodeElement) { nodeElement.style.width = nodeData.nodeWidth; nodeElement.style.height = nodeData.nodeHeight; const resizer = nodeElement.querySelector('.node-resizer'); if(resizer) resizer.addEventListener('mousedown', (e) => startNodeResize(e, id, resizer)); updateNodeVisualLockState(id, false);}}, 0); /*console.log(`Welcome node ${id} added to ${moduleName}.`);*/ } catch (e) { console.error(`Error adding welcome node:`, e); } }
+function addWelcomeNode(moduleName) { if (!editor || !moduleName || isLocked()) return; try { const exported = editor.export(); const existing = exported?.drawflow?.[moduleName]?.data ?? {}; if (Object.keys(existing).length > 0) return; const html = `<div><div class="title-box welcome-title"><i class="fas fa-rocket"></i> Welcome to ${escapeHtml(moduleName)}!</div><div class="box welcome-box"><p><strong>Quick Start:</strong></p><ul><li><i class="fas fa-mouse-pointer"></i> Drag nodes.</li><li><i class="fas fa-link"></i> Connect outputs <i class="fas fa-arrow-right"></i> to inputs <i class="fas fa-arrow-left"></i>.</li><li><i class="fas fa-edit"></i> Click "Edit Content/Code".</li><li><i class="fas fa-save"></i> Save work.</li><li><i class="fas fa-plus-circle"></i> Explore "Create Node Type".</li></ul></div><div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div></div>`; const w=280, h=210; const rect = editor.container.getBoundingClientRect(), z=editor.zoom||1; const cx=(rect.width/2-editor.canvas_x)/z, cy=(rect.height/2-editor.canvas_y)/z; const x=cx-w/2, y=cy-h/2; const name='xocoflow_welcome_info'; const nodeData = { nodeWidth: `${w}px`, nodeHeight: `${h}px`, isMovementLocked: false }; if (!customNodeTypes[name]) editor.registerNode(name, null , {}, {}); const id = editor.addNode(name, 0, 0, x, y, 'welcome-node resizable-node-class', nodeData, html); setTimeout(() => { const nodeElement = document.getElementById(`node-${id}`); if (nodeElement) { nodeElement.style.width = nodeData.nodeWidth; nodeElement.style.height = nodeData.nodeHeight; const resizer = nodeElement.querySelector('.node-resizer'); if(resizer) resizer.addEventListener('mousedown', (e) => startNodeResize(e, id, resizer)); updateNodeVisualLockState(id, false);}}, 0); } catch (e) { console.error(`Error adding welcome node:`, e); } }
 function showInitializationError(message) { document.body.innerHTML = `<div style="padding: 20px; background-color: #ffcdd2; border: 2px solid #b71c1c; color: #b71c1c; font-family: sans-serif; text-align: center;"><h1><i class="fas fa-bomb"></i> Critical Error</h1><p>Xocoflow failed to initialize.</p><pre style="text-align: left; white-space: pre-wrap; word-wrap: break-word; background-color: #fff; padding: 10px; border: 1px solid #ccc; margin-top: 15px; max-height: 300px; overflow-y: auto;">${escapeHtml(message)}</pre><p style="margin-top:15px;"><button onclick="location.reload()">Reload</button></p></div>`; }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initializeApp);
