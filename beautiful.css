@@ -184,7 +184,6 @@ header h2 { margin: 0; line-height: 50px; font-size: 1.6em; font-weight: 700; co
 #colorPicker:hover { border-color: #999; }
 #colorPicker:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 2px var(--focus-shadow-color); }
 
-
 /* Active states */
 .btn-draw.active { background: var(--primary-color); border-color: var(--primary-dark-color); }
 .btn-eraser.active { background: #f44336; border-color: #d32f2f; }
@@ -201,7 +200,7 @@ header h2 { margin: 0; line-height: 50px; font-size: 1.6em; font-weight: 700; co
 .brush-control input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; background: #ddd; border-radius: 50%; cursor: pointer; border: none; }
 .brush-control #brushSizeValue { font-size: var(--font-size-xsmall); font-weight: bold; min-width: 18px; text-align: right; color: #eee; }
 
-* Barra de Estado */
+/* Barra de Estado */
 .editor-status-bar { position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%); background-color: rgba(50, 50, 50, 0.75); color: var(--text-on-dark); padding: 4px 12px; border-radius: 4px; font-size: var(--font-size-xsmall); z-index: 4; white-space: nowrap; box-shadow: var(--box-shadow-light); }
 .editor-status-bar span { font-weight: bold; margin-left: 3px; min-width: 40px; display: inline-block; text-align: right; }
 #zoom-level { min-width: 45px; }
@@ -266,14 +265,14 @@ header h2 { margin: 0; line-height: 50px; font-size: 1.6em; font-weight: 700; co
 .drawflow-node.display-node .title-box { background-color: #fc6295; color: var(--text-on-primary); border-color: #f55288; }
 .drawflow-node.display-node .title-box i { color: var(--text-on-primary); }
 .drawflow-node.display-node textarea[df-result] { white-space: pre-wrap; height: 100px; background-color: var(--background-readonly); border: 1px solid #eee; font-size: 0.85em; }
-.drawflow-node.note-node { border-color: #ffe57f; width: 180px; /* Background aplicado por JS */ }
+.drawflow-node.note-node { border-color: #ffe57f; /* Background aplicado por JS */ }
 .drawflow-node.note-node .title-box { background-color: #fff9c4; color: #5d4037; border-color: #fff59d; }
 .drawflow-node.note-node .title-box i { color: #f57f17; }
 .drawflow-node.note-node .box { transition: background-color 0.3s ease; }
 .drawflow-node.note-node .text-info { font-size: var(--font-size-xxsmall); color: var(--text-light); text-align: right; margin-top: 3px; }
 .drawflow-node.note-node select[df-notecolor] { padding: 3px 5px; margin-bottom: 8px; height: auto; font-size: var(--font-size-xxsmall); }
 .drawflow-node.note-node textarea[df-notecontent] { font-size: var(--font-size-small); }
-.drawflow-node.javascript-code-node { background-color: var(--warning-light-color); border-color: #ffe0b2; width: 260px; }
+.drawflow-node.javascript-code-node { background-color: var(--warning-light-color); border-color: #ffe0b2; }
 .drawflow-node.javascript-code-node .title-box { background-color: var(--warning-color); border-bottom-color: var(--warning-dark-color); color: #424242; }
 .drawflow-node.javascript-code-node .title-box i { color: var(--warning-dark-color); }
 .drawflow-node.javascript-code-node textarea { font-family: var(--font-family-code); font-size: var(--font-size-xsmall); }
@@ -282,11 +281,11 @@ header h2 { margin: 0; line-height: 50px; font-size: 1.6em; font-weight: 700; co
 .drawflow-node.javascript-code-node .node-buttons button { flex-grow: 1; }
 .drawflow-node.javascript-code-node textarea[df-result] { height: 60px; background-color: #f9f9f9; }
 .drawflow-node.javascript-code-node textarea[df-result].error { background-color: var(--danger-light-color); color: var(--danger-dark-color); border-color: #ee8a8a; }
-.drawflow-node.static-code-node { background-color: var(--info-light-color); border-color: #b3e5fc; width: 260px; }
+.drawflow-node.static-code-node { background-color: var(--info-light-color); border-color: #b3e5fc; }
 .drawflow-node.static-code-node .title-box { background-color: var(--info-color); border-bottom-color: var(--info-dark-color); color: var(--text-on-primary); }
 .drawflow-node.static-code-node .title-box i { color: var(--text-on-primary); }
 .drawflow-node.static-code-node textarea[df-codecontent] { font-family: var(--font-family-code); font-size: var(--font-size-xsmall); height: 120px; background-color: var(--background-readonly); white-space: pre; cursor: default; }
-.drawflow-node.welcome-node { width: 280px; border-color: var(--success-dark-color); background-color: var(--success-light-color); }
+.drawflow-node.welcome-node { border-color: var(--success-dark-color); background-color: var(--success-light-color); }
 .welcome-node .title-box { background-color: var(--success-color) !important; color: white !important; border-bottom: 1px solid var(--success-dark-color) !important; }
 .welcome-node .title-box i { color: white !important; }
 .welcome-node .box { background-color: transparent; font-size: var(--font-size-small); line-height: 1.6; padding: 15px; }
@@ -295,7 +294,7 @@ header h2 { margin: 0; line-height: 50px; font-size: 1.6em; font-weight: 700; co
 .welcome-node .box ul { margin-top: 5px; padding-left: 20px; margin-bottom: 0; list-style: none;}
 .welcome-node .box li { margin-bottom: 6px; display: flex; align-items: center; }
 .welcome-node .box li i:first-child { width: 20px; margin-right: 8px; text-align: center; flex-shrink: 0; }
-.drawflow-node.local-image-node { width: 240px; /* Default width */ } /* Local Image Node */
+.drawflow-node.local-image-node { /* Default width set by JS data */ }
 .drawflow-node.local-image-node .box { padding: 8px; }
 .drawflow-node.local-image-node .image-preview-container { min-height: 80px; margin-bottom: 8px; border: 1px dashed #ccc; display: flex; align-items: center; justify-content: center; background-color: #f9f9f9; overflow: hidden; position: relative;}
 .drawflow-node.local-image-node .image-preview-container img[df-imagesrc] { display: none; max-width: 100%; max-height: 150px; /* Limit preview height */ width:auto; height:auto; object-fit: contain; }
@@ -310,92 +309,27 @@ header h2 { margin: 0; line-height: 50px; font-size: 1.6em; font-weight: 700; co
 .drawflow-node.local-image-node label { font-size: 10px !important; margin-bottom: 2px !important; }
 .drawflow-node.local-image-node input[type="text"] { font-size:11px !important; height: 24px !important; padding: 2px 4px !important; min-height: 24px !important; margin-bottom: 0 !important; }
 .drawflow-node.local-image-node .help-text { margin-top: 2px !important; font-size: 9px !important; }
-.drawflow-node.template-node textarea { font-family: var(--font-family-code); font-size: var(--font-size-xsmall); } /* Template Node */
+.drawflow-node.template-node textarea { font-family: var(--font-family-code); font-size: var(--font-size-xsmall); }
 
 
 /* --- Estilos Nodo Imagen Minimalista --- */
 .drawflow-node.image-minimal-node {
-  padding: 0 !important; /* Sin padding interno */
-  border: 2px dashed #cccccc; /* Borde inicial para indicar dropzone */
-  background-color: #f8f8f8; /* Fondo inicial placeholder */
-  box-shadow: none; /* Sin sombra inicial */
-  overflow: hidden; /* Asegura que la imagen no se salga */
-  min-width: 80px;
-  min-height: 60px;
-  width: 80px; /* Tamaño inicial explícito */
-  height: 60px; /* Tamaño inicial explícito */
-  transition: width 0.1s ease-out, height 0.1s ease-out, box-shadow 0.2s, border-color 0.2s, background-color 0.2s;
-  position: relative; /* Needed for placeholder positioning */
-  display: flex; /* Center content */
-  align-items: center;
-  justify-content: center;
+  padding: 0 !important; border: 2px dashed #cccccc; background-color: #f8f8f8;
+  box-shadow: none; overflow: hidden; min-width: 80px; min-height: 60px;
+  width: 80px; height: 60px; transition: width 0.1s ease-out, height 0.1s ease-out, box-shadow 0.2s, border-color 0.2s, background-color 0.2s;
+  position: relative; display: flex; align-items: center; justify-content: center;
 }
-/* Cuando hay imagen, quitar borde/fondo y poner sombra */
-.drawflow-node.image-minimal-node:has(img[src]:not([src=""])) {
-    border: none;
-    background-color: transparent;
-    box-shadow: var(--box-shadow-light);
-}
-/* El contenedor interno debe llenar el nodo */
-.image-minimal-node .image-minimal-content {
-  width: 100%;
-  height: 100%;
-  position: relative; /* Para posicionar elementos internos si fuera necesario */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-/* Placeholder cuando no hay imagen */
-.image-minimal-node .image-placeholder {
-  /* position: absolute; */ /* No longer needed with flex parent */
-  /* inset: 0; */
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  /* border: 2px dashed #cccccc; */ /* Border moved to parent */
-  /* background-color: #f8f8f8; */ /* Background moved to parent */
-  color: #aaaaaa;
-  font-size: 11px;
-  text-align: center;
-  cursor: pointer;
-  transition: background-color 0.2s, border-color 0.2s, color 0.2s;
-  padding: 5px;
-  width: 100%;
-  height: 100%;
-}
+.drawflow-node.image-minimal-node:has(img[src]:not([src=""])) { border: none; background-color: transparent; box-shadow: var(--box-shadow-light); }
+.image-minimal-node .image-minimal-content { width: 100%; height: 100%; position: relative; display: flex; align-items: center; justify-content: center; }
+.image-minimal-node .image-placeholder { display: flex; flex-direction: column; align-items: center; justify-content: center; color: #aaaaaa; font-size: 11px; text-align: center; cursor: pointer; transition: background-color 0.2s, border-color 0.2s, color 0.2s; padding: 5px; width: 100%; height: 100%; }
 .image-minimal-node .image-placeholder i { font-size: 1.5em; margin-bottom: 5px; }
 .image-minimal-node .image-placeholder:hover { color: #888888; }
-.image-minimal-node.dragover .image-placeholder, /* Apply dragover to parent */
-.image-minimal-node .image-placeholder.dragover { /* Keep original for safety */
-  color: var(--primary-dark-color);
-}
-/* Apply dragover style to the main node */
-.drawflow-node.image-minimal-node.dragover {
-  border-color: var(--primary-color);
-  background-color: #e0e0e0;
-}
-/* La imagen cargada */
-.image-minimal-node img[df-imgsrc] {
-  display: none; /* Hide initially */
-  width: 100%;
-  height: 100%;
-  object-fit: contain; /* Changed to contain by default */
-}
-/* Mostrar imagen si tiene src */
-.image-minimal-node img[df-imgsrc][src]:not([src=""]) {
-    display: block;
-}
-/* Ocultar placeholder si hay imagen */
-.image-minimal-node:has(img[src]:not([src=""])) .image-placeholder {
-    display: none;
-}
-/* Estilo cuando está seleccionado */
-.drawflow-node.image-minimal-node.selected {
-  box-shadow: 0 0 0 3px var(--focus-shadow-color), var(--box-shadow-medium); /* Sombra de foco + sombra normal */
-  /* Añadir un borde sutil al seleccionar */
-  border: 1px solid var(--primary-color);
-}
+.image-minimal-node.dragover .image-placeholder, .image-minimal-node .image-placeholder.dragover { color: var(--primary-dark-color); }
+.drawflow-node.image-minimal-node.dragover { border-color: var(--primary-color); background-color: #e0e0e0; }
+.image-minimal-node img[df-imgsrc] { display: none; width: 100%; height: 100%; object-fit: contain; }
+.image-minimal-node img[df-imgsrc][src]:not([src=""]) { display: block; }
+.image-minimal-node:has(img[src]:not([src=""])) .image-placeholder { display: none; }
+.drawflow-node.image-minimal-node.selected { box-shadow: 0 0 0 3px var(--focus-shadow-color), var(--box-shadow-medium); border: 1px solid var(--primary-color); }
 
 
 /* --- Modales --- */
@@ -411,7 +345,6 @@ header h2 { margin: 0; line-height: 50px; font-size: 1.6em; font-weight: 700; co
 .modal-content-base button:hover:not(:disabled) { filter: brightness(110%); }
 .modal-content-base button:active:not(:disabled) { filter: brightness(95%); }
 .modal-content-base button:disabled { opacity: 0.6; cursor: not-allowed; }
-/* Botones específicos Modal Crear Nodo */
 #nodeDefinitionModal button.save-button { background-color: var(--success-color); color: white; }
 #nodeDefinitionModal button.save-button:hover:not(:disabled) { background-color: var(--success-dark-color); }
 #nodeDefinitionModal button.cancel-button { background-color: var(--danger-color); color: white; }
@@ -422,7 +355,7 @@ header h2 { margin: 0; line-height: 50px; font-size: 1.6em; font-weight: 700; co
 .code-editor-sidebar.visible { right: 0; }
 .code-editor-sidebar .sidebar-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; background-color: var(--background-header-footer-dark); border-bottom: 1px solid var(--border-dark-color); flex-shrink: 0; }
 .code-editor-sidebar .sidebar-header h3 { margin: 0; font-size: 1.15em; display: flex; align-items: center; gap: 10px; }
-.code-editor-sidebar .sidebar-header h3 i { font-size: 1.1em; } /* Icono título CM */
+.code-editor-sidebar .sidebar-header h3 i { font-size: 1.1em; }
 .code-editor-sidebar .sidebar-header button#close-code-sidebar-btn { background: none; border: none; color: #ccc; font-size: 1.4em; cursor: pointer; padding: 0 5px; line-height: 1; transition: color var(--transition-fast); }
 .code-editor-sidebar .sidebar-header button#close-code-sidebar-btn:hover { color: white; }
 #codemirror-container { flex-grow: 1; overflow: hidden; position: relative; }
@@ -488,260 +421,139 @@ header h2 { margin: 0; line-height: 50px; font-size: 1.6em; font-weight: 700; co
      .brush-control { padding: 0 5px; }
 }
 
-/* === END OF FILE beautiful.css === */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* === Custom Context Menu === */
-.custom-context-menu {
-  position: fixed; /* Use fixed para evitar problemas con scroll del contenedor Drawflow */
-  z-index: 10000;
-  background-color: var(--background-color);
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  box-shadow: var(--box-shadow-medium);
-  padding: 5px 0;
-  min-width: 200px;
-  font-size: var(--font-size-small);
-  color: var(--text-dark);
-}
-.custom-context-menu ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-.custom-context-menu ul li {
-  padding: 9px 15px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  white-space: nowrap;
-}
-.custom-context-menu ul li:hover {
-  background-color: var(--background-hover-light);
-  color: var(--primary-dark-color);
-}
-.custom-context-menu ul li i {
-  color: var(--text-medium);
-  width: 16px;
-  text-align: center;
-  font-size: 0.95em;
-}
-.custom-context-menu ul li:hover i {
-  color: var(--primary-dark-color);
-}
-.custom-context-menu hr {
-  border: none;
-  border-top: 1px solid var(--border-light-color);
-  margin: 5px 0;
-}
+.custom-context-menu { position: fixed; z-index: 10000; background-color: var(--background-color); border: 1px solid var(--border-color); border-radius: 4px; box-shadow: var(--box-shadow-medium); padding: 5px 0; min-width: 200px; font-size: var(--font-size-small); color: var(--text-dark); }
+.custom-context-menu ul { list-style: none; padding: 0; margin: 0; }
+.custom-context-menu ul li { padding: 9px 15px; cursor: pointer; display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+.custom-context-menu ul li:hover { background-color: var(--background-hover-light); color: var(--primary-dark-color); }
+.custom-context-menu ul li i { color: var(--text-medium); width: 16px; text-align: center; font-size: 0.95em; }
+.custom-context-menu ul li:hover i { color: var(--primary-dark-color); }
+.custom-context-menu hr { border: none; border-top: 1px solid var(--border-light-color); margin: 5px 0; }
 
 /* === Node Lock Indicator === */
-.drawflow-node .title-box .lock-indicator {
-  margin-left: auto; /* Pushes it to the far right of the title-box */
-  padding-left: 8px; /* Space from any element to its left */
-  font-size: 0.9em;  /* Slightly smaller than title text */
-  color: var(--text-medium);
-  opacity: 0.6;
-  display: inline-flex;
-  align-items: center;
-}
-.drawflow-node.selected .title-box .lock-indicator {
-  color: var(--primary-dark-color); /* Match selected node's icon color */
-  opacity: 0.8;
-}
-.drawflow-node .title-box .lock-indicator.locked {
-  color: var(--warning-color); /* Prominent color when locked */
-  opacity: 1;
-}
-.drawflow-node .title-box .lock-indicator i {
-  color: inherit !important; /* Make sure FontAwesome icon inherits color */
-}
+.drawflow-node .title-box .lock-indicator { margin-left: auto; padding-left: 8px; font-size: 0.9em; color: var(--text-medium); opacity: 0.6; display: inline-flex; align-items: center; }
+.drawflow-node.selected .title-box .lock-indicator { color: var(--primary-dark-color); opacity: 0.8; }
+.drawflow-node .title-box .lock-indicator.locked { color: var(--warning-color); opacity: 1; }
+.drawflow-node .title-box .lock-indicator i { color: inherit !important; }
 
+/* === Node Specific Styles === */
+.drawflow-node.green-selectable-node { background-color: #f0f0f0; border-color: #cccccc; width: 240px; }
+.drawflow-node.green-selectable-node .title-box { background-color: #e0e0e0; color: var(--text-dark); border-bottom-color: #bdbdbd; }
+.drawflow-node.green-selectable-node .title-box i { color: #689f38; }
+.drawflow .drawflow-node.green-selectable-node.selected { background-color: #c8e6c9; border-color: var(--success-color); }
+.drawflow .drawflow-node.green-selectable-node.selected .title-box { background-color: var(--success-color); color: var(--text-on-primary); border-bottom-color: var(--success-dark-color); }
+.drawflow .drawflow-node.green-selectable-node.selected .title-box i { color: var(--text-on-primary); }
 
+.drawflow-node.base-style-for-red-node { background-color: #f3e5f5; border-color: #ce93d8; width: 250px; }
+.drawflow-node.base-style-for-red-node .title-box { background-color: #ba68c8; color: var(--text-on-primary); border-bottom-color: #ab47bc; }
+.drawflow-node.base-style-for-red-node .title-box i { color: #f44336; }
+.drawflow .drawflow-node.light-red-selectable-node.selected { background-color: #ffcdd2; border-color: var(--danger-color); }
+.drawflow .drawflow-node.light-red-selectable-node.selected .title-box { background-color: var(--danger-color); color: var(--text-on-primary); border-bottom-color: var(--danger-dark-color); }
+.drawflow .drawflow-node.light-red-selectable-node.selected .title-box i { color: var(--text-on-primary); }
 
+/* === Node Resizer === */
+.drawflow-node .node-resizer { position: absolute; bottom: 5px; right: 5px; width: 18px; height: 18px; cursor: nwse-resize; display: flex; align-items: center; justify-content: center; z-index: 15; color: var(--text-light); transition: color 0.2s, opacity 0.2s; }
+.drawflow-node:hover .node-resizer, .drawflow-node.selected .node-resizer { color: var(--primary-color); }
+.drawflow-node .node-resizer i { font-size: 12px; }
+.drawflow-locked .drawflow-node .node-resizer { display: none !important; }
 
+.drawflow-node.node-fixed-size { width: 316px; }
+.drawflow-node.node-fixed-size .box { min-height: 250px; }
 
-
-
-
-
-/* === START OF FILE beautiful.css === */
-/* ... (tus estilos existentes) ... */
-
-/* --- Estilos Específicos Nodos --- */
-/* ... (otros estilos de nodos como text-node, concatenate-node, etc.) ... */
-
-/* Estilos base para el Nodo Selección Verde (cuando NO está seleccionado) */
-.drawflow-node.green-selectable-node {
-  background-color: #f0f0f0; /* Un gris claro por defecto, o el que prefieras */
-  border-color: #cccccc;
-  width: 240px; /* Ajusta el ancho según necesites */
+/* === Dotted Grid === */
+#drawflow.dotted-grid {
+  background-image: radial-gradient(circle, var(--background-grid) 1px, transparent 1px);
+  background-size: 20px 20px;
 }
 
-.drawflow-node.green-selectable-node .title-box {
-  background-color: #e0e0e0; /* Un gris un poco más oscuro para el título */
-  color: var(--text-dark);
-  border-bottom-color: #bdbdbd;
-}
-
-.drawflow-node.green-selectable-node .title-box i {
-  color: #689f38; /* Icono de hoja en un tono verde */
-}
-
-/* Estilos para el Nodo Selección Verde CUANDO ESTÁ SELECCIONADO */
-.drawflow .drawflow-node.green-selectable-node.selected {
-  /* Fondo del cuerpo del nodo: VERDE */
-  background-color: #c8e6c9; /* Un verde claro, ej: var(--success-light-color) */
-  
-  /* Borde del nodo: Un verde más oscuro o el primario de selección */
-  border-color: var(--success-color); /* O var(--primary-color) si prefieres el borde de selección azul */
-
-  /* La sombra de selección (difuminado azul) provendrá de la regla general:
-     .drawflow .drawflow-node.selected {
-         box-shadow: 0 0 0 3px var(--focus-shadow-color), var(--box-shadow-medium);
-     }
-     Si quieres que la SOMBRA también sea verde, deberás sobrescribir 'box-shadow' aquí:
-     box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.3), var(--box-shadow-medium);
-  */
-}
-
-/* Opcional: Cambiar el estilo del título cuando el nodo está seleccionado */
-.drawflow .drawflow-node.green-selectable-node.selected .title-box {
-  background-color: var(--success-color); /* Fondo del título en verde más oscuro */
-  color: var(--text-on-primary); /* Texto blanco para contraste */
-  border-bottom-color: var(--success-dark-color);
-}
-
-.drawflow .drawflow-node.green-selectable-node.selected .title-box i {
-  color: var(--text-on-primary); /* Icono también en blanco */
-}
-
-/* ... (resto de tus estilos) ... */
-/* === END OF FILE beautiful.css === */
 
 
 
 
 
 
-/* === START OF FILE beautiful.css === */
-/* ... (tus estilos existentes) ... */
-
-/* --- Estilos Específicos Nodos --- */
-/* ... (otros estilos de nodos) ... */
-
-/* Estilos base para el Nodo Selección Rojo Claro (cuando NO está seleccionado) */
-/* Usamos la clase 'base-style-for-red-node' que definimos en el JS */
-.drawflow-node.base-style-for-red-node {
-  background-color: #f3e5f5; /* Un lila muy claro por defecto, por ejemplo */
-  border-color: #ce93d8;
-  width: 250px; /* Ajusta el ancho según necesites */
-}
-
-.drawflow-node.base-style-for-red-node .title-box {
-  background-color: #ba68c8; /* Un lila más oscuro para el título */
-  color: var(--text-on-primary);
-  border-bottom-color: #ab47bc;
-}
-
-.drawflow-node.base-style-for-red-node .title-box i {
-  color: #f44336; /* Icono de fuego en rojo */
-}
-
-/* Estilos para el Nodo Selección Rojo Claro CUANDO ESTÁ SELECCIONADO */
-/* Usamos la clase 'light-red-selectable-node' */
-.drawflow .drawflow-node.light-red-selectable-node.selected {
-  /* Fondo del cuerpo del nodo: ROJO CLARO */
-  background-color: #ffcdd2; /* Un rojo claro, ej: var(--danger-light-color) */
-  
-  /* Borde del nodo: Un rojo más oscuro o el primario de selección */
-  border-color: var(--danger-color); /* O var(--primary-color) si prefieres el borde de selección azul */
-
-  /*
-     Nota sobre la sombra de selección:
-     Por defecto, heredará la sombra azul de la regla general .drawflow .drawflow-node.selected.
-     Si quieres que la SOMBRA también sea roja, puedes DESCOMENTAR la siguiente línea 
-     y ajustar el color (rgba(239, 83, 80, 0.3) es un ejemplo de rojo semitransparente).
-  */
-  /* box-shadow: 0 0 0 3px rgba(239, 83, 80, 0.3), var(--box-shadow-medium); */
-}
-
-/* Opcional: Cambiar el estilo del título cuando el nodo está seleccionado */
-.drawflow .drawflow-node.light-red-selectable-node.selected .title-box {
-  background-color: var(--danger-color); /* Fondo del título en rojo más oscuro */
-  color: var(--text-on-primary); /* Texto blanco para contraste */
-  border-bottom-color: var(--danger-dark-color); /* ej. #c62828 */
-}
-
-.drawflow .drawflow-node.light-red-selectable-node.selected .title-box i {
-  color: var(--text-on-primary); /* Icono también en blanco */
-}
-
-/* ... (resto de tus estilos) ... */
-/* === END OF FILE beautiful.css === */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* En beautiful.css */
-.drawflow-node .node-resizer {
-  position: absolute;
-  bottom: 5px;
-  right: 5px;
-  width: 18px; /* Ajusta tamaño */
-  height: 18px; /* Ajusta tamaño */
-  /* background-color: rgba(0,0,0,0.1); */ /* Opcional: un fondo sutil */
-  cursor: nwse-resize; /* Cursor para redimensionar desde esquina inferior derecha */
+/* === CSS additions for YouTube Minimal Node (Place near .image-minimal-node styles) === */
+.drawflow-node.youtube-minimal-node {
+  padding: 0 !important;
+  border: 2px dashed #cccccc;
+  background-color: #f8f8f8;
+  box-shadow: none;
+  overflow: hidden;
+  min-width: 160px; /* Default wider for video */
+  min-height: 90px; /* Default taller for video aspect ratio */
+  width: 320px;  /* Default width */
+  height: 180px; /* Default height (16:9 for 320px width) */
+  transition: width 0.1s ease-out, height 0.1s ease-out, box-shadow 0.2s, border-color 0.2s, background-color 0.2s;
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 15; /* Por encima del contenido del nodo pero debajo de los puertos si se superponen */
-  color: var(--text-light);
-  /* opacity: 0.5; */ /* Mostrarlo más sutilmente hasta el hover */
-  transition: color 0.2s, opacity 0.2s;
 }
 
-.drawflow-node:hover .node-resizer,
-.drawflow-node.selected .node-resizer {
-  /* opacity: 1; */
-  color: var(--primary-color);
+.drawflow-node.youtube-minimal-node:has(iframe[src*="youtube.com/embed/"]) { /* If iframe has a youtube embed src */
+  border: none;
+  background-color: transparent; /* Or #000 for video players */
+  box-shadow: var(--box-shadow-light);
 }
 
-.drawflow-node .node-resizer i {
-  font-size: 12px; /* Ajusta tamaño del icono */
+.youtube-minimal-node .youtube-minimal-content {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-/* Opcional: Ocultar el resizer si el editor general está bloqueado */
-.drawflow-locked .drawflow-node .node-resizer {
-  display: none !important;
+.youtube-minimal-node .youtube-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #aaaaaa;
+  font-size: 11px;
+  text-align: center;
+  cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+  padding: 5px;
+  width: 100%;
+  height: 100%;
+}
+
+.youtube-minimal-node .youtube-placeholder i {
+  font-size: 2em; /* Larger icon for YouTube */
+  margin-bottom: 8px;
+  color: #ff0000; /* YouTube red */
+}
+
+.youtube-minimal-node .youtube-placeholder:hover {
+  color: #888888;
+}
+.youtube-minimal-node .youtube-placeholder:hover i {
+  color: #cc0000;
+}
+
+/* Hide placeholder when video is loaded */
+.youtube-minimal-node:has(iframe[src*="youtube.com/embed/"]) .youtube-placeholder {
+  display: none;
+}
+
+/* Style for the iframe itself */
+.youtube-minimal-node iframe[df-youtubeiframe] {
+  display: none; /* Hidden by default */
+  width: 100%;
+  height: 100%;
+  border: none; /* Remove iframe border */
+}
+
+/* Show iframe when it has a valid YouTube embed source */
+.youtube-minimal-node iframe[df-youtubeiframe][src*="youtube.com/embed/"] {
+  display: block;
+}
+
+.drawflow-node.youtube-minimal-node.selected {
+  box-shadow: 0 0 0 3px var(--focus-shadow-color), var(--box-shadow-medium);
+  border: 1px solid var(--primary-color);
 }
 
 
@@ -756,9 +568,15 @@ header h2 { margin: 0; line-height: 50px; font-size: 1.6em; font-weight: 700; co
 
 
 
-.drawflow-node.node-fixed-size {
-  width: 316px; /* Ancho del canvas + padding del nodo + bordes */
-}
-.drawflow-node.node-fixed-size .box {
-  min-height: 250px; /* Altura del canvas */
-}
+
+
+
+
+
+
+
+
+
+
+
+/* === END OF FILE beautiful.css === */

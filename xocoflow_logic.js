@@ -304,7 +304,7 @@ function startNodeResize(event, nodeId, resizerElement) {
 function duringNodeResize(event) {
     if (!isResizingNode || !resizingNodeInfo.id) return;
     event.preventDefault();
-    
+
     const nodeElement = document.getElementById(`node-${resizingNodeInfo.id}`);
     if (!nodeElement) return;
 
@@ -315,30 +315,41 @@ function duringNodeResize(event) {
     let newContainerWidth = resizingNodeInfo.initialNodeWidth + deltaX;
     let newContainerHeight = resizingNodeInfo.initialNodeHeight + deltaY;
 
-    const minContainerWidth = 100; 
-    const minContainerHeight = 80; // Un mínimo para el contenedor del nodo
+    // --- START: Determine Minimum Dimensions based on Node Type ---
+    let minContainerWidth = 100;  // Default minimum width for most nodes
+    let minContainerHeight = 80; // Default minimum height for most nodes
+
+    if (nodeElement.classList.contains('image-minimal-node')) {
+        minContainerWidth = 60; // Smaller min width for image minimal
+        minContainerHeight = 40; // Smaller min height for image minimal
+    } else if (nodeElement.classList.contains('youtube-minimal-node')) {
+        minContainerWidth = 120; // Wider min width for YouTube (e.g., for small player controls)
+        minContainerHeight = 67;  // Taller min height (16:9 aspect for 120px width)
+    }
+    // --- END: Determine Minimum Dimensions ---
+
     if (newContainerWidth < minContainerWidth) newContainerWidth = minContainerWidth;
     if (newContainerHeight < minContainerHeight) newContainerHeight = minContainerHeight;
 
     nodeElement.style.width = `${newContainerWidth}px`;
-    nodeElement.style.height = `${newContainerHeight}px`; // Redimensiona el nodo completo
+    nodeElement.style.height = `${newContainerHeight}px`;
 
-    // --- INICIO: Lógica para redimensionar Textarea ---
+    // --- Logic for redimensionar Textarea (if present) ---
     const boxElement = nodeElement.querySelector('.box');
+    // Prioritize textareas with df-* common attributes, then any textarea.
     const targetTextarea = boxElement ? boxElement.querySelector('textarea[df-content], textarea[df-notecontent], textarea[df-jscode], textarea[df-codecontent], textarea[df-mytext], textarea[df-original], textarea[df-lastInput], textarea[df-result], textarea[df-template], textarea') : null;
-    // Prioriza textareas con atributos df-* comunes, luego cualquier textarea.
 
     if (targetTextarea && boxElement) {
-        // Calcular la altura disponible para el textarea dentro del .box
-        // Esto es una aproximación y puede necesitar ajustes según tu padding, márgenes, y otros elementos en .box
-        
         const titleBoxHeight = nodeElement.querySelector('.title-box')?.offsetHeight || 35;
         const boxPaddingTop = parseFloat(getComputedStyle(boxElement).paddingTop) || 0;
         const boxPaddingBottom = parseFloat(getComputedStyle(boxElement).paddingBottom) || 0;
-        const resizerHeight = nodeElement.querySelector('.node-resizer')?.offsetHeight || 0;
-        
+        const resizerElement = nodeElement.querySelector('.node-resizer');
+        const resizerHeight = resizerElement ? resizerElement.offsetHeight : 0;
+        // Only consider resizer height if it's actually part of the .box flow or visually overlaps
+        // For now, assume resizer is outside .box or its height is negligible for textarea calculation
+        // A small buffer might be added if resizer is visually at the bottom of the box.
+
         let otherElementsHeightInBox = 0;
-        // Sumar la altura de otros elementos DENTRO del .box que NO sean el targetTextarea
         Array.from(boxElement.children).forEach(child => {
             if (child !== targetTextarea && getComputedStyle(child).display !== 'none') {
                 const style = getComputedStyle(child);
@@ -347,20 +358,42 @@ function duringNodeResize(event) {
                 otherElementsHeightInBox += parseFloat(style.marginBottom) || 0;
             }
         });
-        
-        // Altura disponible para el textarea
-        let availableHeightForTextarea = newContainerHeight - titleBoxHeight - boxPaddingTop - boxPaddingBottom - otherElementsHeightInBox - (resizerHeight > 0 ? 5 : 0) /* un pequeño margen si el resizer está visible y abajo */;
 
-        const minTextareaHeight = 30; // Mínima altura para el textarea
+        let availableHeightForTextarea = newContainerHeight - titleBoxHeight - boxPaddingTop - boxPaddingBottom - otherElementsHeightInBox;
+        // If resizer is visually inside the box and at the bottom, subtract its height too.
+        // For now, this simple calculation. Add a small margin if needed.
+        // availableHeightForTextarea -= (resizerHeight > 0 ? 5 : 0);
+
+
+        const minTextareaHeight = 30;
         if (availableHeightForTextarea < minTextareaHeight) {
             availableHeightForTextarea = minTextareaHeight;
         }
-        
+
         targetTextarea.style.height = `${availableHeightForTextarea}px`;
-        // targetTextarea.style.width = '100%'; // Asegurar que el ancho sea 100% del .box
-        // console.log(`Resizing textarea in node ${resizingNodeInfo.id} to height: ${availableHeightForTextarea}px`);
+        // targetTextarea.style.width = '100%'; // Usually handled by CSS already
     }
-    // --- FIN: Lógica para redimensionar Textarea ---
+    // --- END: Lógica para redimensionar Textarea ---
+
+
+    // --- START: Specific logic for Image and YouTube Minimal Nodes ---
+    // These nodes don't have a '.box', their content (img/iframe) is directly inside
+    if (nodeElement.classList.contains('image-minimal-node')) {
+        const imgTag = nodeElement.querySelector('img[df-imgsrc]');
+        if (imgTag) {
+            // The img tag has object-fit: contain and width/height 100% by CSS,
+            // so it should scale correctly within the resized nodeElement.
+            // No specific JS style changes needed here for the img itself during resize.
+        }
+    } else if (nodeElement.classList.contains('youtube-minimal-node')) {
+        const iframeTag = nodeElement.querySelector('iframe[df-youtubeiframe]');
+        if (iframeTag) {
+            // The iframe has width/height 100% by CSS/HTML attributes,
+            // so it should scale correctly within the resized nodeElement.
+            // No specific JS style changes needed here for the iframe itself during resize.
+        }
+    }
+    // --- END: Specific logic for Image and YouTube Minimal Nodes ---
 
     editor.updateConnectionNodes(`node-${resizingNodeInfo.id}`);
 }
@@ -462,6 +495,62 @@ const baseNodeDefinitions = {
         cssClass: 'auto-replace-node resizable-node-class',
         data: { find: '', replace: '', lastInput: '', result: '', nodeWidth: '260px', nodeHeight: 'auto' }
     },
+
+
+// Inside baseNodeDefinitions object
+'youtube_minimal': {
+    name: 'youtube_minimal',
+    inputs: 0,
+    outputs: 0,
+    html: `
+        <div class="youtube-minimal-content" role="application" aria-label="Reproductor de YouTube">
+            <div class="youtube-placeholder" title="Haz clic o pega un enlace de YouTube aquí">
+                <i class="fab fa-youtube"></i> <!-- FontAwesome YouTube icon -->
+                <span>Cargar Video YouTube</span>
+            </div>
+            <iframe df-youtubeiframe
+                    width="100%"
+                    height="100%"
+                    src=""
+                    frameborder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    referrerpolicy="strict-origin-when-cross-origin"
+                    allowfullscreen
+                    style="display: none;">
+            </iframe>
+            <div class="node-resizer" title="Redimensionar Video"><i class="fas fa-expand-alt"></i></div>
+        </div>`,
+    cssClass: 'youtube-minimal-node resizable-node-class',
+    data: {
+        videoid: '',      // Stores the 11-character YouTube video ID
+        nodeWidth: '320px', // Default width
+        nodeHeight: '180px' // Default height (16:9 aspect ratio for 320px width)
+    }
+},
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     'hybrid_text_replace': { name: 'hybrid_text_replace', inputs: 1, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-edit"></i> Reemplazo Híbrido</div> <div class="box"> <label>Texto Original (Prioriza Input 1 si está conectado):</label> <textarea df-original style="height: 60px;" placeholder="Escribe aquí o conecta Input 1..."></textarea> <input type="hidden" df-lastInput> <label>Buscar:</label> <input type="text" df-find placeholder="Texto a buscar"> <label>Reemplazar con:</label> <input type="text" df-replace placeholder="Nuevo texto"> <button type="button" onclick="executeHybridReplace(event)" style="width: 100%; margin-top: 10px; padding: 8px; background-color: #FF9800; color: white; border: none; border-radius: 4px; cursor: pointer;"> <i class="fas fa-check"></i> Aplicar Reemplazo Manualmente </button> <div style="margin-top:10px;"> <label>Resultado:</label> <textarea df-result readonly style="height: 60px; width: 100%; background-color: var(--background-readonly);"></textarea> </div> </div> <div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div> </div>`, cssClass: 'hybrid-replace-node resizable-node-class', data: { original: '', find: '', replace: '', lastInput: null, result: '', nodeWidth: '260px', nodeHeight: 'auto' } },
     'nodo_seleccion_verde': { name: 'nodo_seleccion_verde', title: 'Nodo Selección Verde', inputs: 1, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-leaf"></i> Selección Verde</div> <div class="box"> <p style="text-align: center; padding: 10px 0;"> Este nodo se pone verde<br>cuando lo seleccionas. </p> <input type="text" df-sampledata placeholder="Dato de ejemplo..."> </div> <div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div></div>`, cssClass: 'green-selectable-node resizable-node-class', data: { sampledata: '', nodeWidth: '240px', nodeHeight: 'auto' } },
     'nodo_seleccion_rojo_claro': { name: 'nodo_seleccion_rojo_claro', title: 'Nodo Selección Rojo Claro', inputs: 1, outputs: 0, html: `<div> <div class="title-box"><i class="fas fa-fire-alt"></i> Selección Rojo Claro</div> <div class="box"> <p style="text-align: center; padding: 10px 0;"> Este nodo se pone rojo claro<br>cuando lo seleccionas. </p> <input type="number" df-priority placeholder="Prioridad (ej: 1-5)"> </div> <div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div></div>`, cssClass: 'light-red-selectable-node base-style-for-red-node resizable-node-class', data: { priority: null, nodeWidth: '250px', nodeHeight: 'auto' } },
@@ -811,7 +900,163 @@ function executeTextReplace(nodeId, inputTextValue) { // Cambiado nombre de vari
 
 
 
+// Add these functions somewhere in your xocoflow_logic.js, e.g., near image_minimal functions
 
+/**
+ * Extracts YouTube video ID from various URL formats.
+ * @param {string} url The YouTube URL.
+ * @returns {string|null} The 11-character video ID or null.
+ */
+function extractYouTubeID(url) {
+    if (!url || typeof url !== 'string') return null;
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+    const match = url.match(regExp);
+    if (match && match[2].length === 11) {
+        return match[2];
+    }
+    // Check if the input itself is an 11-char ID
+    if (url.length === 11 && /^[a-zA-Z0-9_-]+$/.test(url)) {
+        return url;
+    }
+    return null;
+}
+
+/**
+ * Processes a YouTube link, updates the node, and displays the video.
+ * @param {string} nodeId The ID of the YouTube minimal node.
+ * @param {string} linkOrId The YouTube link or video ID.
+ */
+function processYouTubeLink(nodeId, linkOrId) {
+    if (!editor || !nodeId || !linkOrId) return;
+
+    // console.log(`Processing YouTube link for node ${nodeId}: "${linkOrId}"`);
+    const nodeElement = document.getElementById(`node-${nodeId}`);
+    const iframe = nodeElement?.querySelector('iframe[df-youtubeiframe]');
+    const placeholder = nodeElement?.querySelector('.youtube-placeholder');
+
+    if (!nodeElement || !iframe || !placeholder) {
+        console.error(`YouTube Minimal Node elements not found for ID ${nodeId}.`);
+        showToast('error', 'Error Interno', 'No se encontraron elementos del nodo video.');
+        return;
+    }
+
+    const videoID = extractYouTubeID(linkOrId);
+
+    if (videoID) {
+        // console.log(`Valid YouTube ID extracted: ${videoID}`);
+        const embedUrl = `https://www.youtube.com/embed/${videoID}`;
+        const currentNodeData = editor.getNodeFromId(nodeId).data;
+
+        editor.updateNodeDataFromId(nodeId, {
+            videoid: videoID,
+            // Preserve existing dimensions or use defaults if not set
+            nodeWidth: currentNodeData.nodeWidth || '320px',
+            nodeHeight: currentNodeData.nodeHeight || '180px'
+        });
+
+        iframe.src = embedUrl;
+        // Styles will be handled by CSS :has selector initially
+        // and by explicit sizing on load/resize
+
+        // Apply node dimensions from data
+        const newWidth = currentNodeData.nodeWidth || '320px';
+        const newHeight = currentNodeData.nodeHeight || '180px';
+        nodeElement.style.width = newWidth;
+        nodeElement.style.height = newHeight;
+        // iframe.style.width = '100%'; // Already set in HTML
+        // iframe.style.height = '100%'; // Already set in HTML
+
+
+        // Ensure CSS class reflects loaded state (though :has should do this)
+        // setTimeout is a bit of a hack to ensure DOM has updated with new src for :has
+        setTimeout(() => {
+            if (!nodeElement.style.border.includes('dashed')) {
+                 nodeElement.style.border = 'none'; // Redundant if :has works perfectly
+            }
+            editor.updateConnectionNodes(`node-${nodeId}`);
+        }, 50);
+
+        saveHistoryState();
+        showToast('success', 'Video Cargado', `ID: ${videoID}`);
+    } else {
+        // console.log(`Invalid YouTube link or ID: "${linkOrId}"`);
+        editor.updateNodeDataFromId(nodeId, { videoid: '' }); // Clear ID
+        iframe.src = ''; // Clear iframe src to hide it via CSS
+        // nodeElement.style.border = '2px dashed #cccccc'; // Re-apply dashed border if needed
+
+        // Reset to default size if no video
+        const defaultNodeData = baseNodeDefinitions['youtube_minimal'].data;
+        nodeElement.style.width = defaultNodeData.nodeWidth;
+        nodeElement.style.height = defaultNodeData.nodeHeight;
+
+        editor.updateConnectionNodes(`node-${nodeId}`);
+        saveHistoryState();
+        showToast('warning', 'Enlace Inválido', 'No se pudo encontrar un ID de video de YouTube.');
+    }
+}
+
+/**
+ * Prompts the user for a YouTube link.
+ * @param {string} nodeId The ID of the YouTube minimal node.
+ */
+async function promptForYouTubeLink(nodeId) {
+    if (!editor) return;
+    try {
+        const { value: url } = await Swal.fire({
+            title: 'Enlace de YouTube',
+            input: 'url',
+            inputLabel: 'Pega el enlace del video de YouTube o el ID del video',
+            inputPlaceholder: 'https://www.youtube.com/watch?v=VIDEO_ID',
+            showCancelButton: true,
+            confirmButtonText: 'Cargar Video',
+            cancelButtonText: 'Cancelar',
+            inputValidator: (value) => {
+                if (!value) {
+                    return '¡Necesitas ingresar un enlace o ID!';
+                }
+            }
+        });
+
+        if (url) {
+            processYouTubeLink(nodeId, url);
+        }
+    } catch (e) {
+        console.error("Error in YouTube link prompt:", e);
+    }
+}
+
+/**
+ * Handles paste event on the YouTube minimal node.
+ * @param {ClipboardEvent} event
+ * @param {string} nodeId The ID of the YouTube minimal node.
+ */
+function handleYouTubeMinimalPaste(event, nodeId) {
+    if (!editor) return;
+    const pastedText = (event.clipboardData || window.clipboardData)?.getData('text');
+    if (pastedText) {
+        event.preventDefault();
+        processYouTubeLink(nodeId, pastedText);
+    }
+}
+
+/**
+ * Sets up specific event listeners for a newly added YouTube minimal node.
+ * @param {string} nodeId The ID of the node.
+ */
+function setupYouTubeMinimalNodeListeners(nodeId) {
+    const nodeElement = document.getElementById(`node-${nodeId}`);
+    const placeholder = nodeElement?.querySelector('.youtube-placeholder');
+
+    if (!nodeElement || !placeholder) {
+        console.warn(`Could not find elements for YouTube minimal node ${nodeId} to attach listeners.`);
+        return;
+    }
+    // console.log(`Attaching listeners to YouTube minimal node ${nodeId}`);
+
+    placeholder.onclick = () => promptForYouTubeLink(nodeId);
+    nodeElement.addEventListener('paste', (e) => handleYouTubeMinimalPaste(e, nodeId));
+    // Drag/drop for URLs is less common than for files, so skipping for now for "minimal"
+}
 
 
 
@@ -2756,187 +3001,215 @@ function triggerLoad() { if (fileInputElement) fileInputElement.click(); else sh
  * @param {Event} event - El evento 'change' del input de tipo 'file'.
  */
 function loadProjectFromFile(event) {
-  // console.log(">>> loadProjectFromFile FUNCTION CALLED <<<");
-  const fileInput = event.target; 
-  const file = fileInput?.files?.[0];
-
-  if (!file) {
-      if(fileInput) fileInput.value = null; 
-      return;
+    // console.log(">>> loadProjectFromFile FUNCTION CALLED <<<");
+    const fileInput = event.target;
+    const file = fileInput?.files?.[0];
+  
+    if (!file) {
+        if(fileInput) fileInput.value = null;
+        return;
+    }
+  
+    const expectedProjectName = file.name.replace(/\.json$/i, "");
+    // console.log(`Intentando cargar archivo: ${file.name}`);
+    const reader = new FileReader();
+  
+    reader.onload = (e) => {
+        let projectData;
+        const fileContent = e.target.result;
+  
+        try {
+            try {
+                projectData = JSON.parse(fileContent);
+            } catch (parseError) { showToast('error', 'Error de Parseo', 'El archivo JSON no es válido.'); if (fileInput) fileInput.value = null; return; }
+  
+            if (!projectData?.drawflow) { showToast('error', 'Formato Inválido', 'El archivo no parece un proyecto Xocoflow válido.'); if (fileInput) fileInput.value = null; return;}
+  
+            // console.log("JSON parseado, procesando nodos personalizados...");
+            try {
+                const customDefsFromFile = projectData.customNodeDefinitions;
+                if (customDefsFromFile && typeof customDefsFromFile === 'object') {
+                    saveCustomNodeTypes(customDefsFromFile);
+                    customNodeTypes = { ...baseNodeDefinitions, ...customDefsFromFile };
+                } else {
+                    customNodeTypes = { ...baseNodeDefinitions, ...getStoredCustomNodeTypes() };
+                }
+                loadCustomNodesToSidebar();
+            } catch (nodeError) { console.warn("Error procesando definiciones de nodos personalizados:", nodeError); showToast('warning', 'Advertencia Nodos', 'Problema al cargar algunas definiciones de nodos personalizados.');}
+  
+  
+            // console.log("Importando datos en Drawflow...");
+            const currentModuleBeforeImport = editor.module;
+            try {
+                cleanupAllModuleIntervals();
+                editor.import(projectData);
+  
+                // console.log("Sincronizando UI de nodos con datos importados...");
+                const targetModule = editor.module || currentModuleBeforeImport;
+                const drawflowExportAfterImport = editor.export();
+                const currentModuleNodes = drawflowExportAfterImport?.drawflow?.[targetModule]?.data;
+  
+                if (currentModuleNodes) {
+                    Object.keys(currentModuleNodes).forEach(nodeId => {
+                        const node = currentModuleNodes[nodeId];
+                        const nodeData = node.data || {};
+                        const nodeElement = document.getElementById(`node-${nodeId}`);
+                        const nodeName = node.name;
+  
+                        if (nodeElement) {
+                            // General data-binding for df-* attributes
+                            Object.keys(nodeData).forEach(dataKey => {
+                                if (['naturalWidth', 'naturalHeight'].includes(dataKey) && (nodeName === 'image_minimal' || nodeName === 'youtube_minimal')) return; // Handled by specific logic
+                                if (['lastInput', 'lastInputs', 'selector_received'].includes(dataKey)) return; // Internal state
+  
+                                const inputElement = nodeElement.querySelector(`[df-${dataKey}]`);
+                                if (inputElement) {
+                                    const value = nodeData[dataKey];
+                                    if (inputElement.tagName === 'TEXTAREA' || (inputElement.tagName === 'INPUT' && ['text', 'number', 'url', 'email', 'password', 'range', 'date', 'time', 'color'].includes(inputElement.type))) {
+                                        inputElement.value = value ?? '';
+                                        if (inputElement.type === 'range' && inputElement.nextElementSibling?.hasAttribute('df-rangeval')) {
+                                             inputElement.nextElementSibling.textContent = value ?? '0';
+                                        }
+                                    } else if (inputElement.tagName === 'SELECT'){
+                                        inputElement.value = value ?? '';
+                                        if (dataKey === 'notecolor' && nodeName === 'nota') {
+                                            const changeEvent = new Event('change', { bubbles: true });
+                                            inputElement.dispatchEvent(changeEvent);
+                                        }
+                                    } else if (inputElement.tagName === 'IMG' && dataKey === 'imgsrc' && nodeName !== 'image_minimal' && nodeName !== 'youtube_minimal') { // Exclude minimal nodes
+                                        inputElement.src = value ?? '';
+                                        inputElement.style.display = value ? 'block' : 'none';
+                                        const placeholder = nodeElement.querySelector('.placeholder-text'); // General placeholder
+                                        if(placeholder) placeholder.style.display = value ? 'none' : (placeholder.classList.contains('youtube-placeholder') ? 'flex' : 'block');
+                                    } else if (inputElement.tagName === 'SPAN' && dataKey === 'filename'){
+                                        inputElement.textContent = value ?? '';
+                                        inputElement.title = value ?? '';
+                                    } else if (inputElement.hasAttribute('df-charcount')  && nodeName === 'nota') {
+                                        inputElement.textContent = nodeElement.querySelector('[df-notecontent]')?.value?.length || '0';
+                                    }
+                                }
+                            });
+  
+                            // Apply saved dimensions first
+                            if (nodeData.nodeWidth) nodeElement.style.width = nodeData.nodeWidth;
+                            if (nodeData.nodeHeight) nodeElement.style.height = nodeData.nodeHeight;
+  
+                            const resizer = nodeElement.querySelector('.node-resizer');
+                            if (resizer) {
+                              resizer.removeEventListener('mousedown', startNodeResize); // Prevent duplicates
+                              resizer.addEventListener('mousedown', (e) => startNodeResize(e, nodeId, resizer));
+                            }
+  
+                            // Node-specific UI restoration
+                            if (nodeName === 'nota' && nodeData.notecolor) {
+                                nodeElement.style.backgroundColor = nodeData.notecolor;
+                                const tb = nodeElement.querySelector('.title-box');
+                                if(tb) {
+                                    const darkBgs = ['#ccccff', '#e0e0e0'];
+                                    tb.style.backgroundColor = darkBgs.includes(nodeData.notecolor) ? '#f0f0f0' : '';
+                                    tb.style.color = darkBgs.includes(nodeData.notecolor) ? '#333' : '';
+                                }
+                            }
+                            else if (nodeName === 'local_image') {
+                                const imgTag = nodeElement.querySelector('img[df-imagesrc]');
+                                if (imgTag){
+                                    if(nodeData.imagewidth) imgTag.style.width = nodeData.imagewidth;
+                                    if(nodeData.imageheight) imgTag.style.height = nodeData.imageheight;
+                                    imgTag.src = nodeData.imagesrc ?? '';
+                                    imgTag.style.display = nodeData.imagesrc ? 'block' : 'none';
+                                    const placeholder = nodeElement.querySelector('.placeholder-text');
+                                     if(placeholder) placeholder.style.display = nodeData.imagesrc ? 'none' : 'block';
+                                }
+                            }
+                            else if (nodeName === 'image_minimal') {
+                                const imgTag = nodeElement.querySelector('img[df-imgsrc]');
+                                const placeholder = nodeElement.querySelector('.image-placeholder');
+                                if (imgTag && placeholder) {
+                                    const hasValidImage = nodeData.imgsrc && nodeData.naturalWidth > 0 && nodeData.naturalHeight > 0;
+                                    if (hasValidImage) {
+                                        imgTag.src = nodeData.imgsrc;
+                                        imgTag.style.display = 'block';
+                                        placeholder.style.display = 'none';
+                                        // Apply saved dimensions, or dimensions from naturalWidth/Height if nodeWidth/Height weren't explicitly saved
+                                        nodeElement.style.width = nodeData.nodeWidth || `${nodeData.naturalWidth}px`;
+                                        nodeElement.style.height = nodeData.nodeHeight || `${nodeData.naturalHeight}px`;
+                                        nodeElement.style.border = 'none';
+                                    } else {
+                                        imgTag.src = '';
+                                        imgTag.style.display = 'none';
+                                        placeholder.style.display = 'flex';
+                                        // Apply saved dimensions, or default if not saved
+                                        nodeElement.style.width = nodeData.nodeWidth || baseNodeDefinitions['image_minimal'].data.nodeWidth;
+                                        nodeElement.style.height = nodeData.nodeHeight || baseNodeDefinitions['image_minimal'].data.nodeHeight;
+                                        nodeElement.style.border = '2px dashed #cccccc';
+                                    }
+                                    setTimeout(() => setupMinimalImageNodeListeners(nodeId), 50);
+                                    setTimeout(() => editor.updateConnectionNodes(`node-${nodeId}`), 100);
+                                }
+                            }
+                            // START: ADDED/MODIFIED BLOCK FOR YOUTUBE_MINIMAL
+                            else if (nodeName === 'youtube_minimal') {
+                                const iframe = nodeElement.querySelector('iframe[df-youtubeiframe]');
+                                const placeholder = nodeElement.querySelector('.youtube-placeholder');
+                                if (iframe && placeholder) {
+                                    if (nodeData.videoid) {
+                                        iframe.src = `https://www.youtube.com/embed/${nodeData.videoid}`;
+                                        // iframe.style.display = 'block'; // CSS :has should handle this
+                                        // placeholder.style.display = 'none'; // CSS :has should handle this
+                                        nodeElement.style.border = 'none'; // Remove dashed border if video is present
+                                    } else {
+                                        iframe.src = ''; // Clear src to hide iframe
+                                        // iframe.style.display = 'none';
+                                        // placeholder.style.display = 'flex';
+                                        nodeElement.style.border = '2px dashed #cccccc'; // Show dashed border if no video
+                                    }
+                                    // Apply saved dimensions, or default if not saved
+                                    nodeElement.style.width = nodeData.nodeWidth || baseNodeDefinitions['youtube_minimal'].data.nodeWidth;
+                                    nodeElement.style.height = nodeData.nodeHeight || baseNodeDefinitions['youtube_minimal'].data.nodeHeight;
+                                }
+                                setTimeout(() => setupYouTubeMinimalNodeListeners(nodeId), 50);
+                                setTimeout(() => editor.updateConnectionNodes(`node-${nodeId}`), 100);
+                            }
+                            // END: ADDED/MODIFIED BLOCK FOR YOUTUBE_MINIMAL
+  
+                            // Movement lock state restoration
+                            if (nodeData.hasOwnProperty('isMovementLocked')) {
+                                  updateNodeVisualLockState(nodeId, nodeData.isMovementLocked);
+                            } else {
+                                  editor.updateNodeDataFromId(nodeId, { ...nodeData, isMovementLocked: false }); // Add if missing
+                                  updateNodeVisualLockState(nodeId, false);
+                            }
+                        }
+                    });
+                }
+                // console.log("Post-import UI synchronization completed.");
+  
+            } catch (importError) { console.error("Error durante la importación:", importError); showToast('error', 'Error de Importación', 'No se pudo importar el proyecto.'); if (fileInput) fileInput.value = null; return; }
+  
+            // console.log("Importación completada. Actualizando estado de la aplicación.");
+            currentProjectName = expectedProjectName;
+            renderModuleTabs();
+            initializeHistory();
+            selectedNodeId = null;
+            copiedNodeData = null;
+            currentlyEditingNodeId = null;
+            updateUIDisabledStates();
+            closeCodeEditorSidebar(false);
+            document.title = `Xocoflow | ${currentProjectName} - ${editor.module}`;
+            saveHistoryState(true);
+            activateExistingAutoNodes();
+            showToast('success', 'Proyecto Cargado', `"${escapeHtml(currentProjectName)}" cargado.`);
+  
+        } catch (err) { console.error("Error en reader.onload:", err); showToast('error', 'Error de Archivo', 'No se pudo leer el archivo del proyecto.'); }
+        finally {
+            if (fileInput) fileInput.value = null;
+        }
+    };
+  
+    reader.onerror = (e) => { showToast('error', 'Error de Lectura', 'No se pudo leer el archivo.'); if (fileInput) fileInput.value = null;};
+  
+    reader.readAsText(file);
   }
-
-  const expectedProjectName = file.name.replace(/\.json$/i, "");
-  // console.log(`Intentando cargar archivo: ${file.name}`);
-  const reader = new FileReader();
-
-  reader.onload = (e) => {
-      let projectData;
-      const fileContent = e.target.result;
-
-      try {
-          try {
-              projectData = JSON.parse(fileContent);
-          } catch (parseError) { showToast('error', 'Error de Parseo', 'El archivo JSON no es válido.'); if (fileInput) fileInput.value = null; return; }
-
-          if (!projectData?.drawflow) { showToast('error', 'Formato Inválido', 'El archivo no parece un proyecto Xocoflow válido.'); if (fileInput) fileInput.value = null; return;}
-
-          // console.log("JSON parseado, procesando nodos personalizados...");
-          try {
-              const customDefsFromFile = projectData.customNodeDefinitions;
-              if (customDefsFromFile && typeof customDefsFromFile === 'object') {
-                  saveCustomNodeTypes(customDefsFromFile); 
-                  customNodeTypes = { ...baseNodeDefinitions, ...customDefsFromFile };
-              } else {
-                  customNodeTypes = { ...baseNodeDefinitions, ...getStoredCustomNodeTypes() };
-              }
-              loadCustomNodesToSidebar(); 
-          } catch (nodeError) { console.warn("Error procesando definiciones de nodos personalizados:", nodeError); showToast('warning', 'Advertencia Nodos', 'Problema al cargar algunas definiciones de nodos personalizados.');}
-
-
-          // console.log("Importando datos en Drawflow...");
-          const currentModuleBeforeImport = editor.module;
-          try {
-              cleanupAllModuleIntervals(); 
-              editor.import(projectData); 
-
-              // console.log("Sincronizando UI de nodos con datos importados...");
-              const targetModule = editor.module || currentModuleBeforeImport; 
-              const drawflowExportAfterImport = editor.export(); 
-              const currentModuleNodes = drawflowExportAfterImport?.drawflow?.[targetModule]?.data;
-
-              if (currentModuleNodes) {
-                  Object.keys(currentModuleNodes).forEach(nodeId => {
-                      const node = currentModuleNodes[nodeId]; 
-                      const nodeData = node.data || {};
-                      const nodeElement = document.getElementById(`node-${nodeId}`);
-                      const nodeName = node.name;
-
-                      if (nodeElement) {
-                          Object.keys(nodeData).forEach(dataKey => {
-                              if (['naturalWidth', 'naturalHeight'].includes(dataKey) && nodeName === 'image_minimal') return;
-                              if (['lastInput', 'lastInputs', 'selector_received'].includes(dataKey)) return;
-
-                              const inputElement = nodeElement.querySelector(`[df-${dataKey}]`);
-                              if (inputElement) {
-                                  const value = nodeData[dataKey];
-                                  if (inputElement.tagName === 'TEXTAREA' || (inputElement.tagName === 'INPUT' && ['text', 'number', 'url', 'email', 'password', 'range', 'date', 'time', 'color'].includes(inputElement.type))) {
-                                      inputElement.value = value ?? '';
-                                      if (inputElement.type === 'range' && inputElement.nextElementSibling?.hasAttribute('df-rangeval')) {
-                                           inputElement.nextElementSibling.textContent = value ?? '0';
-                                      }
-                                  } else if (inputElement.tagName === 'SELECT'){
-                                      inputElement.value = value ?? '';
-                                      if (dataKey === 'notecolor' && nodeName === 'nota') { 
-                                          const changeEvent = new Event('change', { bubbles: true });
-                                          inputElement.dispatchEvent(changeEvent);
-                                      }
-                                  } else if (inputElement.tagName === 'IMG' && dataKey === 'imgsrc' && nodeName !== 'image_minimal') { 
-                                      inputElement.src = value ?? '';
-                                      inputElement.style.display = value ? 'block' : 'none';
-                                      const placeholder = nodeElement.querySelector('.placeholder-text');
-                                      if(placeholder) placeholder.style.display = value ? 'none' : 'block';
-                                  } else if (inputElement.tagName === 'SPAN' && dataKey === 'filename'){
-                                      inputElement.textContent = value ?? '';
-                                      inputElement.title = value ?? '';
-                                  } else if (inputElement.hasAttribute('df-charcount')  && nodeName === 'nota') { 
-                                      inputElement.textContent = nodeElement.querySelector('[df-notecontent]')?.value?.length || '0';
-                                  }
-                              }
-                          });
-                          if (nodeData.nodeWidth) nodeElement.style.width = nodeData.nodeWidth;
-                          if (nodeData.nodeHeight) nodeElement.style.height = nodeData.nodeHeight;
-                          
-                          const resizer = nodeElement.querySelector('.node-resizer');
-                          if (resizer) {
-                            resizer.removeEventListener('mousedown', startNodeResize); // Prevenir duplicados
-                            resizer.addEventListener('mousedown', (e) => startNodeResize(e, nodeId, resizer));
-                          }
-
-
-                          if (nodeName === 'nota' && nodeData.notecolor) {
-                              nodeElement.style.backgroundColor = nodeData.notecolor;
-                              const tb = nodeElement.querySelector('.title-box');
-                              if(tb) {
-                                  const darkBgs = ['#ccccff', '#e0e0e0'];
-                                  tb.style.backgroundColor = darkBgs.includes(nodeData.notecolor) ? '#f0f0f0' : '';
-                                  tb.style.color = darkBgs.includes(nodeData.notecolor) ? '#333' : '';
-                              }
-                          }
-                          else if (nodeName === 'local_image') {
-                              const imgTag = nodeElement.querySelector('img[df-imagesrc]');
-                              if (imgTag){
-                                  if(nodeData.imagewidth) imgTag.style.width = nodeData.imagewidth;
-                                  if(nodeData.imageheight) imgTag.style.height = nodeData.imageheight;
-                                  imgTag.src = nodeData.imagesrc ?? '';
-                                  imgTag.style.display = nodeData.imagesrc ? 'block' : 'none';
-                                  const placeholder = nodeElement.querySelector('.placeholder-text');
-                                   if(placeholder) placeholder.style.display = nodeData.imagesrc ? 'none' : 'block';
-                              }
-                          }
-                          else if (nodeName === 'image_minimal') {
-                              const imgTag = nodeElement.querySelector('img[df-imgsrc]');
-                              const placeholder = nodeElement.querySelector('.image-placeholder');
-                              if (imgTag && placeholder) {
-                                  const hasValidImage = nodeData.imgsrc && nodeData.naturalWidth > 0 && nodeData.naturalHeight > 0;
-                                  if (hasValidImage) {
-                                      imgTag.src = nodeData.imgsrc;
-                                      imgTag.style.display = 'block';
-                                      placeholder.style.display = 'none';
-                                      nodeElement.style.width = nodeData.nodeWidth || `${nodeData.naturalWidth}px`;
-                                      nodeElement.style.height = nodeData.nodeHeight || `${nodeData.naturalHeight}px`;
-                                      nodeElement.style.border = 'none'; 
-                                  } else {
-                                      imgTag.src = '';
-                                      imgTag.style.display = 'none';
-                                      placeholder.style.display = 'flex'; 
-                                      nodeElement.style.width = nodeData.nodeWidth || '80px';
-                                      nodeElement.style.height = nodeData.nodeHeight || '60px';
-                                      nodeElement.style.border = '2px dashed #cccccc'; 
-                                  }
-                                  setTimeout(() => setupMinimalImageNodeListeners(nodeId), 50);
-                                  setTimeout(() => editor.updateConnectionNodes(`node-${nodeId}`), 100);
-                              }
-                          }
-                          if (nodeData.hasOwnProperty('isMovementLocked')) {
-                                updateNodeVisualLockState(nodeId, nodeData.isMovementLocked);
-                          } else {
-                                editor.updateNodeDataFromId(nodeId, { ...nodeData, isMovementLocked: false });
-                                updateNodeVisualLockState(nodeId, false);
-                          }
-
-
-                      } 
-                  }); 
-              } 
-              // console.log("Post-import UI synchronization completed.");
-
-          } catch (importError) { console.error("Error durante la importación:", importError); showToast('error', 'Error de Importación', 'No se pudo importar el proyecto.'); if (fileInput) fileInput.value = null; return; }
-
-          // console.log("Importación completada. Actualizando estado de la aplicación.");
-          currentProjectName = expectedProjectName;
-          renderModuleTabs();
-          initializeHistory();
-          selectedNodeId = null;
-          copiedNodeData = null;
-          currentlyEditingNodeId = null; 
-          updateUIDisabledStates();
-          closeCodeEditorSidebar(false);
-          document.title = `Xocoflow | ${currentProjectName} - ${editor.module}`;
-          saveHistoryState(true); 
-          activateExistingAutoNodes();
-          showToast('success', 'Proyecto Cargado', `"${escapeHtml(currentProjectName)}" cargado.`);
-
-      } catch (err) { console.error("Error en reader.onload:", err); showToast('error', 'Error de Archivo', 'No se pudo leer el archivo del proyecto.'); }
-      finally {
-          if (fileInput) fileInput.value = null; 
-      }
-  }; 
-
-  reader.onerror = (e) => { showToast('error', 'Error de Lectura', 'No se pudo leer el archivo.'); if (fileInput) fileInput.value = null;};
-
-  reader.readAsText(file); 
-}
-
 
 // --- Project Management & Module Actions ---
 
@@ -3318,66 +3591,113 @@ function updateUIDisabledStates() { const locked = isLocked(); const nodeSel = s
 var mobile_item_selec = ''; var mobile_last_move = null; function allowDrop(ev) { ev.preventDefault(); } function drag(ev) { try { const el = ev.target.closest(".drag-drawflow"); if (!el || !el.dataset.node) { ev.preventDefault(); return; } const nt = el.dataset.node; if (ev.type === "touchstart") { mobile_item_selec = nt; mobile_last_move = ev; el.style.opacity = '0.5';} else { ev.dataTransfer.setData("node", nt); ev.dataTransfer.effectAllowed = 'copy';} } catch(e){console.error("Drag error:",e);} } function positionMobile(ev) { mobile_last_move = ev; } function drop(ev) { let nodeName='',clientX=0,clientY=0,isTouch=false; try { if (ev.type === "touchend") { isTouch=true; const orig=nodesListContainer?.querySelector(`[data-node="${mobile_item_selec}"]`); if(orig) orig.style.opacity='1'; if(!mobile_last_move||!mobile_item_selec) return; clientX=mobile_last_move.changedTouches[0].clientX; clientY=mobile_last_move.changedTouches[0].clientY; nodeName=mobile_item_selec; mobile_item_selec=''; mobile_last_move=null; } else { ev.preventDefault(); nodeName=ev.dataTransfer.getData("node"); clientX=ev.clientX; clientY=ev.clientY; } const targetEl = document.elementFromPoint(clientX, clientY); if (nodeName && targetEl?.closest(`#${DRAWFLOW_CONTAINER_ID}`)) addNodeToDrawFlow(nodeName, clientX, clientY); } catch(e){console.error("Drop error:",e); if(isTouch){const orig=nodesListContainer?.querySelector(`[data-node="${mobile_item_selec}"]`); if(orig) orig.style.opacity='1'; mobile_item_selec=''; mobile_last_move=null;}} }
 
 function addNodeToDrawFlow(name, pos_x, pos_y) {
-  if (!editor || isLocked()) {
-      showToast('warning', 'Editor Bloqueado', 'Desbloquea para añadir nodos.');
-      return false;
-  }
-  try {
-      const nodeDef = customNodeTypes[name];
-      if (!nodeDef) throw new Error(`Tipo de nodo "${name}" desconocido.`);
-
-      const data = JSON.parse(JSON.stringify(nodeDef.data || {}));
-      data.isMovementLocked = false; // Default for new nodes
-      // Ensure nodeWidth/Height are in data for resizable nodes
-      if (nodeDef.cssClass && nodeDef.cssClass.includes('resizable-node-class')) {
-          data.nodeWidth = data.nodeWidth || (name === 'image_minimal' ? '80px' : '220px'); // Default or specific for image_minimal
-          data.nodeHeight = data.nodeHeight || (name === 'image_minimal' ? '60px' : 'auto');
-      }
-      
-      const rect = editor.container.getBoundingClientRect();
-      const zoom = editor.zoom || 1;
-      const initialWidthPx = parseFloat(data.nodeWidth) || (name === 'image_minimal' ? 80 : 220);
-      // Height is often auto, so we might not use it for centering if 'auto'
-      // const initialHeightPx = (data.nodeHeight && data.nodeHeight !== 'auto') ? parseFloat(data.nodeHeight) : (name === 'image_minimal' ? 60 : 80);
-
-      const canvasX = (pos_x - rect.left - editor.canvas_x) / zoom;
-      const canvasY = (pos_y - rect.top - editor.canvas_y) / zoom;
-      const adjX = canvasX - (initialWidthPx / 2);
-      const adjY = canvasY; // Centering Y can be tricky with 'auto' height
-
-      const nodeId = editor.addNode(name, nodeDef.inputs, nodeDef.outputs, adjX, adjY, nodeDef.cssClass || '', data, nodeDef.html );
-
-      setTimeout(() => { 
-           const nodeElement = document.getElementById(`node-${nodeId}`);
-           if (nodeElement) {
-                if (data.nodeWidth) nodeElement.style.width = data.nodeWidth;
-                if (data.nodeHeight && data.nodeHeight !== 'auto') nodeElement.style.height = data.nodeHeight;
-                
-                const resizer = nodeElement.querySelector('.node-resizer');
-                if (resizer) {
-                    resizer.addEventListener('mousedown', (e) => startNodeResize(e, nodeId, resizer));
-                }
+    if (!editor || isLocked()) {
+        showToast('warning', 'Editor Bloqueado', 'Desbloquea para añadir nodos.');
+        return false;
+    }
+    try {
+        const nodeDef = customNodeTypes[name];
+        if (!nodeDef) throw new Error(`Tipo de nodo "${name}" desconocido.`);
+  
+        // Deep copy data and set defaults
+        const data = JSON.parse(JSON.stringify(nodeDef.data || {}));
+        data.isMovementLocked = false; // Default for new nodes
+  
+        // Ensure nodeWidth/Height are in data for resizable nodes, with specific defaults
+        if (nodeDef.cssClass && nodeDef.cssClass.includes('resizable-node-class')) {
+            if (!data.nodeWidth) { // Only set if not already defined in nodeDef.data
                 if (name === 'image_minimal') {
-                    if (nodeElement.style.border === '') nodeElement.style.border = '2px dashed #cccccc'; // Initial border for image_minimal
-                    const placeholder = nodeElement.querySelector('.image-placeholder');
-                    if(placeholder) placeholder.style.display = 'flex';
-                    setupMinimalImageNodeListeners(nodeId);
+                    data.nodeWidth = '80px';
+                } else if (name === 'youtube_minimal') {
+                    data.nodeWidth = '320px';
+                } else {
+                    data.nodeWidth = '220px'; // General default for other resizable nodes
                 }
-                updateNodeVisualLockState(nodeId, data.isMovementLocked);
-           }
-      }, 0);
-       
-      activateNodeIfNeeded(nodeId); 
-      saveHistoryState(); 
-      // console.log(`Node ${name} (ID: ${nodeId}) added successfully at (${adjX.toFixed(0)}, ${adjY.toFixed(0)}).`);
-      return true; 
-
-  } catch (e) {
-      console.error(`Error adding node "${name}":`, e);
-      showToast('error', 'Error al Añadir Nodo', `Error: ${e.message}`);
-      return false; 
+            }
+            if (!data.nodeHeight) { // Only set if not already defined in nodeDef.data
+                if (name === 'image_minimal') {
+                    data.nodeHeight = '60px';
+                } else if (name === 'youtube_minimal') {
+                    data.nodeHeight = '180px';
+                } else {
+                    data.nodeHeight = 'auto'; // General default
+                }
+            }
+        }
+  
+        const rect = editor.container.getBoundingClientRect();
+        const zoom = editor.zoom || 1;
+  
+        // Determine initial width for centering based on data (which now has defaults)
+        let initialWidthPx = 220; // Fallback general default
+        if (data.nodeWidth) {
+            initialWidthPx = parseFloat(data.nodeWidth);
+        } else if (name === 'image_minimal') {
+            initialWidthPx = 80;
+        } else if (name === 'youtube_minimal') {
+            initialWidthPx = 320;
+        }
+        // Ensure it's a valid number
+        if (isNaN(initialWidthPx) || initialWidthPx <=0) initialWidthPx = 220;
+  
+  
+        const canvasX = (pos_x - rect.left - editor.canvas_x) / zoom;
+        const canvasY = (pos_y - rect.top - editor.canvas_y) / zoom;
+        const adjX = canvasX - (initialWidthPx / 2);
+        const adjY = canvasY;
+  
+        const nodeId = editor.addNode(name, nodeDef.inputs, nodeDef.outputs, adjX, adjY, nodeDef.cssClass || '', data, nodeDef.html );
+  
+        setTimeout(() => {
+             const nodeElement = document.getElementById(`node-${nodeId}`);
+             if (nodeElement) {
+                  // Apply dimensions from data (which includes defaults if not set)
+                  if (data.nodeWidth) nodeElement.style.width = data.nodeWidth;
+                  if (data.nodeHeight && data.nodeHeight !== 'auto') nodeElement.style.height = data.nodeHeight;
+                  else if (data.nodeHeight === 'auto') nodeElement.style.height = 'auto';
+  
+  
+                  const resizer = nodeElement.querySelector('.node-resizer');
+                  if (resizer) {
+                      resizer.addEventListener('mousedown', (e) => startNodeResize(e, nodeId, resizer));
+                  }
+  
+                  // Specific setup for image_minimal
+                  if (name === 'image_minimal') {
+                      // Apply initial border if not already styled (e.g., by CSS :has)
+                      if (getComputedStyle(nodeElement).borderStyle.includes('none') || getComputedStyle(nodeElement).borderStyle === '') {
+                           nodeElement.style.border = '2px dashed #cccccc';
+                      }
+                      const placeholder = nodeElement.querySelector('.image-placeholder');
+                      if(placeholder) placeholder.style.display = 'flex'; // Ensure placeholder is visible
+                      setupMinimalImageNodeListeners(nodeId);
+                  }
+                  // Specific setup for youtube_minimal
+                  else if (name === 'youtube_minimal') {
+                      if (getComputedStyle(nodeElement).borderStyle.includes('none') || getComputedStyle(nodeElement).borderStyle === '') {
+                          nodeElement.style.border = '2px dashed #cccccc';
+                      }
+                      const placeholder = nodeElement.querySelector('.youtube-placeholder');
+                      if (placeholder) placeholder.style.display = 'flex'; // Ensure placeholder is visible
+                      setupYouTubeMinimalNodeListeners(nodeId);
+                  }
+  
+                  updateNodeVisualLockState(nodeId, data.isMovementLocked);
+             }
+        }, 0);
+  
+        activateNodeIfNeeded(nodeId);
+        saveHistoryState();
+        // console.log(`Node ${name} (ID: ${nodeId}) added successfully at (${adjX.toFixed(0)}, ${adjY.toFixed(0)}).`);
+        return true;
+  
+    } catch (e) {
+        console.error(`Error adding node "${name}":`, e);
+        showToast('error', 'Error al Añadir Nodo', `Error: ${e.message}`);
+        return false;
+    }
   }
-}
+
 // --- Recalculate All ---
 function recalculateAllNodesInCurrentModule() { if (!editor || isLocked()) { showToast('warning', 'Locked'); return; } const mod = editor.module; console.log(`%cRecalculating: ${mod}...`, 'color: orange;'); showToast('info', 'Recalculating...', `Module ${mod}.`, 2500); try { const nodes = editor.export()?.drawflow?.[mod]?.data ?? {}; const ids = Object.keys(nodes); if (ids.length === 0) return; cleanupAllModuleIntervals(); ids.forEach(id => { activateNodeIfNeeded(id); }); ids.forEach(id => { if (nodes[id]?.name === 'concatenar') updateConcatenateNode(id); }); showToast('success', 'Recalculated', `${mod} updated.`); } catch (err) { showToast('error', 'Error', 'Recalculation failed.'); } }
 

@@ -85,6 +85,13 @@
                 <button type="button" class="btn-clear-drawing" onclick="clearDrawing()" title="Borrar Todos los Dibujos"> <i class="fas fa-trash-alt"></i> </button>
                 <!-- Separador -->
                 <div style="width: 1px; height: 20px; background-color: #666; margin: 0 5px;"></div>
+
+
+                <!-- Botón para cambiar fondo del grid -->
+                <button type="button" id="toggleGridButton" onclick="toggleGridBackground()" title="Cambiar Fondo (Cuadrícula/Puntos)" aria-label="Cambiar estilo de fondo del canvas">
+                    <i class="fas fa-th-large" aria-hidden="true"></i> <!-- Icono inicial para cuadrícula -->
+                </button>
+
                 <!-- Editor Controls -->
                  <div class="btn-lock" role="switch" aria-checked="false" aria-label="Bloquear Edición">
                     <button type="button" id="lock-button" onclick="changeMode('lock')" title="Bloquear Edición (Editor Fijo)"><i class="fas fa-lock-open" aria-hidden="true"></i></button>
@@ -435,6 +442,17 @@
     <!-- =========================================================== -->
     <!-- == FIN Drawing Tool Logic == -->
     <!-- =========================================================== -->
+
+
+    <script>
+        function toggleGridBackground() {
+          document
+            .getElementById('drawflow')
+            .classList
+            .toggle('dotted-grid');
+        }
+      </script>
+      
 
 </body>
 </html>
