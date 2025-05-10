@@ -564,6 +564,43 @@ header h2 { margin: 0; line-height: 50px; font-size: 1.6em; font-weight: 700; co
 
 
 
+.drawflow .drawflow-node.multi-selected {
+  border-color: var(--accent-color) !important; /* Usar un color de acento diferente */
+  box-shadow: 0 0 0 3px rgba(255, 152, 0, 0.3), var(--box-shadow-medium) !important; /* Sombra de acento */
+  /* Puedes ajustar el z-index si es necesario para que los multi-seleccionados estén por encima de los no seleccionados, pero debajo del 'selected' principal si lo deseas */
+}
+
+/* Asegurar que el estilo de selección principal de Drawflow (azul) tenga prioridad si es el nodo primario de la multi-selección */
+.drawflow .drawflow-node.selected.multi-selected {
+  border-color: var(--primary-color) !important;
+  box-shadow: 0 0 0 3px var(--focus-shadow-color), var(--box-shadow-medium) !important;
+}
+
+.custom-context-menu span.shortcut {
+    margin-left: auto;
+    font-size: 0.85em;
+    color: var(--text-light);
+    padding-left: 15px;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

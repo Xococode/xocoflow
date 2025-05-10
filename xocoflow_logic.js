@@ -1,8 +1,8 @@
 // === START OF COMPLETE xocoflow_logic.js ===
-// Version: 1.7.16 - Enhanced Node Context Menu
+// Version: 1.7.17 - Multiple Node Selection
 "use strict";
 
-console.log("Xocoflow Script: Initializing (v1.7.16 - Enhanced Node Context Menu)...");
+console.log("Xocoflow Script: Initializing (v1.7.17 - Multiple Node Selection)...");
 
 // --- Constants ---
 const DRAWFLOW_CONTAINER_ID = "drawflow";
@@ -13,13 +13,16 @@ const CORS_PROXY = 'https://api.allorigins.win/get?url=';
 // --- Application State ---
 let editor;
 let currentProjectName = 'proyecto_sin_titulo';
-let selectedNodeId = null;
+let selectedNodeId = null; // ID del nodo primario seleccionado (último clickeado sin Ctrl o único seleccionado)
+let multipleSelectedNodes = new Set(); // IDs de todos los nodos actualmente en la selección múltiple
+let isCtrlKeyPressed = false; // Estado de la tecla Ctrl
 let historyStack = [];
 let historyIndex = -1;
 let customNodeTypes = {};
-let copiedNodeData = null;
+let copiedNodesData = null; // Puede ser un objeto (un nodo) o un array de objetos (múltiples nodos)
 let nodeIntervals = {};
 let customContextMenu = null;
+
 
 // --- Node Resizing State ---
 let isResizingNode = false;
@@ -102,8 +105,6 @@ function updateNodeVisualLockState(nodeId, isLocked) {
         if (!nodeElement) return;
         const titleBox = nodeElement.querySelector('.title-box');
         if (!titleBox) {
-            // Handle nodes like youtube_minimal that don't have a .title-box
-            // or other custom nodes without it.
             return;
         }
         const indicator = getOrCreateLockIndicator(titleBox);
@@ -165,16 +166,16 @@ function showCustomContextMenu(event, nodeId) {
     if (!node) return;
     const currentData = node.data || {};
     const isNodeLocked = currentData.isMovementLocked === true;
-    const generalEditorLock = isLocked(); // Check if the whole editor is locked
-    const canPasteNodeHere = copiedNodeData !== null;
+    const generalEditorLock = isLocked();
+    const canPasteNodeHere = copiedNodesData !== null; // Adjusted from copiedNodeData
     const canUndoState = historyIndex > 0;
     const canRedoState = historyIndex < historyStack.length - 1;
+    const hasMultipleSelection = multipleSelectedNodes.size > 1;
 
     customContextMenu = document.createElement('div');
     customContextMenu.className = 'custom-context-menu';
     const ul = document.createElement('ul');
 
-    // Helper to create LI element
     const createMenuItem = (icon, text, shortcut, onClick, disabled = false, disabledTitle = '') => {
         const li = document.createElement('li');
         let shortcutHtml = shortcut ? ` <span class="shortcut">${shortcut}</span>` : '';
@@ -195,19 +196,15 @@ function showCustomContextMenu(event, nodeId) {
     
     const createSeparator = () => document.createElement('hr');
 
-    // --- Emoji (Informational) ---
     ul.appendChild(createMenuItem('far fa-smile', 'Emoji', 'Win + .', null, false, 'Abrir panel de emojis del sistema operativo'));
     ul.appendChild(createSeparator());
 
-    // --- Deshacer ---
     ul.appendChild(createMenuItem(
         'fas fa-undo', 'Deshacer', 'Ctrl+Z',
         () => { if (!generalEditorLock && canUndoState) undo(); },
         generalEditorLock || !canUndoState,
         generalEditorLock ? 'Editor bloqueado' : (!canUndoState ? 'Nada que deshacer' : '')
     ));
-
-    // --- Rehacer ---
     ul.appendChild(createMenuItem(
         'fas fa-redo', 'Rehacer', 'Ctrl+Y',
         () => { if (!generalEditorLock && canRedoState) redo(); },
@@ -216,9 +213,8 @@ function showCustomContextMenu(event, nodeId) {
     ));
     ul.appendChild(createSeparator());
 
-    // --- Lock/Unlock (Only if node has a title-box) ---
     const nodeElementForCtx = document.getElementById(`node-${nodeId}`);
-    if (nodeElementForCtx && nodeElementForCtx.querySelector('.title-box')) {
+    if (nodeElementForCtx && nodeElementForCtx.querySelector('.title-box') && !hasMultipleSelection) { // Lock/Unlock only for single primary node
         ul.appendChild(createMenuItem(
             `fas ${isNodeLocked ? 'fa-lock-open' : 'fa-lock'}`,
             isNodeLocked ? 'Desbloquear Movimiento' : 'Bloquear Movimiento',
@@ -230,93 +226,61 @@ function showCustomContextMenu(event, nodeId) {
         ul.appendChild(createSeparator());
     }
 
-    // --- Copy Node ---
+    const itemsToOperate = hasMultipleSelection ? `${multipleSelectedNodes.size} nodos` : 'Nodo';
     ul.appendChild(createMenuItem(
-        'fas fa-copy', 'Copiar Nodo', null,
-        () => {
-            if (selectedNodeId !== nodeId) {
-                 try { editor.selectNode(`node-${nodeId}`); } catch(selErr){ console.warn("CtxMenu: Error selecting node before copy", selErr); }
-            }
-            copySelectedNode();
-        },
-        generalEditorLock,
-        generalEditorLock ? 'Desbloquea el editor para copiar nodo' : ''
+        'fas fa-copy', `Copiar ${itemsToOperate}`, null,
+        () => { copySelectedNodes(); }, // Updated function
+        generalEditorLock || (multipleSelectedNodes.size === 0 && !selectedNodeId),
+        generalEditorLock ? 'Editor bloqueado' : 'Nada seleccionado para copiar'
     ));
-
-    // --- Paste Node ---
     ul.appendChild(createMenuItem(
-        'fas fa-paste', 'Pegar Nodo', null,
-        () => { pasteNode(); },
+        'fas fa-paste', 'Pegar Nodos', null,
+        () => { pasteNodes(); }, // Updated function
         generalEditorLock || !canPasteNodeHere,
-        generalEditorLock ? 'Desbloquea el editor para pegar nodo' : (!canPasteNodeHere ? 'No hay nodo copiado para pegar' : '')
+        generalEditorLock ? 'Editor bloqueado' : (!canPasteNodeHere ? 'Nada copiado para pegar' : '')
     ));
-
-    // --- Duplicate Node ---
     ul.appendChild(createMenuItem(
-        'fas fa-clone', 'Duplicar Nodo', null,
-        () => {
-            if (selectedNodeId !== nodeId) {
-                try { editor.selectNode(`node-${nodeId}`); } catch(selErr){ console.warn("CtxMenu: Error selecting node before duplicate", selErr); }
-            }
-            duplicateSelectedNode();
-        },
-        generalEditorLock,
-        generalEditorLock ? 'Desbloquea el editor para duplicar nodo' : ''
+        'fas fa-clone', `Duplicar ${itemsToOperate}`, null,
+        () => { duplicateSelectedNodes(); }, // Updated function
+        generalEditorLock || (multipleSelectedNodes.size === 0 && !selectedNodeId),
+        generalEditorLock ? 'Editor bloqueado' : 'Nada seleccionado para duplicar'
     ));
     ul.appendChild(createSeparator());
 
-    // --- Delete Node ---
     const deleteLi = createMenuItem(
-        'fas fa-trash-alt', 'Eliminar Nodo', null,
-        () => {
-            if (selectedNodeId !== nodeId) {
-                 try { editor.selectNode(`node-${nodeId}`); } catch(selErr){ console.warn("CtxMenu: Error selecting node before delete", selErr); }
-            }
-            deleteSelectedNode();
-        },
-        generalEditorLock,
-        generalEditorLock ? 'Desbloquea el editor para eliminar nodo' : ''
+        'fas fa-trash-alt', `Eliminar ${itemsToOperate}`, null,
+        () => { deleteSelectedNodes(); }, // Updated function
+        generalEditorLock || (multipleSelectedNodes.size === 0 && !selectedNodeId),
+        generalEditorLock ? 'Editor bloqueado' : 'Nada seleccionado para eliminar'
     );
     deleteLi.querySelector('i').style.color = 'var(--danger-color)';
     deleteLi.querySelector('span').style.color = 'var(--danger-color)';
     ul.appendChild(deleteLi);
     
     ul.appendChild(createSeparator());
-
-    // --- Cortar (Texto - Informational) ---
     ul.appendChild(createMenuItem(
         'fas fa-cut', 'Cortar (Texto)', 'Ctrl+X',
         null, generalEditorLock, generalEditorLock ? 'Editor bloqueado' : 'Usar para campos de texto seleccionados'
     ));
-
-    // --- Copiar (Texto - Informational) ---
     ul.appendChild(createMenuItem(
         'far fa-copy', 'Copiar (Texto)', 'Ctrl+C',
         null, generalEditorLock, generalEditorLock ? 'Editor bloqueado' : 'Usar para campos de texto seleccionados'
     ));
-
-    // --- Pegar (Texto - Informational) ---
     ul.appendChild(createMenuItem(
         'far fa-paste', 'Pegar (Texto)', 'Ctrl+V',
         null, generalEditorLock, generalEditorLock ? 'Editor bloqueado' : 'Usar en campos de texto'
     ));
-    
-    // --- Pegar como texto sin formato (Informational) ---
     ul.appendChild(createMenuItem(
         'far fa-paste', 'Pegar sin formato (Texto)', 'Ctrl+Shift+V',
         null, generalEditorLock, generalEditorLock ? 'Editor bloqueado' : 'Usar en campos de texto'
     ));
-
-    // --- Seleccionar todo (Texto - Informational) ---
     ul.appendChild(createMenuItem(
         'fas fa-i-cursor', 'Seleccionar todo (Texto)', 'Ctrl+A',
         null, generalEditorLock, generalEditorLock ? 'Editor bloqueado' : 'Usar en campos de texto'
     ));
 
-    // --- Append and Position Menu ---
     customContextMenu.appendChild(ul);
     document.body.appendChild(customContextMenu);
-
     const { clientX: mouseX, clientY: mouseY } = event;
     const menuRect = customContextMenu.getBoundingClientRect();
     let x = mouseX; let y = mouseY;
@@ -324,7 +288,6 @@ function showCustomContextMenu(event, nodeId) {
     if (mouseY + menuRect.height > window.innerHeight) y = window.innerHeight - menuRect.height - 5;
     if (x < 0) x = 5; if (y < 0) y = 5;
     customContextMenu.style.top = `${y}px`; customContextMenu.style.left = `${x}px`;
-
     setTimeout(() => {
         document.addEventListener('click', handleClickOutsideContextMenu, true);
         document.addEventListener('contextmenu', handleClickOutsideContextMenu, true);
@@ -352,13 +315,13 @@ function handleClickOutsideContextMenu(event) {
 
 // --- Node Resizing Logic ---
 function startNodeResize(event, nodeId, resizerElement) {
-    if (isLocked()) return; // General editor lock
+    if (isLocked()) return; 
     event.preventDefault();
     event.stopPropagation();
 
     isResizingNode = true;
     resizingNodeInfo.id = nodeId;
-    resizingNodeInfo.resizerElement = resizerElement; // Store which resizer was clicked
+    resizingNodeInfo.resizerElement = resizerElement;
 
     const nodeElement = document.getElementById(`node-${nodeId}`);
     if (!nodeElement) { isResizingNode = false; return; }
@@ -404,18 +367,16 @@ function duringNodeResize(event) {
     } else if (nodeType === 'youtube_player_robust') {
         minContainerWidth = 280; minContainerHeight = 200;
     }
-    // Add more else if for other resizable nodes with specific minimums
-
+    
     if (newContainerWidth < minContainerWidth) newContainerWidth = minContainerWidth;
     if (newContainerHeight < minContainerHeight) newContainerHeight = minContainerHeight;
 
     nodeElement.style.width = `${newContainerWidth}px`;
     nodeElement.style.height = `${newContainerHeight}px`;
 
-    // --- Logic for redimensionar Textarea (if present) and internal containers ---
     const boxElement = nodeElement.querySelector('.box');
-    if (boxElement) { // This logic applies to nodes with a .box (standard nodes)
-        const targetTextarea = boxElement.querySelector('textarea:not([readonly])'); // Resize non-readonly textareas
+    if (boxElement) { 
+        const targetTextarea = boxElement.querySelector('textarea:not([readonly])'); 
         const titleBoxHeight = nodeElement.querySelector('.title-box')?.offsetHeight || ( (nodeType === 'youtube_display_node' || nodeType === 'image_display_node' || nodeType === 'youtube_player_robust') ? 35 : 0 );
 
         let contentToResize = null;
@@ -428,15 +389,13 @@ function duringNodeResize(event) {
             contentMinHeight = 80;
         } else if (nodeType === 'youtube_player_robust') {
             contentToResize = boxElement.querySelector('.yt-player-wrapper-robust');
-            contentMinHeight = 150; // Or whatever min-height is set in CSS for .yt-player-wrapper-robust
+            contentMinHeight = 150; 
         }
-
 
         const boxPaddingTop = parseFloat(getComputedStyle(boxElement).paddingTop) || 0;
         const boxPaddingBottom = parseFloat(getComputedStyle(boxElement).paddingBottom) || 0;
         let otherElementsHeightInBox = 0;
 
-        // Calculate height of all elements in .box EXCEPT the primary resizable textarea or contentToResize
         Array.from(boxElement.children).forEach(child => {
             if (child !== targetTextarea && child !== contentToResize && getComputedStyle(child).display !== 'none') {
                 const style = getComputedStyle(child);
@@ -448,7 +407,7 @@ function duringNodeResize(event) {
 
         if (targetTextarea) {
             let availableHeightForTextarea = newContainerHeight - titleBoxHeight - boxPaddingTop - boxPaddingBottom - otherElementsHeightInBox;
-            if (contentToResize) { // If there's also a content area, subtract its current height
+            if (contentToResize) { 
                 availableHeightForTextarea -= (contentToResize.offsetHeight + (parseFloat(getComputedStyle(contentToResize).marginTop) || 0) + (parseFloat(getComputedStyle(contentToResize).marginBottom) || 0) );
             }
             const minTextareaHeight = 30;
@@ -458,7 +417,7 @@ function duringNodeResize(event) {
 
         if (contentToResize) {
             let availableHeightForContent = newContainerHeight - titleBoxHeight - boxPaddingTop - boxPaddingBottom - otherElementsHeightInBox;
-            if (targetTextarea) { // If there's also a textarea, subtract its current height
+            if (targetTextarea) { 
                  availableHeightForContent -= (targetTextarea.offsetHeight + (parseFloat(getComputedStyle(targetTextarea).marginTop) || 0) + (parseFloat(getComputedStyle(targetTextarea).marginBottom) || 0) );
             }
             if (availableHeightForContent < contentMinHeight) availableHeightForContent = contentMinHeight;
@@ -509,11 +468,8 @@ function stopNodeResize() {
                 try {
                     const playerWrapper = nodeElement.querySelector('.yt-player-wrapper-robust');
                     if (playerWrapper) {
-                        // The player inside yt-player-container-robust takes 100% of yt-player-wrapper-robust
-                        // So we just need to ensure the wrapper itself is sized correctly by duringNodeResize
-                        // And then tell the player API about the new dimensions of its *immediate container*
                         const playerContainer = nodeElement.querySelector('.yt-player-container-robust');
-                        if (playerContainer && playerContainer.firstChild && playerContainer.firstChild.tagName === 'DIV') { // YT Player API injects a div
+                        if (playerContainer && playerContainer.firstChild && playerContainer.firstChild.tagName === 'DIV') { 
                              youtubePlayersRobust[nodeId].setSize(playerWrapper.offsetWidth, playerWrapper.offsetHeight);
                              console.log(`Robust YouTube (${nodeId}): Player resized to ${playerWrapper.offsetWidth}x${playerWrapper.offsetHeight}`);
                         }
@@ -560,7 +516,7 @@ const baseNodeDefinitions = {
         name: 'local_image', inputs: 0, outputs: 0,
         html: `<div> <div class="title-box"><i class="fas fa-image"></i> Imagen Local</div> <div class="box"> <button type="button" onclick="selectLocalImageFile(event)" style="width:100%; margin-bottom: 8px;"><i class="fas fa-upload"></i> Cargar Imagen</button> <div class="image-preview-container" style="margin-bottom: 8px; border: 1px dashed #ccc; display: flex; align-items: center; justify-content: center; background-color: #f9f9f9; overflow: hidden;"> <img df-imagesrc src="" alt="Previa Imagen" style="display: none; max-width: 100%; max-height:100%; width:auto; height:auto; object-fit: contain;" /> <span class="placeholder-text" style="color: #aaa; font-size: 11px; text-align: center; padding: 10px;">No hay imagen</span> </div> <span df-filename style="font-size: 10px; color: #777; display: block; margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="Nombre del archivo"></span> <details style="margin-bottom: 8px;"> <summary style="font-size: 10px; cursor: pointer; color: #555; font-weight:bold;">Tamaño Imagen Interna</summary> <div style="display: flex; gap: 5px; margin-top: 5px;"> <div style="flex: 1;"><label style="font-size: 10px;">Ancho Img:</label><input type="text" df-imagewidth oninput="updateLocalImageStyle(event)" placeholder="100%" style="font-size:11px; height: 24px; padding: 2px 4px;"></div> <div style="flex: 1;"><label style="font-size: 10px;">Alto Img:</label><input type="text" df-imageheight oninput="updateLocalImageStyle(event)" placeholder="auto" style="font-size:11px; height: 24px; padding: 2px 4px;"></div> </div><p class="help-text" style="margin-top: 2px;">Imagen dentro del nodo (ej: 100%, 150px)</p> </details> <details open style="margin-bottom: 8px;"> <summary style="font-size: 10px; cursor: pointer; color: #555; font-weight:bold;">Tamaño Nodo Contenedor</summary> <div style="display: flex; gap: 5px; margin-top: 5px;"> <div style="flex: 1;"><label style="font-size: 10px;">Ancho Nodo:</label><input type="text" df-nodewidth oninput="updateLocalNodeSize(event)" placeholder="240px" style="font-size:11px; height: 24px; padding: 2px 4px;"></div> <div style="flex: 1;"><label style="font-size: 10px;">Alto Nodo:</label><input type="text" df-nodeheight oninput="updateLocalNodeSize(event)" placeholder="auto" style="font-size:11px; height: 24px; padding: 2px 4px;"></div> </div><p class="help-text" style="margin-top: 2px;">Nodo completo (ej: 300px, auto)</p> </details> </div> <div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div> </div>`,
         cssClass: 'local-image-node resizable-node-class',
-        data: { imagesrc: '', filename: '', imagewidth: '100%', imageheight: 'auto', nodewidth: '240px', nodeheight: 'auto' }
+        data: { imagesrc: '', filename: '', imagewidth: '100%', imageheight: 'auto', nodewidth: '240px', nodeHeight: 'auto' }
     },
     'input_number': { name: 'input_number', inputs: 0, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-hashtag"></i> Número</div> <div class="box"> <label>Valor numérico:</label> <input type="number" df-number value="0" oninput="handleNodeDataChange(event)"> </div> </div>`, cssClass: 'number-input-node', data: { number: 0 } },
     'input_text': { name: 'input_text', inputs: 0, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-font"></i> Texto</div> <div class="box"> <label>Texto:</label> <input type="text" df-text value="" placeholder="..." oninput="handleNodeDataChange(event)"> </div> </div>`, cssClass: 'text-input-node', data: { text: '' } },
@@ -701,7 +657,6 @@ const baseNodeDefinitions = {
 console.log("Base node definitions loaded:", Object.keys(baseNodeDefinitions).length);
 
 // --- Helper Functions ---
-// Función escapeHtml necesaria para exportRawJson
 function escapeHtml(unsafe) {
     if (unsafe === null || unsafe === undefined) return '';
     return String(unsafe)
@@ -2089,223 +2044,233 @@ function saveHistoryState(force = false) { if (!editor || (isLocked() && !force)
 function undo() { if (historyIndex <= 0 || isLocked()) return; try { historyIndex--; const prev = JSON.parse(historyStack[historyIndex]); const mod = editor.module; cleanupAllModuleIntervals(); editor.import(prev); if (editor.module === mod) { activateExistingAutoNodes(); updateUIDisabledStates(); if(currentlyEditingNodeId && !editor.getNodeFromId(currentlyEditingNodeId)) closeCodeEditorSidebar(false); else if (currentlyEditingNodeId) openCodeEditorSidebar(currentlyEditingNodeId); } else console.warn("Module changed during Undo."); } catch (e) { console.error("Error Undo:", e); historyIndex++; updateUIDisabledStates(); showToast('error', 'Error', 'Failed to undo.'); } }
 function redo() { if (historyIndex >= historyStack.length - 1 || isLocked()) return; try { historyIndex++; const next = JSON.parse(historyStack[historyIndex]); const mod = editor.module; cleanupAllModuleIntervals(); editor.import(next); if (editor.module === mod) { activateExistingAutoNodes(); updateUIDisabledStates(); if(currentlyEditingNodeId && !editor.getNodeFromId(currentlyEditingNodeId)) closeCodeEditorSidebar(false); else if (currentlyEditingNodeId) openCodeEditorSidebar(currentlyEditingNodeId); } else console.warn("Module changed during Redo."); } catch (e) { console.error("Error Redo:", e); historyIndex--; updateUIDisabledStates(); showToast('error', 'Error', 'Failed to redo.'); } }
 
-
-// --- Copy, Paste, Duplicate ---
-function copySelectedNode() {
-    if (isLocked() || !selectedNodeId) {
-        showToast('warning', 'No se puede copiar', selectedNodeId ? 'Editor bloqueado.' : 'Ningún nodo seleccionado.');
+function copySelectedNodes() { // Renamed from copySelectedNode
+    if (isLocked()) {
+        showToast('warning', 'No se puede copiar', 'Editor bloqueado.');
         return;
     }
-    try {
+    let nodesToCopy = [];
+    if (multipleSelectedNodes.size > 0) {
+        multipleSelectedNodes.forEach(id => {
+            const node = editor.getNodeFromId(id);
+            if (node) nodesToCopy.push(node);
+        });
+    } else if (selectedNodeId) { // Fallback to single selected node if multi-selection is empty but one is active
         const node = editor.getNodeFromId(selectedNodeId);
-        if (!node) {
-            showToast('error', 'Error al Copiar', 'Nodo no encontrado.');
-            return;
-        }
-        copiedNodeData = {
-            name: node.name,
-            html: node.html, // Drawflow uses registered HTML, but store for reference
-            data: JSON.parse(JSON.stringify(node.data || {})), // Deep copy of data
-            inputs: Object.keys(node.inputs || {}).length,
-            outputs: Object.keys(node.outputs || {}).length,
-            cssClass: node.class,
-            original_pos_x: node.pos_x,
-            original_pos_y: node.pos_y
-        };
-        console.log('Node copied:', copiedNodeData);
-        showToast('success', 'Nodo Copiado', `${copiedNodeData.name}`);
-        updateUIDisabledStates(); // Enable paste button
-    } catch (e) {
-        console.error("Error copying node:", e);
-        showToast('error', 'Error al Copiar', e.message);
-        copiedNodeData = null;
+        if (node) nodesToCopy.push(node);
     }
-}
 
-function pasteNode() {
-    if (isLocked() || !copiedNodeData) {
-        showToast('warning', 'No se puede pegar', copiedNodeData ? 'Editor bloqueado.' : 'Nada que pegar.');
+    if (nodesToCopy.length === 0) {
+        showToast('warning', 'No se puede copiar', 'Ningún nodo seleccionado.');
+        copiedNodesData = null; // Changed from copiedNodeData
+        updateUIDisabledStates();
         return;
     }
+
+    copiedNodesData = nodesToCopy.map(node => ({ // Changed from copiedNodeData
+        name: node.name,
+        html: node.html, // For reference, actual HTML comes from definition on paste
+        data: JSON.parse(JSON.stringify(node.data || {})),
+        inputs: Object.keys(node.inputs || {}).length,
+        outputs: Object.keys(node.outputs || {}).length,
+        cssClass: node.class,
+        pos_x: node.pos_x, // Storing original position for relative pasting
+        pos_y: node.pos_y
+    }));
+
+    console.log(`${copiedNodesData.length} Node(s) copied:`, copiedNodesData);
+    showToast('success', `${copiedNodesData.length} Nodo(s) Copiado(s)`);
+    updateUIDisabledStates();
+}
+
+function pasteNodes() { // Renamed from pasteNode
+    if (isLocked() || !copiedNodesData || copiedNodesData.length === 0) { // Adjusted condition
+        showToast('warning', 'No se puede pegar', copiedNodesData ? 'Nada que pegar.' : 'Editor bloqueado.');
+        return;
+    }
+
     try {
-        const offsetX = 30;
+        const offsetX = 30; // Offset for pasted nodes
         const offsetY = 30;
-        let new_pos_x, new_pos_y;
+        const pastedNodeIds = [];
 
-        if (copiedNodeData.original_pos_x !== undefined && copiedNodeData.original_pos_y !== undefined) {
-            new_pos_x = copiedNodeData.original_pos_x + offsetX;
-            new_pos_y = copiedNodeData.original_pos_y + offsetY;
-        } else {
-            const rect = editor.container.getBoundingClientRect();
-            const zoom = editor.zoom || 1;
-            new_pos_x = (rect.width / 2 - editor.canvas_x) / zoom - 110; // Approx half node width
-            new_pos_y = (rect.height / 2 - editor.canvas_y) / zoom - 50; // Approx half node height
+        // Determine reference point for pasting (e.g., top-left of the copied selection bounding box)
+        let minX = Infinity, minY = Infinity;
+        copiedNodesData.forEach(nodeData => {
+            minX = Math.min(minX, nodeData.pos_x);
+            minY = Math.min(minY, nodeData.pos_y);
+        });
+
+        // Calculate paste position (e.g., center of screen or offset from original)
+        const rect = editor.container.getBoundingClientRect();
+        const zoom = editor.zoom || 1;
+        const pasteBaseX = (rect.width / 2 - editor.canvas_x) / zoom - 100; // Centered-ish
+        const pasteBaseY = (rect.height / 2 - editor.canvas_y) / zoom - 50;
+
+
+        copiedNodesData.forEach(nodeDataToPaste => {
+            const nodeDef = customNodeTypes[nodeDataToPaste.name];
+            if (!nodeDef) {
+                console.error(`Tipo "${nodeDataToPaste.name}" desconocido para pegar.`);
+                return; // Skip this node
+            }
+
+            const newNodeData = JSON.parse(JSON.stringify(nodeDataToPaste.data));
+            newNodeData.isMovementLocked = false;
+
+            newNodeData.nodeWidth = nodeDataToPaste.data.nodeWidth || nodeDef.data?.nodeWidth || '220px';
+            newNodeData.nodeHeight = nodeDataToPaste.data.nodeHeight || nodeDef.data?.nodeHeight || 'auto';
+            
+            // Calculate new position relative to the paste point and original relative positions
+            const relativeX = nodeDataToPaste.pos_x - minX;
+            const relativeY = nodeDataToPaste.pos_y - minY;
+            const finalX = pasteBaseX + relativeX + offsetX;
+            const finalY = pasteBaseY + relativeY + offsetY;
+
+
+            const nodeId = editor.addNode(
+                nodeDataToPaste.name,
+                nodeDataToPaste.inputs,
+                nodeDataToPaste.outputs,
+                finalX,
+                finalY,
+                nodeDataToPaste.cssClass || '',
+                newNodeData,
+                nodeDef.html
+            );
+
+            if (nodeId === false || nodeId === undefined) {
+                 console.error("Fallo al añadir nodo al editor durante el pegado:", nodeDataToPaste.name);
+                 return; // Skip this node
+            }
+            pastedNodeIds.push(String(nodeId));
+            console.log(`Node pasted with ID: ${nodeId}, Name: ${nodeDataToPaste.name}`);
+
+            // Post-addition logic (like in addNodeToDrawFlow and loadProjectFromFile)
+            setTimeout(() => {
+                 const nodeElement = document.getElementById(`node-${nodeId}`);
+                 if (nodeElement) {
+                      const dataForInit = editor.getNodeFromId(String(nodeId)).data; // Ensure ID is string
+                      nodeElement.style.width = dataForInit.nodeWidth;
+                      if (dataForInit.nodeHeight && dataForInit.nodeHeight !== 'auto') nodeElement.style.height = dataForInit.nodeHeight;
+                      else nodeElement.style.height = 'auto';
+
+                      const resizer = nodeElement.querySelector('.node-resizer');
+                      if (resizer) resizer.addEventListener('mousedown', (e) => startNodeResize(e, String(nodeId), resizer));
+                      updateNodeVisualLockState(String(nodeId), dataForInit.isMovementLocked);
+                      
+                      // Specific initializations
+                      const nodeName = nodeDataToPaste.name;
+                      if (nodeName === 'image_minimal') {
+                          if (getComputedStyle(nodeElement).borderStyle.includes('none') && !dataForInit.imgsrc) nodeElement.style.border = '2px dashed #cccccc';
+                          const placeholder = nodeElement.querySelector('.image-placeholder');
+                          const imgTag = nodeElement.querySelector('img[df-imgsrc]');
+                          if(placeholder) placeholder.style.display = dataForInit.imgsrc ? 'none' : 'flex';
+                          if(imgTag) { imgTag.src = dataForInit.imgsrc || ''; imgTag.style.display = dataForInit.imgsrc ? 'block' : 'none'; }
+                          setupMinimalImageNodeListeners(String(nodeId));
+                      } else if (nodeName === 'youtube_minimal') {
+                          setupYouTubeMinimalNodeListeners(String(nodeId));
+                          if (dataForInit.videoid) createOrUpdateYouTubePlayer(String(nodeId), dataForInit.videoid);
+                          else {
+                              const placeholder = nodeElement.querySelector('.youtube-placeholder');
+                              const playerContainerDiv = nodeElement.querySelector('.yt-player-container');
+                              if (placeholder) placeholder.style.display = 'flex';
+                              if (playerContainerDiv) playerContainerDiv.style.display = 'none';
+                              nodeElement.style.border = '2px dashed #cccccc';
+                          }
+                      } // ... (add other specific node initializations as in your single paste)
+                      editor.updateConnectionNodes(`node-${nodeId}`);
+                 }
+                 if (nodeDataToPaste.name !== 'youtube_minimal' && nodeDataToPaste.name !== 'youtube_display_node' && nodeDataToPaste.name !== 'youtube_player_robust') {
+                     activateNodeIfNeeded(String(nodeId));
+                 }
+            }, 0);
+        });
+
+        if (pastedNodeIds.length > 0) {
+            saveHistoryState();
+            showToast('success', `${pastedNodeIds.length} Nodo(s) Pegado(s)`);
+            // Optionally, select the pasted nodes
+            clearAllSelections();
+            pastedNodeIds.forEach(id => addNodeToSelection(id));
+            if (pastedNodeIds.length === 1) {
+                selectedNodeId = pastedNodeIds[0]; // Set primary if only one pasted
+            }
+            updateUIDisabledStates();
         }
 
-        const nodeDef = customNodeTypes[copiedNodeData.name];
-        if (!nodeDef) throw new Error(`Tipo "${copiedNodeData.name}" desconocido para pegar.`);
-
-        const newNodeData = JSON.parse(JSON.stringify(copiedNodeData.data));
-        newNodeData.isMovementLocked = false; // Pasted nodes are unlocked
-
-        // Ensure nodeWidth and nodeHeight are properly carried over or defaulted
-        newNodeData.nodeWidth = copiedNodeData.data.nodeWidth || nodeDef.data?.nodeWidth || '220px';
-        newNodeData.nodeHeight = copiedNodeData.data.nodeHeight || nodeDef.data?.nodeHeight || 'auto';
-
-
-        const nodeId = editor.addNode(
-            copiedNodeData.name,
-            copiedNodeData.inputs,
-            copiedNodeData.outputs,
-            new_pos_x,
-            new_pos_y,
-            copiedNodeData.cssClass || '',
-            newNodeData,
-            nodeDef.html // Use HTML from definition
-        );
-
-        if (nodeId === false || nodeId === undefined) {
-             throw new Error("Fallo al añadir nodo al editor durante el pegado.");
-        }
-        console.log(`Node pasted with ID: ${nodeId}, Name: ${copiedNodeData.name}`);
-
-        // Replicate post-addition logic from addNodeToDrawFlow
-        setTimeout(() => {
-             const nodeElement = document.getElementById(`node-${nodeId}`);
-             if (nodeElement) {
-                  const dataForInit = editor.getNodeFromId(nodeId).data;
-                  nodeElement.style.width = dataForInit.nodeWidth;
-                  if (dataForInit.nodeHeight && dataForInit.nodeHeight !== 'auto') nodeElement.style.height = dataForInit.nodeHeight;
-                  else nodeElement.style.height = 'auto';
-
-                  const resizer = nodeElement.querySelector('.node-resizer');
-                  if (resizer) resizer.addEventListener('mousedown', (e) => startNodeResize(e, nodeId, resizer));
-
-                  updateNodeVisualLockState(nodeId, dataForInit.isMovementLocked);
-
-                  const nodeName = copiedNodeData.name;
-                  // Specific initializations (replicating parts of addNodeToDrawFlow and loadProjectFromFile)
-                  if (nodeName === 'image_minimal') {
-                      if (getComputedStyle(nodeElement).borderStyle.includes('none') && !dataForInit.imgsrc) nodeElement.style.border = '2px dashed #cccccc';
-                      const placeholder = nodeElement.querySelector('.image-placeholder');
-                      const imgTag = nodeElement.querySelector('img[df-imgsrc]');
-                      if(placeholder) placeholder.style.display = dataForInit.imgsrc ? 'none' : 'flex';
-                      if(imgTag) {
-                        imgTag.src = dataForInit.imgsrc || '';
-                        imgTag.style.display = dataForInit.imgsrc ? 'block' : 'none';
-                      }
-                      setupMinimalImageNodeListeners(nodeId);
-                  }
-                  else if (nodeName === 'youtube_minimal') {
-                      // Size already set. Player creation based on videoid.
-                      setupYouTubeMinimalNodeListeners(nodeId);
-                      if (dataForInit.videoid) createOrUpdateYouTubePlayer(nodeId, dataForInit.videoid);
-                      else {
-                          const placeholder = nodeElement.querySelector('.youtube-placeholder');
-                          const playerContainerDiv = nodeElement.querySelector('.yt-player-container');
-                          if (placeholder) placeholder.style.display = 'flex';
-                          if (playerContainerDiv) playerContainerDiv.style.display = 'none';
-                          nodeElement.style.border = '2px dashed #cccccc';
-                      }
-                  }
-                  else if (nodeName === 'youtube_display_node') {
-                        const urlInput = nodeElement.querySelector('input[df-yturl]'); if(urlInput) urlInput.value = dataForInit.yturl || '';
-                        if (dataForInit.videoid) createOrUpdateYouTubePlayerFunctional(nodeId, dataForInit.videoid);
-                        else { const playerContainerFunc = nodeElement.querySelector('.yt-player-container-functional'); if(playerContainerFunc) playerContainerFunc.style.display = 'none'; }
-                  }
-                  else if (nodeName === 'image_display_node') {
-                        const urlInput = nodeElement.querySelector('input[df-imgsrcdisplay]'); const imgPreview = nodeElement.querySelector('img[df-imgpreview]'); const placeholder = nodeElement.querySelector('.img-container-functional .placeholder-text');
-                        if(urlInput) urlInput.value = dataForInit.imgsrcdisplay || '';
-                        if (imgPreview && placeholder) { if (dataForInit.imgsrcdisplay) { imgPreview.src = dataForInit.imgsrcdisplay; imgPreview.style.display = 'block'; placeholder.style.display = 'none'; } else { imgPreview.src = ''; imgPreview.style.display = 'none'; placeholder.style.display = 'block'; placeholder.textContent = "No image loaded"; } }
-                  }
-                  else if (nodeName === 'youtube_player_robust') {
-                        const urlInputRobust = nodeElement.querySelector('input[df-yturl]'); if(urlInputRobust) urlInputRobust.value = dataForInit.yturl || '';
-                        setupRobustYouTubeNodeListeners(nodeId);
-                        if (dataForInit.videoid) {
-                            _updateRobustPlayerStatus(nodeId, 'loading', `Cargando ID: ${dataForInit.videoid}...`);
-                            createOrUpdateRobustYouTubePlayer(nodeId, dataForInit.videoid);
-                        } else if (dataForInit.yturl) {
-                             processRobustYouTubeLoad(nodeId, dataForInit.yturl);
-                        } else { _updateRobustPlayerStatus(nodeId, 'idle'); }
-                  }
-                  else if (nodeName === 'nota' && dataForInit.notecolor) {
-                        nodeElement.style.backgroundColor = dataForInit.notecolor;
-                        const tb = nodeElement.querySelector('.title-box');
-                        if(tb) {
-                            const darkBgs = ['#ccccff', '#e0e0e0'];
-                            tb.style.backgroundColor = darkBgs.includes(dataForInit.notecolor) ? '#f0f0f0' : '';
-                            tb.style.color = darkBgs.includes(dataForInit.notecolor) ? '#333' : '';
-                        }
-                        const selectEl = nodeElement.querySelector('select[df-notecolor]');
-                        if (selectEl) selectEl.value = dataForInit.notecolor;
-                        const charcountEl = nodeElement.querySelector('[df-charcount]');
-                        if(charcountEl) charcountEl.textContent = (dataForInit.notecontent || '').length;
-                  }
-                  else if (nodeName === 'local_image') {
-                        const imgTag = nodeElement.querySelector('img[df-imagesrc]');
-                        if (imgTag){
-                            if(dataForInit.imagewidth) imgTag.style.width = dataForInit.imagewidth;
-                            if(dataForInit.imageheight) imgTag.style.height = dataForInit.imageheight;
-                            imgTag.src = dataForInit.imagesrc || '';
-                            imgTag.style.display = dataForInit.imagesrc ? 'block' : 'none';
-                            const placeholder = nodeElement.querySelector('.placeholder-text');
-                            if(placeholder) placeholder.style.display = dataForInit.imagesrc ? 'none' : 'block';
-                        }
-                        const filenameSpan = nodeElement.querySelector('span[df-filename]');
-                        if (filenameSpan) {filenameSpan.textContent = dataForInit.filename || ''; filenameSpan.title = dataForInit.filename || '';}
-                  }
-                  editor.updateConnectionNodes(`node-${nodeId}`);
-             }
-             if (nodeName !== 'youtube_minimal' && nodeName !== 'youtube_display_node' && nodeName !== 'youtube_player_robust') {
-                 activateNodeIfNeeded(nodeId);
-             }
-        }, 0);
-
-        saveHistoryState();
-        showToast('success', 'Nodo Pegado', `${copiedNodeData.name}`);
     } catch (e) {
-        console.error("Error pasting node:", e);
-        showToast('error', 'Error al Pegar', e.message);
+        console.error("Error pasting nodes:", e);
+        showToast('error', 'Error al Pegar Nodos', e.message);
     }
 }
 
-function duplicateSelectedNode() {
-    if (isLocked() || !selectedNodeId) {
-        showToast('warning', 'No se puede duplicar', selectedNodeId ? 'Editor bloqueado.' : 'Ningún nodo seleccionado.');
+function duplicateSelectedNodes() { // Renamed from duplicateSelectedNode
+    if (isLocked()) {
+        showToast('warning', 'No se puede duplicar', 'Editor bloqueado.');
         return;
     }
-    const originalNode = editor.getNodeFromId(selectedNodeId);
-    if (!originalNode) {
-        showToast('error', 'Error Duplicar', 'Nodo original no encontrado.');
-        return;
+    let nodesToDuplicate = [];
+    if (multipleSelectedNodes.size > 0) {
+        multipleSelectedNodes.forEach(id => {
+            const node = editor.getNodeFromId(id);
+            if (node) nodesToDuplicate.push(node);
+        });
+    } else if (selectedNodeId) {
+        const node = editor.getNodeFromId(selectedNodeId);
+        if (node) nodesToDuplicate.push(node);
     }
-    // Store original data before copySelectedNode potentially overwrites copiedNodeData if it was from a different node
-    const tempCopiedData = {
-        name: originalNode.name,
-        html: originalNode.html,
-        data: JSON.parse(JSON.stringify(originalNode.data || {})),
-        inputs: Object.keys(originalNode.inputs || {}).length,
-        outputs: Object.keys(originalNode.outputs || {}).length,
-        cssClass: originalNode.class,
-        original_pos_x: originalNode.pos_x,
-        original_pos_y: originalNode.pos_y
-    };
-    const previousCopiedNodeData = copiedNodeData; // Save current clipboard
-    copiedNodeData = tempCopiedData; // Set node to duplicate as the one to be pasted
-
-    pasteNode(); // Paste it (uses offset from original_pos_x/y)
     
-    copiedNodeData = previousCopiedNodeData; // Restore original clipboard
-    updateUIDisabledStates(); // Update UI based on restored clipboard state
-    // Don't show "Nodo Duplicado" toast, pasteNode shows "Nodo Pegado"
+    if (nodesToDuplicate.length === 0) {
+        showToast('warning', 'No se puede duplicar', 'Ningún nodo seleccionado.');
+        return;
+    }
+
+    const tempCopiedData = nodesToDuplicate.map(node => ({
+        name: node.name,
+        html: node.html,
+        data: JSON.parse(JSON.stringify(node.data || {})),
+        inputs: Object.keys(node.inputs || {}).length,
+        outputs: Object.keys(node.outputs || {}).length,
+        cssClass: node.class,
+        pos_x: node.pos_x,
+        pos_y: node.pos_y
+    }));
+    
+    const previousCopiedNodesData = copiedNodesData;
+    copiedNodesData = tempCopiedData;
+
+    pasteNodes(); // This will handle the actual pasting with offset logic
+    
+    copiedNodesData = previousCopiedNodesData; // Restore original clipboard
+    updateUIDisabledStates();
 }
 
-function deleteSelectedNode() {
-    if (isLocked() || !selectedNodeId) return;
-    editor.removeNodeId(`node-${selectedNodeId}`);
-    // selectedNodeId is nulled by 'nodeUnselected' or 'nodeRemoved' events
-    // saveHistoryState is called by 'nodeRemoved' event
+function deleteSelectedNodes() { // Renamed from deleteSelectedNode
+    if (isLocked()) return;
+    const nodesToDelete = new Set(multipleSelectedNodes); // Operate on a copy
+    if (nodesToDelete.size === 0 && selectedNodeId) { // Fallback if no multi-selection but one is active
+        nodesToDelete.add(selectedNodeId);
+    }
+    if (nodesToDelete.size === 0) return;
+
+    let nodesRemovedCount = 0;
+    nodesToDelete.forEach(id => {
+        try {
+            editor.removeNodeId(`node-${id}`); // Drawflow's event will handle history and cleanup
+            nodesRemovedCount++;
+        } catch (e) {
+            console.error(`Error removing node ${id} during multi-delete:`, e);
+        }
+    });
+    
+    if (nodesRemovedCount > 0) {
+        showToast('info', `${nodesRemovedCount} Nodo(s) Eliminados`);
+    }
+    clearAllSelections(); // Ensure selection state is clean after deletion
+    // updateUIDisabledStates will be called by nodeRemoved events
 }
+
 
 // --- Project Management ---
 function triggerLoad() { if (fileInputElement) fileInputElement.click(); else showToast('error', 'Error', 'File input missing.'); }
@@ -2370,7 +2335,7 @@ function loadProjectFromFile(event) {
                               }
                           });
                           if (nodeName === 'nota' && nodeData.notecolor) { nodeElement.style.backgroundColor = nodeData.notecolor; const tb = nodeElement.querySelector('.title-box'); if(tb) { const darkBgs = ['#ccccff', '#e0e0e0']; tb.style.backgroundColor = darkBgs.includes(nodeData.notecolor) ? '#f0f0f0' : ''; tb.style.color = darkBgs.includes(nodeData.notecolor) ? '#333' : ''; } }
-                          else if (nodeName === 'local_image') { // Size already set above
+                          else if (nodeName === 'local_image') { 
                             const imgTag = nodeElement.querySelector('img[df-imagesrc]');
                             if (imgTag){
                                 if(nodeData.imagewidth) imgTag.style.width = nodeData.imagewidth;
@@ -2387,11 +2352,10 @@ function loadProjectFromFile(event) {
                               const imgTag = nodeElement.querySelector('img[df-imgsrc]');
                               const placeholder = nodeElement.querySelector('.image-placeholder');
                               if (imgTag && placeholder) {
-                                  const hasValidImage = nodeData.imgsrc; // Removed naturalWidth/Height check as they might not be saved if image was from URL
+                                  const hasValidImage = nodeData.imgsrc;
                                   if (hasValidImage) {
                                       imgTag.src = nodeData.imgsrc; imgTag.style.display = 'block'; placeholder.style.display = 'none';
                                       nodeElement.style.border = 'none';
-                                      // If naturalWidth/Height were saved (e.g. from local file), use them for initial size if no nodeWidth/Height
                                       if (!nodeData.nodeWidth && nodeData.naturalWidth) nodeElement.style.width = `${nodeData.naturalWidth}px`;
                                       if (!nodeData.nodeHeight && nodeData.naturalHeight) nodeElement.style.height = `${nodeData.naturalHeight}px`;
                                   } else {
@@ -2449,14 +2413,14 @@ function loadProjectFromFile(event) {
                                   _updateRobustPlayerStatus(nodeId, 'idle');
                               }
                           }
-                          setTimeout(() => editor.updateConnectionNodes(`node-${nodeId}`), 150); // Ensure connections are redrawn after all potential size changes
+                          setTimeout(() => editor.updateConnectionNodes(`node-${nodeId}`), 150);
                       } else console.warn(`Node element not found in DOM for ID ${nodeId} during post-import UI sync.`);
                   });
               } else console.warn("No nodes found in the current module after import to sync UI:", targetModule);
           } catch (importError) { showToast('error', 'Error de Importación', `No se pudo importar: ${importError.message}`); if(fileInput) fileInput.value = null; return; }
           
           currentProjectName = expectedProjectName; renderModuleTabs(); initializeHistory();
-          selectedNodeId = null; copiedNodeData = null; currentlyEditingNodeId = null;
+          clearAllSelections(); // Clear selection state
           updateUIDisabledStates(); closeCodeEditorSidebar(false); document.title = `Xocoflow | ${currentProjectName} - ${editor.module}`;
           saveHistoryState(true); activateExistingAutoNodes(); showToast('success', 'Proyecto Cargado', `"${escapeHtml(currentProjectName)}" cargado.`);
       } catch (err) { console.error("Error fatal cargando proyecto:", err); showToast('error', 'Error Crítico', `Fallo al cargar: ${err.message}`); }
@@ -2498,7 +2462,42 @@ function removeModuleTab(moduleName) {
 
 // --- UI Helpers ---
 function changeMode(option) { try { if (!lockButton || !unlockButton || !editor) return; const isLocking = option === 'lock'; editor.editor_mode = isLocking ? 'fixed' : 'edit'; updateUIDisabledStates(); showToast('info', `Editor ${isLocking ? 'Locked' : 'Unlocked'}`, '', 1500); if (isLocking) closeCodeEditorSidebar(false); } catch (e) { console.error("Error changeMode:", e); } }
-function updateUIDisabledStates() { const locked = isLocked(); const nodeSel = selectedNodeId !== null; const canUndo = historyIndex > 0; const canRedo = historyIndex < historyStack.length - 1; const canPaste = copiedNodeData !== null; const setCtrl = (btn, vis, dis = false) => { if (btn) { btn.classList.toggle('hidden', !vis); btn.disabled = !vis || dis; } }; setCtrl(undoButton, !locked && canUndo, !canUndo); setCtrl(redoButton, !locked && canRedo, !canRedo); setCtrl(copyButton, !locked && nodeSel, !nodeSel); setCtrl(duplicateButton, !locked && nodeSel, !nodeSel); setCtrl(pasteButton, !locked && canPaste, !canPaste); if (recalculateButton) setCtrl(recalculateButton, !locked, locked); if (lockButton && unlockButton) { lockButton.style.display = locked ? 'none' : ''; unlockButton.style.display = locked ? '' : 'none'; const sw = lockButton.parentElement; if(sw) sw.setAttribute('aria-checked', String(locked)); } if (nodesListContainer) { nodesListContainer.style.opacity = locked ? '0.6' : '1'; nodesListContainer.style.pointerEvents = locked ? 'none' : ''; } updateNodePositionStatus(selectedNodeId); }
+
+function updateUIDisabledStates() {
+    const locked = isLocked();
+    const hasSelection = selectedNodeId !== null || multipleSelectedNodes.size > 0;
+    const canUndo = historyIndex > 0;
+    const canRedo = historyIndex < historyStack.length - 1;
+    const canPaste = copiedNodesData !== null && copiedNodesData.length > 0;
+
+    const setCtrl = (btn, vis, dis = false) => {
+        if (btn) {
+            btn.classList.toggle('hidden', !vis);
+            btn.disabled = !vis || dis;
+        }
+    };
+
+    setCtrl(undoButton, !locked && canUndo, !canUndo);
+    setCtrl(redoButton, !locked && canRedo, !canRedo);
+    setCtrl(copyButton, !locked && hasSelection, !hasSelection);
+    setCtrl(duplicateButton, !locked && hasSelection, !hasSelection);
+    setCtrl(pasteButton, !locked && canPaste, !canPaste);
+
+    if (recalculateButton) setCtrl(recalculateButton, !locked, locked);
+
+    if (lockButton && unlockButton) {
+        lockButton.style.display = locked ? 'none' : '';
+        unlockButton.style.display = locked ? '' : 'none';
+        const sw = lockButton.parentElement;
+        if (sw) sw.setAttribute('aria-checked', String(locked));
+    }
+    if (nodesListContainer) {
+        nodesListContainer.style.opacity = locked ? '0.6' : '1';
+        nodesListContainer.style.pointerEvents = locked ? 'none' : '';
+    }
+    updateNodePositionStatus(selectedNodeId); // Primary selected node for status bar
+}
+
 
 // --- Drag and Drop ---
 var mobile_item_selec = ''; var mobile_last_move = null; function allowDrop(ev) { ev.preventDefault(); } function drag(ev) { try { const el = ev.target.closest(".drag-drawflow"); if (!el || !el.dataset.node) { ev.preventDefault(); return; } const nt = el.dataset.node; if (ev.type === "touchstart") { mobile_item_selec = nt; mobile_last_move = ev; el.style.opacity = '0.5';} else { ev.dataTransfer.setData("node", nt); ev.dataTransfer.effectAllowed = 'copy';} } catch(e){console.error("Drag error:",e);} } function positionMobile(ev) { mobile_last_move = ev; } function drop(ev) { let nodeName='',clientX=0,clientY=0,isTouch=false; try { if (ev.type === "touchend") { isTouch=true; const orig=nodesListContainer?.querySelector(`[data-node="${mobile_item_selec}"]`); if(orig) orig.style.opacity='1'; if(!mobile_last_move||!mobile_item_selec) return; clientX=mobile_last_move.changedTouches[0].clientX; clientY=mobile_last_move.changedTouches[0].clientY; nodeName=mobile_item_selec; mobile_item_selec=''; mobile_last_move=null; } else { ev.preventDefault(); nodeName=ev.dataTransfer.getData("node"); clientX=ev.clientX; clientY=ev.clientY; } const targetEl = document.elementFromPoint(clientX, clientY); if (nodeName && targetEl?.closest(`#${DRAWFLOW_CONTAINER_ID}`)) addNodeToDrawFlow(nodeName, clientX, clientY); } catch(e){console.error("Drop error:",e); if(isTouch){const orig=nodesListContainer?.querySelector(`[data-node="${mobile_item_selec}"]`); if(orig) orig.style.opacity='1'; mobile_item_selec=''; mobile_last_move=null;}} }
@@ -2548,24 +2547,24 @@ function addNodeToDrawFlow(name, pos_x, pos_y) {
         setTimeout(() => {
              const nodeElement = document.getElementById(`node-${nodeId}`);
              if (nodeElement) {
-                  const currentData = editor.getNodeFromId(nodeId).data; // Get fresh data
+                  const currentData = editor.getNodeFromId(String(nodeId)).data; // Ensure ID is string
                   nodeElement.style.width = currentData.nodeWidth;
                   if (currentData.nodeHeight && currentData.nodeHeight !== 'auto') nodeElement.style.height = currentData.nodeHeight;
                   else nodeElement.style.height = 'auto';
 
                   const resizer = nodeElement.querySelector('.node-resizer');
-                  if (resizer) resizer.addEventListener('mousedown', (e) => startNodeResize(e, nodeId, resizer));
+                  if (resizer) resizer.addEventListener('mousedown', (e) => startNodeResize(e, String(nodeId), resizer));
 
-                  updateNodeVisualLockState(nodeId, currentData.isMovementLocked);
+                  updateNodeVisualLockState(String(nodeId), currentData.isMovementLocked);
 
                   if (name === 'image_minimal') {
                       if (getComputedStyle(nodeElement).borderStyle.includes('none') && !currentData.imgsrc) nodeElement.style.border = '2px dashed #cccccc';
                       const placeholder = nodeElement.querySelector('.image-placeholder'); if(placeholder) placeholder.style.display = 'flex';
-                      setupMinimalImageNodeListeners(nodeId);
+                      setupMinimalImageNodeListeners(String(nodeId));
                   }
                   else if (name === 'youtube_minimal') {
-                      setupYouTubeMinimalNodeListeners(nodeId);
-                      if (currentData.videoid) createOrUpdateYouTubePlayer(nodeId, currentData.videoid);
+                      setupYouTubeMinimalNodeListeners(String(nodeId));
+                      if (currentData.videoid) createOrUpdateYouTubePlayer(String(nodeId), currentData.videoid);
                       else {
                           const placeholder = nodeElement.querySelector('.youtube-placeholder');
                           const playerContainerDiv = nodeElement.querySelector('.yt-player-container');
@@ -2576,7 +2575,7 @@ function addNodeToDrawFlow(name, pos_x, pos_y) {
                   }
                   else if (name === 'youtube_display_node') {
                         const urlInput = nodeElement.querySelector('input[df-yturl]'); if(urlInput) urlInput.value = currentData.yturl || '';
-                        if (currentData.videoid) createOrUpdateYouTubePlayerFunctional(nodeId, currentData.videoid);
+                        if (currentData.videoid) createOrUpdateYouTubePlayerFunctional(String(nodeId), currentData.videoid);
                         else { const playerContainerFunc = nodeElement.querySelector('.yt-player-container-functional'); if(playerContainerFunc) playerContainerFunc.style.display = 'none'; }
                   }
                   else if (name === 'image_display_node') {
@@ -2586,20 +2585,20 @@ function addNodeToDrawFlow(name, pos_x, pos_y) {
                   }
                   else if (name === 'youtube_player_robust') {
                         const urlInputRobust = nodeElement.querySelector('input[df-yturl]'); if(urlInputRobust) urlInputRobust.value = currentData.yturl || '';
-                        setupRobustYouTubeNodeListeners(nodeId);
+                        setupRobustYouTubeNodeListeners(String(nodeId));
                         if (currentData.videoid) {
-                            _updateRobustPlayerStatus(nodeId, 'loading', `Cargando ID: ${currentData.videoid}...`);
-                            createOrUpdateRobustYouTubePlayer(nodeId, currentData.videoid);
+                            _updateRobustPlayerStatus(String(nodeId), 'loading', `Cargando ID: ${currentData.videoid}...`);
+                            createOrUpdateRobustYouTubePlayer(String(nodeId), currentData.videoid);
                         } else if (currentData.yturl) {
-                             processRobustYouTubeLoad(nodeId, currentData.yturl);
+                             processRobustYouTubeLoad(String(nodeId), currentData.yturl);
                         } else {
-                            _updateRobustPlayerStatus(nodeId, 'idle');
+                            _updateRobustPlayerStatus(String(nodeId), 'idle');
                         }
                   }
                   editor.updateConnectionNodes(`node-${nodeId}`);
              }
              if (name !== 'youtube_minimal' && name !== 'youtube_display_node' && name !== 'youtube_player_robust') {
-                 activateNodeIfNeeded(nodeId);
+                 activateNodeIfNeeded(String(nodeId));
              }
         }, 0);
         saveHistoryState(); return true;
@@ -2657,7 +2656,62 @@ function saveAndCloseCodeEditor() { closeCodeEditorSidebar(true); }
 function updateZoomStatus(level) { if (zoomLevelSpan) zoomLevelSpan.textContent = `${Math.round(level * 100)}%`; }
 function updateNodePositionStatus(nodeId) { if (nodePositionSpan) { if (nodeId) { const n = editor?.getNodeFromId(nodeId); if (n) nodePositionSpan.textContent = `X:${Math.round(n.pos_x)},Y:${Math.round(n.pos_y)}`; else nodePositionSpan.textContent = `X:-,Y:-`; } else nodePositionSpan.textContent = `X:-,Y:-`; } }
 
-// --- Drawflow Event Listeners (Using v1.7.5 style for moduleChanged handling) ---
+// --- Node Selection Management ---
+function clearAllSelections() {
+    multipleSelectedNodes.forEach(id => {
+        const nodeElement = document.getElementById(`node-${id}`);
+        if (nodeElement) nodeElement.classList.remove('multi-selected');
+    });
+    multipleSelectedNodes.clear();
+    if (selectedNodeId) { // If a primary selection exists (from Drawflow's internal selection)
+        try {
+            // Drawflow's removeSelection might throw if no node is internally selected,
+            // but we also want to clear our primary selectedNodeId
+            if (editor.selected_node) editor.removeSelection();
+        } catch (e) { /* ignore */ }
+        selectedNodeId = null;
+    }
+    updateUIDisabledStates();
+    updateNodePositionStatus(null);
+}
+
+function addNodeToSelection(nodeId) {
+    if (!nodeId) return;
+    const nodeElement = document.getElementById(`node-${nodeId}`);
+    if (nodeElement) {
+        nodeElement.classList.add('multi-selected');
+        multipleSelectedNodes.add(nodeId);
+    }
+    selectedNodeId = nodeId; // Last clicked/added becomes primary for single-node operations
+    updateUIDisabledStates();
+    updateNodePositionStatus(nodeId);
+}
+
+function removeNodeFromSelection(nodeId) {
+    if (!nodeId) return;
+    const nodeElement = document.getElementById(`node-${nodeId}`);
+    if (nodeElement) {
+        nodeElement.classList.remove('multi-selected');
+    }
+    multipleSelectedNodes.delete(nodeId);
+
+    if (selectedNodeId === nodeId) { // If the removed node was the primary selection
+        selectedNodeId = multipleSelectedNodes.size > 0 ? multipleSelectedNodes.values().next().value : null; // Pick a new primary or null
+    }
+    updateUIDisabledStates();
+    updateNodePositionStatus(selectedNodeId);
+}
+
+function toggleNodeInSelection(nodeId) {
+    if (multipleSelectedNodes.has(nodeId)) {
+        removeNodeFromSelection(nodeId);
+    } else {
+        addNodeToSelection(nodeId);
+    }
+}
+
+
+// --- Drawflow Event Listeners (UPDATED FOR MULTI-SELECT) ---
 function setupDrawflowListeners() {
     if (!editor) { console.error("Cannot setup listeners: Drawflow editor missing."); return; }
     try {
@@ -2667,17 +2721,45 @@ function setupDrawflowListeners() {
             if (youtubePlayers[id]) { try { youtubePlayers[id].destroy(); delete youtubePlayers[id]; } catch (e) { console.error(`Error destroying YouTube minimal player ${id}:`, e); } }
             if (youtubePlayersFunctional[id]) { try { youtubePlayersFunctional[id].destroy(); delete youtubePlayersFunctional[id]; } catch (e) { console.error(`Error destroying YouTube display player ${id}:`, e); } }
             if (youtubePlayersRobust[id]) { try { youtubePlayersRobust[id].destroy(); delete youtubePlayersRobust[id]; console.log(`Robust YouTube (${id}): Player instance destroyed.`); } catch (e) { console.error(`Error destroying Robust YouTube player ${id}:`, e); } }
-            if (selectedNodeId === id) { selectedNodeId = null; updateNodePositionStatus(null); } if (currentlyEditingNodeId === id) closeCodeEditorSidebar(false);
-            let connectionsFromRemovedNode = []; try { const nodeDataBeforeRemoval = editor.getNodeFromId(id); if (nodeDataBeforeRemoval?.outputs) Object.values(nodeDataBeforeRemoval.outputs).forEach(op => connectionsFromRemovedNode = connectionsFromRemovedNode.concat(op.connections || [])); } catch (e) {}
-            if (connectionsFromRemovedNode.length > 0) {
-                connectionsFromRemovedNode.forEach(conn => { try { const targetNode = editor.getNodeFromId(conn.node); if (targetNode) { const targetName = targetNode.name; const needsRecalc = ['sum', 'subtract', 'multiply', 'divide', 'concatenar']; if (needsRecalc.includes(targetName)) { switch (targetName) { case 'sum': setTimeout(() => updateSumNode(conn.node), 0); break; case 'subtract': setTimeout(() => updateSubtractNode(conn.node), 0); break; case 'multiply': setTimeout(() => updateMultiplyNode(conn.node), 0); break; case 'divide': setTimeout(() => updateDivideNode(conn.node), 0); break; case 'concatenar': setTimeout(() => updateConcatenateNode(conn.node), 0); break; } } } } catch (findTargetError) {} });
-            }
-            updateUIDisabledStates(); saveHistoryState();
+            
+            removeNodeFromSelection(id); // Remove from our multi-selection set
+            if (selectedNodeId === id) selectedNodeId = null; // Already handled by removeNodeFromSelection if it was primary
+            
+            if (currentlyEditingNodeId === id) closeCodeEditorSidebar(false);
+            // ... (rest of your nodeRemoved logic for connections)
+            updateUIDisabledStates(); // updateUIDisabledStates should correctly reflect new selection state
+            saveHistoryState();
         });
-        editor.on('nodeSelected', (id) => { console.log(`Event: Node Selected ${id}`); selectedNodeId = id; updateUIDisabledStates(); updateNodePositionStatus(id); });
-        editor.on('nodeUnselected', (wasSelected) => { console.log(`Event: Node Unselected (was selected: ${wasSelected})`); const prevSelected = selectedNodeId; selectedNodeId = null; updateUIDisabledStates(); updateNodePositionStatus(null); if (prevSelected && prevSelected === currentlyEditingNodeId) closeCodeEditorSidebar(true); });
+
+        // We will manage selection mostly ourselves, but 'nodeSelected' can be a trigger.
+        // Drawflow's internal 'selected_node' is still useful for its own operations (like moving).
+        editor.on('nodeSelected', (id) => {
+            console.log(`Event: Node Selected (Drawflow internal) ${id}`);
+            if (!isCtrlKeyPressed) { // If Ctrl is not pressed, this is a new primary selection
+                clearAllSelections(); // Clear previous multi-selection
+                addNodeToSelection(id); // Add this one
+            } else { // Ctrl is pressed, toggle this node in the multi-selection
+                toggleNodeInSelection(id);
+            }
+            // selectedNodeId is set by addNodeToSelection or toggleNodeInSelection
+            updateUIDisabledStates();
+            updateNodePositionStatus(selectedNodeId); // Show primary selection in status
+        });
+
+        editor.on('nodeUnselected', (wasSelected) => {
+            console.log(`Event: Node Unselected (Drawflow internal) (was selected: ${wasSelected})`);
+            // This event means Drawflow cleared its internal selected_node.
+            // If we are not using Ctrl, our selection should also clear.
+            if (!isCtrlKeyPressed) {
+                clearAllSelections(); // This will nullify selectedNodeId
+            }
+            // If Ctrl is pressed, our multi-selection state is maintained by direct clicks.
+            // updateUIDisabledStates(); // Called by clearAllSelections if it runs
+            // updateNodePositionStatus(null); // Called by clearAllSelections
+        });
+
         editor.on('nodeMoved', (id) => {
-            saveHistoryState(); if(id === selectedNodeId) updateNodePositionStatus(id);
+            saveHistoryState(); if(id === selectedNodeId || multipleSelectedNodes.has(id)) updateNodePositionStatus(id);
             try { const node = editor.getNodeFromId(id); if(node) { const orderDependentTargets = ['concatenar', 'subtract', 'divide']; const nodeName = node.name; const outputConnections = getConnections(id, 'output'); outputConnections.forEach(conn => { try { const targetNode = editor.getNodeFromId(conn.node); if (targetNode && orderDependentTargets.includes(targetNode.name)) { switch (targetNode.name) { case 'concatenar': setTimeout(() => updateConcatenateNode(conn.node), 0); break; case 'subtract': setTimeout(() => updateSubtractNode(conn.node), 0); break; case 'divide': setTimeout(() => updateDivideNode(conn.node), 0); break; } } } catch (e) {} }); if (orderDependentTargets.includes(nodeName)) { switch (nodeName) { case 'concatenar': setTimeout(() => updateConcatenateNode(id), 0); break; case 'subtract': setTimeout(() => updateSubtractNode(id), 0); break; case 'divide': setTimeout(() => updateDivideNode(id), 0); break; } } } } catch (e) {}
         });
         editor.on('connectionCreated', (connectionInfo) => {
@@ -2700,7 +2782,7 @@ function setupDrawflowListeners() {
 
         editor.on('moduleChanged', (name) => {
             console.log(`%cEVENT: Module Changed -> ${name}`, 'color: blue; font-weight: bold;');
-            hideCustomContextMenu();
+            hideCustomContextMenu(); clearAllSelections();
             const modulesData = editor.export()?.drawflow;
             if (!modulesData || !modulesData[name]) {
                  console.warn(`Module ${name} not found after moduleChanged event. Falling back to Home.`);
@@ -2708,7 +2790,8 @@ function setupDrawflowListeners() {
                  if (!modulesData || !modulesData[name]) editor.addModule('Home');
                  editor.changeModule('Home'); return;
             }
-            renderModuleTabs(); initializeHistory(); selectedNodeId = null; copiedNodeData = null; currentlyEditingNodeId = null;
+            renderModuleTabs(); initializeHistory(); 
+            // selectedNodeId, copiedNodesData, currentlyEditingNodeId are reset by clearAllSelections or globally
             updateUIDisabledStates(); updateZoomStatus(editor.zoom); updateNodePositionStatus(null);
             document.title = `Xocoflow | ${currentProjectName} - ${name}`;
             closeCodeEditorSidebar(false);
@@ -2718,15 +2801,33 @@ function setupDrawflowListeners() {
         editor.on('zoom', (level) => { updateZoomStatus(level); });
         editor.on('translate', (pos) => { /* No action */ });
         editor.on('contextmenu', (e) => { const nodeElement = e.target.closest(".drawflow-node"); if (e.target.closest('.drawflow-delete')) { e.preventDefault(); hideCustomContextMenu(); return; } if (nodeElement) { const nodeId = nodeElement.id.slice(5); showCustomContextMenu(e, nodeId); } else { e.preventDefault(); hideCustomContextMenu(); } });
-        editor.on('click', (e) => { const target = e.target; if (customContextMenu && !customContextMenu.contains(target)) hideCustomContextMenu(); if (codeEditorSidebar?.classList.contains('visible') && !target.closest('#code-editor-sidebar') && !target.closest('.drawflow-node')) closeCodeEditorSidebar(true); const ignoreClickTargets = '.drawflow-node, .controls-container, .menu, .swal2-container, #code-editor-sidebar, .nodes-list, .col header, .drawflow-delete, .point, .custom-context-menu'; if (!target.closest(ignoreClickTargets) && selectedNodeId) { try { editor.removeSelection(); } catch {} } });
+        
+        editor.on('click', (e) => {
+            const target = e.target;
+            const nodeElement = target.closest(".drawflow-node");
+
+            if (customContextMenu && !customContextMenu.contains(target)) {
+                hideCustomContextMenu();
+            }
+            if (codeEditorSidebar?.classList.contains('visible') && !target.closest('#code-editor-sidebar') && !nodeElement) {
+                 closeCodeEditorSidebar(true);
+            }
+            
+            // If click is on canvas background (not on a node or specific UI elements)
+            const ignoreClickTargets = '.drawflow-node, .controls-container, .menu, .swal2-container, #code-editor-sidebar, .nodes-list, .col header, .drawflow-delete, .point, .custom-context-menu';
+            if (!target.closest(ignoreClickTargets)) {
+                 clearAllSelections();
+            }
+            // If click is on a node, 'nodeSelected' event will handle selection logic
+        });
     } catch (e) { console.error("Error setting Drawflow listeners:", e); showToast('error', 'Critical Error', 'Failed setup.'); }
 }
 
 
-// --- Keyboard Shortcuts ---
-
-
+// --- Keyboard Shortcuts (UPDATED FOR MULTI-SELECT) ---
 document.addEventListener('keydown', (event) => {
+    if(event.key === "Control" || event.key === "Meta") isCtrlKeyPressed = true;
+
     try {
         const active = document.activeElement;
         const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable || active.closest('.CodeMirror'));
@@ -2738,15 +2839,14 @@ document.addEventListener('keydown', (event) => {
         if (event.key === 'Escape') {
             if (isModal) { closeNodeDefinitionModal(); event.preventDefault(); return; }
             if (isCM || (isSidebar && currentlyEditingNodeId)) { closeCodeEditorSidebar(true); event.preventDefault(); return; }
-            if (selectedNodeId) { try{ editor.removeSelection(); } catch { selectedNodeId = null; } updateUIDisabledStates(); event.preventDefault(); return; }
+            if (selectedNodeId || multipleSelectedNodes.size > 0) { clearAllSelections(); event.preventDefault(); return; }
         }
 
-        if (isInput && !isCM && !isSidebar) { // Allow most keys in regular inputs unless Ctrl/Meta + specific key
+        if (isInput && !isCM && !isSidebar) {
              if ((event.ctrlKey || event.metaKey) && ['a','c','x','v','z','y'].includes(event.key.toLowerCase())) {
-                 // Let browser handle default text editing shortcuts in inputs
                  return;
              }
-             if (!['Escape','Delete','Backspace'].includes(event.key)) { // Allow these non-Ctrl keys in inputs
+             if (!['Escape','Delete','Backspace'].includes(event.key)) {
                  return;
              }
         }
@@ -2757,26 +2857,51 @@ document.addEventListener('keydown', (event) => {
             switch (event.key.toLowerCase()) {
                 case 'z': if(!mainEditorLocked){ event.preventDefault(); undo(); } break;
                 case 'y': if(!mainEditorLocked){ event.preventDefault(); redo(); } break;
-                case 'c': if(selectedNodeId && !mainEditorLocked && !isCM && !isSidebar && !isInput){event.preventDefault(); copySelectedNode();} break; // Only copy node if not in CodeMirror/Sidebar/Input
-                case 'v': if(!mainEditorLocked && !isCM && !isSidebar && !isInput){event.preventDefault(); pasteNode();} break; // Only paste node if not in CodeMirror/Sidebar/Input
-                case 'd': if(selectedNodeId && !mainEditorLocked && !isCM && !isSidebar && !isInput){event.preventDefault(); duplicateSelectedNode();} break; // Only duplicate node if not in CodeMirror/Sidebar/Input
+                case 'c': if((selectedNodeId || multipleSelectedNodes.size > 0) && !mainEditorLocked && !isCM && !isSidebar && !isInput){event.preventDefault(); copySelectedNodes();} break;
+                case 'v': if(!mainEditorLocked && !isCM && !isSidebar && !isInput){event.preventDefault(); pasteNodes();} break;
+                case 'd': if((selectedNodeId || multipleSelectedNodes.size > 0) && !mainEditorLocked && !isCM && !isSidebar && !isInput){event.preventDefault(); duplicateSelectedNodes();} break;
                 case 's': event.preventDefault(); if (event.shiftKey) promptSaveAs(); else saveProject(currentProjectName); break;
                 case 'o': event.preventDefault(); triggerLoad(); break;
                 case 'r': if(recalculateButton && !mainEditorLocked){event.preventDefault(); recalculateAllNodesInCurrentModule();} break;
+                case 'a': // Select All Nodes
+                    if (!mainEditorLocked && !isInput && !isCM && !isSidebar) {
+                        event.preventDefault();
+                        selectAllNodesInView();
+                    }
+                    break;
             }
         } else {
             switch (event.key) {
                 case 'Delete':
                 case 'Backspace':
-                    if (selectedNodeId && !isInput && !mainEditorLocked && !isCM && !isSidebar) { // Only delete node if not in inputs/CM/Sidebar
+                    if ((selectedNodeId || multipleSelectedNodes.size > 0) && !isInput && !mainEditorLocked && !isCM && !isSidebar) {
                         event.preventDefault();
-                        deleteSelectedNode();
+                        deleteSelectedNodes();
                     }
                     break;
             }
         }
     } catch (e) { console.error("Keyboard shortcut error:", e); }
 });
+
+document.addEventListener('keyup', (event) => {
+    if(event.key === "Control" || event.key === "Meta") isCtrlKeyPressed = false;
+});
+
+function selectAllNodesInView() {
+    if (isLocked() || !editor) return;
+    clearAllSelections();
+    const allNodes = editor.exportDrawflow().drawflow[editor.module].data;
+    Object.keys(allNodes).forEach(nodeId => {
+        addNodeToSelection(nodeId);
+    });
+    if (multipleSelectedNodes.size > 0) {
+        selectedNodeId = multipleSelectedNodes.values().next().value; // Set a primary
+    }
+    updateUIDisabledStates();
+    showToast('info', `${multipleSelectedNodes.size} Nodos Seleccionados`);
+}
+
 function isLocked() { return editor?.editor_mode === 'fixed'; }
 
 // --- Application Initialization ---
@@ -2796,7 +2921,7 @@ function initializeApp() {
         else if (!editor.module || !initialModules[editor.module]) editor.changeModule('Home');
         else { renderModuleTabs(); initializeHistory(); const currentModuleData = initialModules[editor.module]?.data ?? {}; if (Object.keys(currentModuleData).length === 0 && editor.module === 'Home') addWelcomeNode(editor.module); saveHistoryState(true); activateExistingAutoNodes(); }
         
-        if (drawflowElement) { drawflowElement.addEventListener('mousedown', (e) => { if (e.target.closest('.input') || e.target.closest('.output')) return; const nodeElement = e.target.closest(".drawflow-node"); if (!nodeElement) return; const nodeId = nodeElement.id.slice(5); try { const node = editor.getNodeFromId(nodeId); if (!node) return; const isNodeMovementLocked = node.data?.isMovementLocked === true; if (isNodeMovementLocked) { const trulyInteractiveSelector = `input[type="color"], input[type="range"], input[type="date"], input[type="time"], select, button, a[href], .lock-indicator, .node-resizer, details, summary, .image-placeholder, .youtube-placeholder, .yt-placeholder-robust, .CodeMirror, [contenteditable="true"]`; const clickedTrulyInteractive = e.target.closest(trulyInteractiveSelector); if (clickedTrulyInteractive) { if (e.button === 0 && clickedTrulyInteractive.closest('.lock-indicator')) { toggleNodeMovementLock(nodeId); e.stopPropagation(); e.preventDefault(); return; } if (e.button === 0 && clickedTrulyInteractive.closest('.node-resizer')) return; return; } const isTextInputElement = e.target.matches('input[type="text"], input[type="number"], input[type="url"], input[type="email"], input[type="password"], textarea'); if (isTextInputElement) { if (e.button === 0) { e.stopPropagation(); return; } return; } e.stopPropagation(); if (e.button === 0 && !nodeElement.classList.contains('selected')) editor.selectNode(nodeElement.id); if (e.button !== 2) e.preventDefault(); } } catch (error) { console.warn(`Lock mousedown error for ${nodeId}:`, error); } }, true); }
+        if (drawflowElement) { drawflowElement.addEventListener('mousedown', (e) => { if (e.target.closest('.input') || e.target.closest('.output')) return; const nodeElement = e.target.closest(".drawflow-node"); if (!nodeElement) return; const nodeId = nodeElement.id.slice(5); try { const node = editor.getNodeFromId(nodeId); if (!node) return; const isNodeMovementLocked = node.data?.isMovementLocked === true; if (isNodeMovementLocked && !multipleSelectedNodes.has(nodeId) /* Allow moving locked node if part of multi-selection */) { const trulyInteractiveSelector = `input[type="color"], input[type="range"], input[type="date"], input[type="time"], select, button, a[href], .lock-indicator, .node-resizer, details, summary, .image-placeholder, .youtube-placeholder, .yt-placeholder-robust, .CodeMirror, [contenteditable="true"]`; const clickedTrulyInteractive = e.target.closest(trulyInteractiveSelector); if (clickedTrulyInteractive) { if (e.button === 0 && clickedTrulyInteractive.closest('.lock-indicator')) { toggleNodeMovementLock(nodeId); e.stopPropagation(); e.preventDefault(); return; } if (e.button === 0 && clickedTrulyInteractive.closest('.node-resizer')) return; return; } const isTextInputElement = e.target.matches('input[type="text"], input[type="number"], input[type="url"], input[type="email"], input[type="password"], textarea'); if (isTextInputElement) { if (e.button === 0) { e.stopPropagation(); return; } return; } e.stopPropagation(); if (e.button === 0 && !nodeElement.classList.contains('selected') && !nodeElement.classList.contains('multi-selected')) editor.selectNode(nodeElement.id); if (e.button !== 2) e.preventDefault(); } } catch (error) { console.warn(`Lock mousedown error for ${nodeId}:`, error); } }, true); }
         
         loadCustomNodesToSidebar(); updateUIDisabledStates(); updateZoomStatus(editor.zoom); updateNodePositionStatus(null);
         document.title = `Xocoflow | ${currentProjectName} - ${editor.module}`; changeMode('edit');
@@ -2814,14 +2939,14 @@ function addWelcomeNode(moduleName) {
         if (Object.keys(existing).length > 0) return;
 
         const html = `<div><div class="title-box welcome-title"><i class="fas fa-rocket"></i> Welcome to ${escapeHtml(moduleName)}!</div><div class="box welcome-box"><p><strong>Quick Start:</strong></p><ul><li><i class="fas fa-mouse-pointer"></i> Drag nodes.</li><li><i class="fas fa-link"></i> Connect outputs <i class="fas fa-arrow-right"></i> to inputs <i class="fas fa-arrow-left"></i>.</li><li><i class="fas fa-edit"></i> Click "Edit Content/Code".</li><li><i class="fas fa-save"></i> Save work.</li><li><i class="fas fa-plus-circle"></i> Explore "Create Node Type".</li></ul></div><div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div></div>`;
-        const w = 280, h = 210; // Dimensions from your original code
+        const w = 280, h = 210; 
         const rect = editor.container.getBoundingClientRect(), z = editor.zoom || 1;
         const cx = (rect.width / 2 - editor.canvas_x) / z, cy = (rect.height / 2 - editor.canvas_y) / z;
         const x = cx - w / 2, y = cy - h / 2;
         const name = 'xocoflow_welcome_info';
         const nodeData = { nodeWidth: `${w}px`, nodeHeight: `${h}px`, isMovementLocked: false };
 
-        if (!customNodeTypes[name]) { // Register if not exists (though it's a display-only node)
+        if (!customNodeTypes[name]) { 
             editor.registerNode(name, null , {}, {}); 
         }
         const id = editor.addNode(name, 0, 0, x, y, 'welcome-node resizable-node-class', nodeData, html);
@@ -2832,8 +2957,8 @@ function addWelcomeNode(moduleName) {
                 nodeElement.style.width = nodeData.nodeWidth;
                 nodeElement.style.height = nodeData.nodeHeight;
                 const resizer = nodeElement.querySelector('.node-resizer');
-                if(resizer) resizer.addEventListener('mousedown', (e) => startNodeResize(e, id, resizer));
-                updateNodeVisualLockState(id, false);
+                if(resizer) resizer.addEventListener('mousedown', (e) => startNodeResize(e, String(id), resizer));
+                updateNodeVisualLockState(String(id), false);
             }
         }, 0);
     } catch (e) {
