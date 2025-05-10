@@ -1,8 +1,8 @@
 // === START OF COMPLETE xocoflow_logic.js ===
-// Version: 1.7.15 - Fixed Copy/Paste/Duplicate, Improved YouTube node handling
+// Version: 1.7.16 - Enhanced Node Context Menu
 "use strict";
 
-console.log("Xocoflow Script: Initializing (v1.7.15 - Fixed Copy/Paste/Duplicate, Improved YouTube node handling)...");
+console.log("Xocoflow Script: Initializing (v1.7.16 - Enhanced Node Context Menu)...");
 
 // --- Constants ---
 const DRAWFLOW_CONTAINER_ID = "drawflow";
@@ -155,7 +155,7 @@ function toggleNodeMovementLock(nodeId) {
     }
 }
 
-// --- Custom Context Menu (UPDATED) ---
+// --- Custom Context Menu (UPDATED for v1.7.16) ---
 function showCustomContextMenu(event, nodeId) {
     event.preventDefault();
     event.stopPropagation();
@@ -166,111 +166,152 @@ function showCustomContextMenu(event, nodeId) {
     const currentData = node.data || {};
     const isNodeLocked = currentData.isMovementLocked === true;
     const generalEditorLock = isLocked(); // Check if the whole editor is locked
-    const canPasteHere = copiedNodeData !== null; // Check if there's data to paste
+    const canPasteNodeHere = copiedNodeData !== null;
+    const canUndoState = historyIndex > 0;
+    const canRedoState = historyIndex < historyStack.length - 1;
 
     customContextMenu = document.createElement('div');
     customContextMenu.className = 'custom-context-menu';
     const ul = document.createElement('ul');
 
-    // --- Lock/Unlock (Only if node has a title-box, which minimal nodes don't) ---
-    const nodeElementForCtx = document.getElementById(`node-${nodeId}`);
-    if (nodeElementForCtx && nodeElementForCtx.querySelector('.title-box')) {
-        const lockLi = document.createElement('li');
-        lockLi.innerHTML = `<i class="fas ${isNodeLocked ? 'fa-lock-open' : 'fa-lock'}"></i> <span>${isNodeLocked ? 'Desbloquear Movimiento' : 'Bloquear Movimiento'}</span>`;
-        if (generalEditorLock) {
-            lockLi.style.opacity = '0.5';
-            lockLi.style.cursor = 'not-allowed';
-            lockLi.title = 'Desbloquea el editor general para cambiar bloqueo';
+    // Helper to create LI element
+    const createMenuItem = (icon, text, shortcut, onClick, disabled = false, disabledTitle = '') => {
+        const li = document.createElement('li');
+        let shortcutHtml = shortcut ? ` <span class="shortcut">${shortcut}</span>` : '';
+        li.innerHTML = `<i class="${icon}"></i> <span>${text}</span>${shortcutHtml}`;
+        if (disabled) {
+            li.style.opacity = '0.5';
+            li.style.cursor = 'not-allowed';
+            if (disabledTitle) li.title = disabledTitle;
         } else {
-            lockLi.onclick = (e) => {
+            li.onclick = (e) => {
                 e.stopPropagation();
-                toggleNodeMovementLock(nodeId);
+                if (onClick) onClick();
                 hideCustomContextMenu();
             };
         }
-        ul.appendChild(lockLi);
-        ul.appendChild(document.createElement('hr'));
+        return li;
+    };
+    
+    const createSeparator = () => document.createElement('hr');
+
+    // --- Emoji (Informational) ---
+    ul.appendChild(createMenuItem('far fa-smile', 'Emoji', 'Win + .', null, false, 'Abrir panel de emojis del sistema operativo'));
+    ul.appendChild(createSeparator());
+
+    // --- Deshacer ---
+    ul.appendChild(createMenuItem(
+        'fas fa-undo', 'Deshacer', 'Ctrl+Z',
+        () => { if (!generalEditorLock && canUndoState) undo(); },
+        generalEditorLock || !canUndoState,
+        generalEditorLock ? 'Editor bloqueado' : (!canUndoState ? 'Nada que deshacer' : '')
+    ));
+
+    // --- Rehacer ---
+    ul.appendChild(createMenuItem(
+        'fas fa-redo', 'Rehacer', 'Ctrl+Y',
+        () => { if (!generalEditorLock && canRedoState) redo(); },
+        generalEditorLock || !canRedoState,
+        generalEditorLock ? 'Editor bloqueado' : (!canRedoState ? 'Nada que rehacer' : '')
+    ));
+    ul.appendChild(createSeparator());
+
+    // --- Lock/Unlock (Only if node has a title-box) ---
+    const nodeElementForCtx = document.getElementById(`node-${nodeId}`);
+    if (nodeElementForCtx && nodeElementForCtx.querySelector('.title-box')) {
+        ul.appendChild(createMenuItem(
+            `fas ${isNodeLocked ? 'fa-lock-open' : 'fa-lock'}`,
+            isNodeLocked ? 'Desbloquear Movimiento' : 'Bloquear Movimiento',
+            null,
+            () => { if (!generalEditorLock) toggleNodeMovementLock(nodeId); },
+            generalEditorLock,
+            generalEditorLock ? 'Desbloquea el editor general para cambiar bloqueo' : ''
+        ));
+        ul.appendChild(createSeparator());
     }
 
-
-    // --- Copy ---
-    const copyLi = document.createElement('li');
-    copyLi.innerHTML = '<i class="fas fa-copy"></i> <span>Copiar Nodo</span>';
-    if (generalEditorLock) {
-        copyLi.style.opacity = '0.5';
-        copyLi.style.cursor = 'not-allowed';
-        copyLi.title = 'Desbloquea el editor para copiar';
-    } else {
-        copyLi.onclick = (e) => {
-            e.stopPropagation();
-            // Ensure the right-clicked node is selected before copying
+    // --- Copy Node ---
+    ul.appendChild(createMenuItem(
+        'fas fa-copy', 'Copiar Nodo', null,
+        () => {
             if (selectedNodeId !== nodeId) {
                  try { editor.selectNode(`node-${nodeId}`); } catch(selErr){ console.warn("CtxMenu: Error selecting node before copy", selErr); }
             }
             copySelectedNode();
-            hideCustomContextMenu();
-        };
-    }
-    ul.appendChild(copyLi);
+        },
+        generalEditorLock,
+        generalEditorLock ? 'Desbloquea el editor para copiar nodo' : ''
+    ));
 
-    // --- Paste ---
-    const pasteLi = document.createElement('li');
-    pasteLi.innerHTML = '<i class="fas fa-paste"></i> <span>Pegar Nodo</span>';
-    if (generalEditorLock || !canPasteHere) {
-        pasteLi.style.opacity = '0.5';
-        pasteLi.style.cursor = 'not-allowed';
-        pasteLi.title = generalEditorLock ? 'Desbloquea el editor para pegar' : 'No hay nada copiado para pegar';
-    } else {
-        pasteLi.onclick = (e) => {
-            e.stopPropagation();
-            pasteNode(); // pasteNode will handle positioning
-            hideCustomContextMenu();
-        };
-    }
-    ul.appendChild(pasteLi);
+    // --- Paste Node ---
+    ul.appendChild(createMenuItem(
+        'fas fa-paste', 'Pegar Nodo', null,
+        () => { pasteNode(); },
+        generalEditorLock || !canPasteNodeHere,
+        generalEditorLock ? 'Desbloquea el editor para pegar nodo' : (!canPasteNodeHere ? 'No hay nodo copiado para pegar' : '')
+    ));
 
-    // --- Duplicate ---
-    const duplicateLi = document.createElement('li');
-    duplicateLi.innerHTML = '<i class="fas fa-clone"></i> <span>Duplicar Nodo</span>';
-     if (generalEditorLock) {
-        duplicateLi.style.opacity = '0.5';
-        duplicateLi.style.cursor = 'not-allowed';
-        duplicateLi.title = 'Desbloquea el editor para duplicar';
-    } else {
-        duplicateLi.onclick = (e) => {
-            e.stopPropagation();
-            // Ensure the right-clicked node is selected before duplicating
+    // --- Duplicate Node ---
+    ul.appendChild(createMenuItem(
+        'fas fa-clone', 'Duplicar Nodo', null,
+        () => {
             if (selectedNodeId !== nodeId) {
                 try { editor.selectNode(`node-${nodeId}`); } catch(selErr){ console.warn("CtxMenu: Error selecting node before duplicate", selErr); }
             }
             duplicateSelectedNode();
-            hideCustomContextMenu();
-        };
-    }
-    ul.appendChild(duplicateLi);
+        },
+        generalEditorLock,
+        generalEditorLock ? 'Desbloquea el editor para duplicar nodo' : ''
+    ));
+    ul.appendChild(createSeparator());
 
-    // --- Separator ---
-    ul.appendChild(document.createElement('hr'));
-
-    // --- Delete ---
-    const deleteLi = document.createElement('li');
-    deleteLi.innerHTML = '<i class="fas fa-trash-alt" style="color: #d32f2f;"></i> <span style="color: #d32f2f;">Eliminar Nodo</span>';
-    if (generalEditorLock) {
-        deleteLi.style.opacity = '0.5';
-        deleteLi.style.cursor = 'not-allowed';
-        deleteLi.title = 'Desbloquea el editor para eliminar';
-    } else {
-        deleteLi.onclick = (e) => {
-            e.stopPropagation();
-            // Ensure the right-clicked node is selected before deleting if it's not already
+    // --- Delete Node ---
+    const deleteLi = createMenuItem(
+        'fas fa-trash-alt', 'Eliminar Nodo', null,
+        () => {
             if (selectedNodeId !== nodeId) {
                  try { editor.selectNode(`node-${nodeId}`); } catch(selErr){ console.warn("CtxMenu: Error selecting node before delete", selErr); }
             }
-            deleteSelectedNode(); // Use the new function
-            hideCustomContextMenu();
-        };
-    }
+            deleteSelectedNode();
+        },
+        generalEditorLock,
+        generalEditorLock ? 'Desbloquea el editor para eliminar nodo' : ''
+    );
+    deleteLi.querySelector('i').style.color = 'var(--danger-color)';
+    deleteLi.querySelector('span').style.color = 'var(--danger-color)';
     ul.appendChild(deleteLi);
+    
+    ul.appendChild(createSeparator());
+
+    // --- Cortar (Texto - Informational) ---
+    ul.appendChild(createMenuItem(
+        'fas fa-cut', 'Cortar (Texto)', 'Ctrl+X',
+        null, generalEditorLock, generalEditorLock ? 'Editor bloqueado' : 'Usar para campos de texto seleccionados'
+    ));
+
+    // --- Copiar (Texto - Informational) ---
+    ul.appendChild(createMenuItem(
+        'far fa-copy', 'Copiar (Texto)', 'Ctrl+C',
+        null, generalEditorLock, generalEditorLock ? 'Editor bloqueado' : 'Usar para campos de texto seleccionados'
+    ));
+
+    // --- Pegar (Texto - Informational) ---
+    ul.appendChild(createMenuItem(
+        'far fa-paste', 'Pegar (Texto)', 'Ctrl+V',
+        null, generalEditorLock, generalEditorLock ? 'Editor bloqueado' : 'Usar en campos de texto'
+    ));
+    
+    // --- Pegar como texto sin formato (Informational) ---
+    ul.appendChild(createMenuItem(
+        'far fa-paste', 'Pegar sin formato (Texto)', 'Ctrl+Shift+V',
+        null, generalEditorLock, generalEditorLock ? 'Editor bloqueado' : 'Usar en campos de texto'
+    ));
+
+    // --- Seleccionar todo (Texto - Informational) ---
+    ul.appendChild(createMenuItem(
+        'fas fa-i-cursor', 'Seleccionar todo (Texto)', 'Ctrl+A',
+        null, generalEditorLock, generalEditorLock ? 'Editor bloqueado' : 'Usar en campos de texto'
+    ));
 
     // --- Append and Position Menu ---
     customContextMenu.appendChild(ul);
@@ -278,19 +319,15 @@ function showCustomContextMenu(event, nodeId) {
 
     const { clientX: mouseX, clientY: mouseY } = event;
     const menuRect = customContextMenu.getBoundingClientRect();
-    let x = mouseX;
-    let y = mouseY;
+    let x = mouseX; let y = mouseY;
     if (mouseX + menuRect.width > window.innerWidth) x = window.innerWidth - menuRect.width - 5;
     if (mouseY + menuRect.height > window.innerHeight) y = window.innerHeight - menuRect.height - 5;
-    if (x < 0) x = 5;
-    if (y < 0) y = 5;
-    customContextMenu.style.top = `${y}px`;
-    customContextMenu.style.left = `${x}px`;
+    if (x < 0) x = 5; if (y < 0) y = 5;
+    customContextMenu.style.top = `${y}px`; customContextMenu.style.left = `${x}px`;
 
-    // Add listeners to close the menu
     setTimeout(() => {
         document.addEventListener('click', handleClickOutsideContextMenu, true);
-        document.addEventListener('contextmenu', handleClickOutsideContextMenu, true); // Also close on another context menu click
+        document.addEventListener('contextmenu', handleClickOutsideContextMenu, true);
     }, 0);
 }
 
@@ -305,11 +342,8 @@ function hideCustomContextMenu() {
 }
 
 function handleClickOutsideContextMenu(event) {
-    // Close if click is outside OR if it's a contextmenu click NOT on a node
     if (customContextMenu && !customContextMenu.contains(event.target)) {
-        // If it's a right-click, only close if it wasn't on *another* node
         if (event.type === 'contextmenu' && event.target.closest('.drawflow-node')) {
-            // Do nothing, the contextmenu listener on Drawflow will handle opening the new menu
             return;
         }
         hideCustomContextMenu();
@@ -2690,7 +2724,59 @@ function setupDrawflowListeners() {
 
 
 // --- Keyboard Shortcuts ---
-document.addEventListener('keydown', (event) => { try { const active = document.activeElement; const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable || active.closest('.CodeMirror')); const isModal = nodeDefinitionModal?.style.display !== 'none'; const isCM = codeMirrorEditor && codeMirrorEditor.hasFocus(); const isSidebar = codeEditorSidebar?.contains(active); const mainEditorLocked = isLocked(); if (event.key === 'Escape') { if (isModal) { closeNodeDefinitionModal(); event.preventDefault(); return; } if (isCM || (isSidebar && currentlyEditingNodeId)) { closeCodeEditorSidebar(true); event.preventDefault(); return; } if (selectedNodeId) { try{ editor.removeSelection(); } catch { selectedNodeId = null; } updateUIDisabledStates(); event.preventDefault(); return; } } if (isInput && !isCM && !isSidebar) { if ((event.ctrlKey || event.metaKey) && ['a','c','x','v','z','y'].includes(event.key.toLowerCase())) return; if (!['Escape','Delete','Backspace'].includes(event.key)) return; } const ctrl = event.ctrlKey || event.metaKey; if (ctrl) { switch (event.key.toLowerCase()) { case 'z': if(!mainEditorLocked){ event.preventDefault(); undo(); } break; case 'y': if(!mainEditorLocked){ event.preventDefault(); redo(); } break; case 'c': if(selectedNodeId && !mainEditorLocked){event.preventDefault(); copySelectedNode();} break; case 'v': if(!mainEditorLocked){event.preventDefault(); pasteNode();} break; case 'd': if(selectedNodeId && !mainEditorLocked){event.preventDefault(); duplicateSelectedNode();} break; case 's': event.preventDefault(); if (event.shiftKey) promptSaveAs(); else saveProject(currentProjectName); break; case 'o': event.preventDefault(); triggerLoad(); break; case 'r': if(recalculateButton && !mainEditorLocked){event.preventDefault(); recalculateAllNodesInCurrentModule();} break; } } else { switch (event.key) { case 'Delete': case 'Backspace': if (selectedNodeId && !isInput && !mainEditorLocked) { event.preventDefault(); deleteSelectedNode(); } break; } } } catch (e) { console.error("Keyboard shortcut error:", e); } });
+
+
+document.addEventListener('keydown', (event) => {
+    try {
+        const active = document.activeElement;
+        const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable || active.closest('.CodeMirror'));
+        const isModal = nodeDefinitionModal?.style.display !== 'none';
+        const isCM = codeMirrorEditor && codeMirrorEditor.hasFocus();
+        const isSidebar = codeEditorSidebar?.contains(active);
+        const mainEditorLocked = isLocked();
+
+        if (event.key === 'Escape') {
+            if (isModal) { closeNodeDefinitionModal(); event.preventDefault(); return; }
+            if (isCM || (isSidebar && currentlyEditingNodeId)) { closeCodeEditorSidebar(true); event.preventDefault(); return; }
+            if (selectedNodeId) { try{ editor.removeSelection(); } catch { selectedNodeId = null; } updateUIDisabledStates(); event.preventDefault(); return; }
+        }
+
+        if (isInput && !isCM && !isSidebar) { // Allow most keys in regular inputs unless Ctrl/Meta + specific key
+             if ((event.ctrlKey || event.metaKey) && ['a','c','x','v','z','y'].includes(event.key.toLowerCase())) {
+                 // Let browser handle default text editing shortcuts in inputs
+                 return;
+             }
+             if (!['Escape','Delete','Backspace'].includes(event.key)) { // Allow these non-Ctrl keys in inputs
+                 return;
+             }
+        }
+        
+        const ctrl = event.ctrlKey || event.metaKey;
+
+        if (ctrl) {
+            switch (event.key.toLowerCase()) {
+                case 'z': if(!mainEditorLocked){ event.preventDefault(); undo(); } break;
+                case 'y': if(!mainEditorLocked){ event.preventDefault(); redo(); } break;
+                case 'c': if(selectedNodeId && !mainEditorLocked && !isCM && !isSidebar && !isInput){event.preventDefault(); copySelectedNode();} break; // Only copy node if not in CodeMirror/Sidebar/Input
+                case 'v': if(!mainEditorLocked && !isCM && !isSidebar && !isInput){event.preventDefault(); pasteNode();} break; // Only paste node if not in CodeMirror/Sidebar/Input
+                case 'd': if(selectedNodeId && !mainEditorLocked && !isCM && !isSidebar && !isInput){event.preventDefault(); duplicateSelectedNode();} break; // Only duplicate node if not in CodeMirror/Sidebar/Input
+                case 's': event.preventDefault(); if (event.shiftKey) promptSaveAs(); else saveProject(currentProjectName); break;
+                case 'o': event.preventDefault(); triggerLoad(); break;
+                case 'r': if(recalculateButton && !mainEditorLocked){event.preventDefault(); recalculateAllNodesInCurrentModule();} break;
+            }
+        } else {
+            switch (event.key) {
+                case 'Delete':
+                case 'Backspace':
+                    if (selectedNodeId && !isInput && !mainEditorLocked && !isCM && !isSidebar) { // Only delete node if not in inputs/CM/Sidebar
+                        event.preventDefault();
+                        deleteSelectedNode();
+                    }
+                    break;
+            }
+        }
+    } catch (e) { console.error("Keyboard shortcut error:", e); }
+});
 function isLocked() { return editor?.editor_mode === 'fixed'; }
 
 // --- Application Initialization ---
@@ -2720,7 +2806,41 @@ function initializeApp() {
     } catch (error) { console.error("❌ FATAL INITIALIZATION ERROR:", error); showInitializationError(`Initialization failed: ${error.message}`); }
 }
 
-function addWelcomeNode(moduleName) { if (!editor || !moduleName || isLocked()) return; try { const exported = editor.export(); const existing = exported?.drawflow?.[moduleName]?.data ?? {}; if (Object.keys(existing).length > 0) return; const html = `<div><div class="title-box welcome-title"><i class="fas fa-rocket"></i> Welcome to ${escapeHtml(moduleName)}!</div><div class="box welcome-box"><p><strong>Quick Start:</strong></p><ul><li><i class="fas fa-mouse-pointer"></i> Drag nodes.</li><li><i class="fas fa-link"></i> Connect outputs <i class="fas fa-arrow-right"></i> to inputs <i class="fas fa-arrow-left"></i>.</li><li><i class="fas fa-edit"></i> Click "Edit Content/Code".</li><li><i class="fas fa-save"></i> Save work.</li><li><i class="fas fa-plus-circle"></i> Explore "Create Node Type".</li></ul></div><div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div></div>`; const w=280, h=210; const rect = editor.container.getBoundingClientRect(), z=editor.zoom||1; const cx=(rect.width/2-editor.canvas_x)/z, cy=(rect.height/2-editor.canvas_y)/z; const x=cx-w/2, y=cy-h/2; const name='xocoflow_welcome_info'; const nodeData = { nodeWidth: `${w}px`, nodeHeight: `${h}px`, isMovementLocked: false }; if (!customNodeTypes[name]) editor.registerNode(name, null , {}, {}); const id = editor.addNode(name, 0, 0, x, y, 'welcome-node resizable-node-class', nodeData, html); setTimeout(() => { const nodeElement = document.getElementById(`node-${id}`); if (nodeElement) { nodeElement.style.width = nodeData.nodeWidth; nodeElement.style.height = nodeData.nodeHeight; const resizer = nodeElement.querySelector('.node-resizer'); if(resizer) resizer.addEventListener('mousedown', (e) => startNodeResize(e, id, resizer)); updateNodeVisualLockState(id, false);}}, 0); } catch (e) { console.error(`Error adding welcome node:`, e); } }
+function addWelcomeNode(moduleName) {
+    if (!editor || !moduleName || isLocked()) return;
+    try {
+        const exported = editor.export();
+        const existing = exported?.drawflow?.[moduleName]?.data ?? {};
+        if (Object.keys(existing).length > 0) return;
+
+        const html = `<div><div class="title-box welcome-title"><i class="fas fa-rocket"></i> Welcome to ${escapeHtml(moduleName)}!</div><div class="box welcome-box"><p><strong>Quick Start:</strong></p><ul><li><i class="fas fa-mouse-pointer"></i> Drag nodes.</li><li><i class="fas fa-link"></i> Connect outputs <i class="fas fa-arrow-right"></i> to inputs <i class="fas fa-arrow-left"></i>.</li><li><i class="fas fa-edit"></i> Click "Edit Content/Code".</li><li><i class="fas fa-save"></i> Save work.</li><li><i class="fas fa-plus-circle"></i> Explore "Create Node Type".</li></ul></div><div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div></div>`;
+        const w = 280, h = 210; // Dimensions from your original code
+        const rect = editor.container.getBoundingClientRect(), z = editor.zoom || 1;
+        const cx = (rect.width / 2 - editor.canvas_x) / z, cy = (rect.height / 2 - editor.canvas_y) / z;
+        const x = cx - w / 2, y = cy - h / 2;
+        const name = 'xocoflow_welcome_info';
+        const nodeData = { nodeWidth: `${w}px`, nodeHeight: `${h}px`, isMovementLocked: false };
+
+        if (!customNodeTypes[name]) { // Register if not exists (though it's a display-only node)
+            editor.registerNode(name, null , {}, {}); 
+        }
+        const id = editor.addNode(name, 0, 0, x, y, 'welcome-node resizable-node-class', nodeData, html);
+        
+        setTimeout(() => {
+            const nodeElement = document.getElementById(`node-${id}`);
+            if (nodeElement) {
+                nodeElement.style.width = nodeData.nodeWidth;
+                nodeElement.style.height = nodeData.nodeHeight;
+                const resizer = nodeElement.querySelector('.node-resizer');
+                if(resizer) resizer.addEventListener('mousedown', (e) => startNodeResize(e, id, resizer));
+                updateNodeVisualLockState(id, false);
+            }
+        }, 0);
+    } catch (e) {
+        console.error(`Error adding welcome node:`, e);
+    }
+}
+
 function showInitializationError(message) { document.body.innerHTML = `<div style="padding: 20px; background-color: #ffcdd2; border: 2px solid #b71c1c; color: #b71c1c; font-family: sans-serif; text-align: center;"><h1><i class="fas fa-bomb"></i> Critical Error</h1><p>Xocoflow failed to initialize.</p><pre style="text-align: left; white-space: pre-wrap; word-wrap: break-word; background-color: #fff; padding: 10px; border: 1px solid #ccc; margin-top: 15px; max-height: 300px; overflow-y: auto;">${escapeHtml(message)}</pre><p style="margin-top:15px;"><button onclick="location.reload()">Reload</button></p></div>`; }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initializeApp);
