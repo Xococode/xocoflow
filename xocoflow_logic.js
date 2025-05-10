@@ -1,8 +1,8 @@
 // === START OF COMPLETE xocoflow_logic.js ===
-// Version: 1.7.13 - Reverted Tab Logic to v1.7.5 style, kept new features
+// Version: 1.7.15 - Fixed Copy/Paste/Duplicate, Improved YouTube node handling
 "use strict";
 
-console.log("Xocoflow Script: Initializing (v1.7.13 - Reverted Tab Logic)...");
+console.log("Xocoflow Script: Initializing (v1.7.15 - Fixed Copy/Paste/Duplicate, Improved YouTube node handling)...");
 
 // --- Constants ---
 const DRAWFLOW_CONTAINER_ID = "drawflow";
@@ -50,6 +50,7 @@ let isYouTubeApiReady = false;
 let youtubeApiReadyQueue = [];
 let youtubePlayers = {};       // For youtube_minimal
 let youtubePlayersFunctional = {}; // For youtube_display_node
+let youtubePlayersRobust = {}; // For youtube_player_robust
 
 /**
  * This function is called automatically by the YouTube IFrame API script
@@ -202,7 +203,11 @@ function showCustomContextMenu(event, nodeId) {
     } else {
         copyLi.onclick = (e) => {
             e.stopPropagation();
-            copySelectedNode(); // Assumes the context menu appears on a selected node
+            // Ensure the right-clicked node is selected before copying
+            if (selectedNodeId !== nodeId) {
+                 try { editor.selectNode(`node-${nodeId}`); } catch(selErr){ console.warn("CtxMenu: Error selecting node before copy", selErr); }
+            }
+            copySelectedNode();
             hideCustomContextMenu();
         };
     }
@@ -218,7 +223,7 @@ function showCustomContextMenu(event, nodeId) {
     } else {
         pasteLi.onclick = (e) => {
             e.stopPropagation();
-            pasteNode();
+            pasteNode(); // pasteNode will handle positioning
             hideCustomContextMenu();
         };
     }
@@ -234,7 +239,11 @@ function showCustomContextMenu(event, nodeId) {
     } else {
         duplicateLi.onclick = (e) => {
             e.stopPropagation();
-            duplicateSelectedNode(); // Assumes the context menu appears on a selected node
+            // Ensure the right-clicked node is selected before duplicating
+            if (selectedNodeId !== nodeId) {
+                try { editor.selectNode(`node-${nodeId}`); } catch(selErr){ console.warn("CtxMenu: Error selecting node before duplicate", selErr); }
+            }
+            duplicateSelectedNode();
             hideCustomContextMenu();
         };
     }
@@ -253,7 +262,11 @@ function showCustomContextMenu(event, nodeId) {
     } else {
         deleteLi.onclick = (e) => {
             e.stopPropagation();
-            editor.removeNodeId(`node-${nodeId}`); // removeNodeId triggers history save via listener
+            // Ensure the right-clicked node is selected before deleting if it's not already
+            if (selectedNodeId !== nodeId) {
+                 try { editor.selectNode(`node-${nodeId}`); } catch(selErr){ console.warn("CtxMenu: Error selecting node before delete", selErr); }
+            }
+            deleteSelectedNode(); // Use the new function
             hideCustomContextMenu();
         };
     }
@@ -354,6 +367,8 @@ function duringNodeResize(event) {
         minContainerWidth = 280; minContainerHeight = 200;
     } else if (nodeType === 'image_display_node') {
         minContainerWidth = 200; minContainerHeight = 150;
+    } else if (nodeType === 'youtube_player_robust') {
+        minContainerWidth = 280; minContainerHeight = 200;
     }
     // Add more else if for other resizable nodes with specific minimums
 
@@ -367,7 +382,7 @@ function duringNodeResize(event) {
     const boxElement = nodeElement.querySelector('.box');
     if (boxElement) { // This logic applies to nodes with a .box (standard nodes)
         const targetTextarea = boxElement.querySelector('textarea:not([readonly])'); // Resize non-readonly textareas
-        const titleBoxHeight = nodeElement.querySelector('.title-box')?.offsetHeight || ( (nodeType === 'youtube_display_node' || nodeType === 'image_display_node') ? 35 : 0 );
+        const titleBoxHeight = nodeElement.querySelector('.title-box')?.offsetHeight || ( (nodeType === 'youtube_display_node' || nodeType === 'image_display_node' || nodeType === 'youtube_player_robust') ? 35 : 0 );
 
         let contentToResize = null;
         let contentMinHeight = 0;
@@ -377,7 +392,11 @@ function duringNodeResize(event) {
         } else if (nodeType === 'image_display_node') {
             contentToResize = boxElement.querySelector('.img-container-functional');
             contentMinHeight = 80;
+        } else if (nodeType === 'youtube_player_robust') {
+            contentToResize = boxElement.querySelector('.yt-player-wrapper-robust');
+            contentMinHeight = 150; // Or whatever min-height is set in CSS for .yt-player-wrapper-robust
         }
+
 
         const boxPaddingTop = parseFloat(getComputedStyle(boxElement).paddingTop) || 0;
         const boxPaddingBottom = parseFloat(getComputedStyle(boxElement).paddingBottom) || 0;
@@ -451,6 +470,23 @@ function stopNodeResize() {
                         youtubePlayersFunctional[nodeId].setSize(playerContainer.offsetWidth, playerContainer.offsetHeight);
                     }
                 } catch (playerResizeError) { console.error(`Error resizing YouTube_display_node player for node ${nodeId}:`, playerResizeError); }
+            }
+            else if (nodeType === 'youtube_player_robust' && youtubePlayersRobust[nodeId]) {
+                try {
+                    const playerWrapper = nodeElement.querySelector('.yt-player-wrapper-robust');
+                    if (playerWrapper) {
+                        // The player inside yt-player-container-robust takes 100% of yt-player-wrapper-robust
+                        // So we just need to ensure the wrapper itself is sized correctly by duringNodeResize
+                        // And then tell the player API about the new dimensions of its *immediate container*
+                        const playerContainer = nodeElement.querySelector('.yt-player-container-robust');
+                        if (playerContainer && playerContainer.firstChild && playerContainer.firstChild.tagName === 'DIV') { // YT Player API injects a div
+                             youtubePlayersRobust[nodeId].setSize(playerWrapper.offsetWidth, playerWrapper.offsetHeight);
+                             console.log(`Robust YouTube (${nodeId}): Player resized to ${playerWrapper.offsetWidth}x${playerWrapper.offsetHeight}`);
+                        }
+                    }
+                } catch (playerResizeError) {
+                    console.error(`Error resizing Robust YouTube player for node ${nodeId}:`, playerResizeError);
+                }
             }
         } catch (e) { console.error("Error updating node data or resizing player after resize:", e); }
     }
@@ -582,6 +618,51 @@ const baseNodeDefinitions = {
         cssClass: 'image-display-node resizable-node-class',
         data: { imgsrcdisplay: '', nodeWidth: '350px', nodeHeight: 'auto' }
     },
+    'youtube_player_robust': {
+        name: 'youtube_player_robust',
+        title: 'YouTube Player (Robust)',
+        inputs: 0, outputs: 0,
+        html: `
+            <div>
+                <div class="title-box"><i class="fab fa-youtube" style="color: #FF0000;"></i> YouTube Player (Robust)</div>
+                <div class="box">
+                    <div class="yt-url-input-area-robust" style="margin-bottom: 10px;">
+                        <label for="node-{{id}}-yturl-robust" style="font-size: 10px; margin-bottom: 3px;">URL o Video ID:</label>
+                        <input type="text" id="node-{{id}}-yturl-robust" df-yturl placeholder="Pega URL o ID de YouTube aquí..." oninput="handleRobustYouTubeUrlInput(event)" style="font-size:11px; height:28px; padding: 4px 6px;">
+                        <button type="button" onclick="loadRobustYouTubeFromInput(event)" style="width:100%; margin-top: 5px; padding: 6px; font-size:11px;">Cargar Video</button>
+                    </div>
+                    <div class="yt-player-wrapper-robust" style="width:100%; min-height:150px; background:#1a1a1a; margin-top:10px; position: relative; border: 1px solid #333;">
+                        <div class="yt-placeholder-robust" style="display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; height:100%; position:absolute; top:0; left:0; background-color: #222; color: #888; cursor:pointer; padding:10px; box-sizing:border-box;" title="Pega una URL de YouTube en el campo de arriba o directamente aquí para cargar el video.">
+                            <i class="fab fa-youtube" style="font-size: 2.5em; color: #555; margin-bottom:8px;"></i>
+                            <span style="font-size:12px;">Video de YouTube</span>
+                            <small style="font-size:10px; margin-top:4px; text-align:center; line-height:1.2;">Pega una URL para cargar</small>
+                        </div>
+                        <div class="yt-player-container-robust" style="width:100%; height:100%; display:none;">
+                            <!-- Player will be injected here -->
+                        </div>
+                        <div class="yt-status-overlay-robust" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); color:white; flex-direction:column; align-items:center; justify-content:center; text-align:center; font-size:12px; padding:10px; box-sizing:border-box;">
+                            <i class="fas fa-spinner fa-spin" style="font-size:1.5em; margin-bottom:8px; display:none;" data-yt-loading-icon></i>
+                            <span class="yt-status-message-robust" style="font-weight:bold;"></span>
+                            <small class="yt-error-detail-robust" style="font-size:0.85em; margin-top:5px; display:block; max-height: 50px; overflow-y:auto;"></small>
+                            <button type="button" class="yt-retry-button-robust" style="display:none; margin-top:10px; padding:5px 10px; background:var(--primary-color); color:white; border:none; border-radius:3px; font-size:11px;" onclick="retryRobustYouTubeLoad(event)">Reintentar Carga</button>
+                        </div>
+                    </div>
+                    <button type="button" class="yt-clear-button-robust" onclick="clearRobustYouTubePlayer(event)" style="width:100%; margin-top: 10px; display:none; padding: 6px; font-size:11px; background-color: #757575; color:white;"><i class="fas fa-times-circle"></i> Limpiar Video</button>
+                </div>
+                <div class="node-resizer" title="Redimensionar Video"><i class="fas fa-expand-alt"></i></div>
+            </div>
+        `,
+        cssClass: 'youtube-robust-node resizable-node-class',
+        data: {
+            yturl: '',
+            videoid: '',
+            nodeWidth: '380px',
+            nodeHeight: 'auto',
+            playerState: 'idle', // idle, loading, ready, error
+            errorMessage: '',
+            lastKnownGoodUrl: ''
+        }
+    },
 };
 console.log("Base node definitions loaded:", Object.keys(baseNodeDefinitions).length);
 
@@ -615,11 +696,6 @@ function openEditorForNode(event) { try { const btn = event.target.closest('butt
 function executeJsNode(event) { const nEl = event.target.closest('.drawflow-node'); if (!nEl) return; const id = nEl.id.split('-')[1]; const node = editor.getNodeFromId(id); if (!node || node.name !== 'javascript_code') return; const code = node.data.jscode || ''; const input = node.data.lastInput; let res, err=false, resStr=''; const start = performance.now(); try { const func = new Function('input', `'use strict';\n${code}`); res = func(input); if (res === undefined) resStr = '(undefined)'; else if (res === null) resStr = 'null'; else if (typeof res === 'string') resStr = res; else try { resStr = JSON.stringify(res, null, 2); } catch { resStr = String(res); } const end = performance.now(); console.log(`JS Result (${(end - start).toFixed(1)}ms):`, res); } catch (e) { const end = performance.now(); console.error(`JS Error ${id} (${(end-start).toFixed(1)}ms):`, e); resStr=`Error: ${e.message}\n${e.stack?e.stack.split('\n')[1]:''}`; err=true; res=undefined; } const ta = nEl.querySelector('textarea[df-result]'); if (ta) { ta.value = resStr; ta.classList.toggle('error', err); } editor.updateNodeDataFromId(id, { result: res }); if (!err) propagateData(id, 'javascript_code', 'result', res); }
 function resetJsNodeResult(event) { const nEl = event.target.closest('.drawflow-node'); if (!nEl) return; const id = nEl.id.split('-')[1]; const node = editor.getNodeFromId(id); if (!node || node.name !== 'javascript_code') return; const ta = nEl.querySelector('textarea[df-result]'); if (ta) { ta.value = ''; ta.classList.remove('error'); } editor.updateNodeDataFromId(id, { result: '' }); propagateData(id, 'javascript_code', 'result', null); }
 
-
-
-
-
-
 /**
  * Ejecuta la lógica de reemplazo para el nodo 'hybrid_text_replace'.
  * Se llama al hacer clic en el botón dentro del nodo.
@@ -637,13 +713,8 @@ function executeHybridReplace(event) {
         return;
     }
 
-    // Determinar qué texto original usar:
-    // Prioridad: Si lastInput NO es null/undefined (llegó algo por cable), usarlo.
-    // Fallback: Usar el texto del campo df-original.
     const hasInputConnectionData = (node.data.lastInput !== null && node.data.lastInput !== undefined);
     const sourceText = hasInputConnectionData ? String(node.data.lastInput) : (node.data.original ?? '');
-
-    // Leer find y replace actuales
     const findText = node.data.find ?? '';
     const replaceText = node.data.replace ?? '';
 
@@ -654,7 +725,6 @@ function executeHybridReplace(event) {
     let resultText;
     if (findText) {
         try {
-            console.log(`   >>> Attempting: String("${sourceText}").split("${findText}").join("${replaceText}")`);
             resultText = sourceText.split(findText).join(replaceText);
         } catch (e) {
             console.error(`Hybrid Replace (${id}): Error during split/join - ${e.message}`);
@@ -662,46 +732,11 @@ function executeHybridReplace(event) {
         }
     } else {
         resultText = sourceText;
-        console.log("   Find text is empty, result is the original input.");
     }
-
     console.log(`   >>> Calculated resultText: "${resultText}"`);
-
-    // Actualizar el nodo (UI y datos) y propagar el resultado
-    updateNodeResult(id, resultText); // Usa la misma función de antes
-
+    updateNodeResult(id, resultText);
     console.log(`--- Finished Hybrid Replace Node ${id} ---`);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // --- Functions for Local Image Node (v1.11 - Stable) ---
 function selectLocalImageFile(event) { const nodeId = getNodeIdFromEvent(event); if (!nodeId || !editor) return; try { const fileInput = document.createElement('input'); fileInput.type = 'file'; fileInput.accept = 'image/*'; fileInput.onchange = (e) => { const file = e.target.files[0]; if (file) { const reader = new FileReader(); reader.onload = (loadEvent) => { try { const imageDataUrl = loadEvent.target.result; editor.updateNodeDataFromId(nodeId, { imagesrc: imageDataUrl, filename: file.name }); const nodeElement = document.getElementById(`node-${nodeId}`); if (nodeElement) { const imgTag = nodeElement.querySelector('img[df-imagesrc]'); const filenameSpan = nodeElement.querySelector('span[df-filename]'); const placeholderText = nodeElement.querySelector('.placeholder-text'); if (imgTag) { imgTag.src = imageDataUrl; imgTag.style.display = 'block'; const nodeData = editor.getNodeFromId(nodeId).data; imgTag.style.width = nodeData.imagewidth || '100%'; imgTag.style.height = nodeData.imageheight || 'auto'; } if (filenameSpan) { filenameSpan.textContent = file.name; filenameSpan.title = file.name; } if (placeholderText) { placeholderText.style.display = 'none'; } } saveHistoryState(); } catch (innerError) { console.error("Error processing loaded image:", innerError); showToast('error', 'Error Interno', 'No se pudo procesar la imagen.'); } }; reader.onerror = () => { showToast('error', 'Error de Lectura', 'No se pudo leer el archivo.'); }; reader.readAsDataURL(file); } fileInput.value = null; }; fileInput.click(); } catch (error) { console.error("Error selecting local image file:", error); showToast('error', 'Error', 'No se pudo iniciar selección.'); } }
@@ -711,7 +746,6 @@ function updateLocalNodeSize(event) { const nodeId = getNodeIdFromEvent(event); 
 /**
  * @function getNodeIdFromEvent
  * @description Helper function to extract the Drawflow node ID from an event target.
- *              This is crucial for event handlers defined directly in the node's HTML.
  * @param {Event} event - The event object (e.g., from onclick, oninput).
  * @returns {string|null} The numeric ID of the node (as a string), or null if not found.
  */
@@ -720,13 +754,11 @@ function getNodeIdFromEvent(event) {
         console.error("getNodeIdFromEvent: Event or event target is missing.");
         return null;
     }
-    // Find the closest parent element that represents a Drawflow node
     const nodeElement = event.target.closest('.drawflow-node');
     if (!nodeElement) {
         console.error("getNodeIdFromEvent: Could not find parent node element for target:", event.target);
         return null;
     }
-    // Extract the ID (e.g., 'node-5' -> '5')
     const nodeId = nodeElement.id.split('-')[1];
     if (!nodeId) {
         console.error("getNodeIdFromEvent: Could not parse node ID from element ID:", nodeElement.id);
@@ -735,158 +767,96 @@ function getNodeIdFromEvent(event) {
     return nodeId;
 }
 
-
-
-
-// ==========================================================
-// ====> PUEDES PEGAR LA NUEVA FUNCIÓN AQUÍ <====
-// ==========================================================
 /**
  * Ejecuta la lógica de reemplazo para el nodo 'manual_text_replace'.
  * Se llama al hacer clic en el botón dentro del nodo.
- * Lee todos los valores necesarios directamente desde los datos del nodo en ese momento.
  */
 function executeManualReplace(event) {
-    const id = getNodeIdFromEvent(event); // Obtiene el ID del nodo desde el evento del botón
+    const id = getNodeIdFromEvent(event);
     if (!id) return;
-
     console.log(`--- Executing Manual Replace Node ${id} ---`);
     const node = editor.getNodeFromId(id);
-
-    // Validar que el nodo existe y es del tipo correcto
     if (!node || node.name !== 'manual_text_replace') {
         console.error(`Manual Replace (${id}): Node not found or invalid type.`);
         return;
     }
-
-    // Leer los valores DIRECTAMENTE de node.data en el momento del clic
     const originalText = node.data.original ?? '';
     const findText = node.data.find ?? '';
     const replaceText = node.data.replace ?? '';
-
     console.log(`   Original Text from node.data: "${originalText}"`);
     console.log(`   Find Text from node.data: "${findText}"`);
     console.log(`   Replace Text from node.data: "${replaceText}"`);
-
     let resultText;
-
-    // Realizar el reemplazo (solo si 'findText' no está vacío)
     if (findText) {
         try {
-            console.log(`   >>> Attempting: String("${originalText}").split("${findText}").join("${replaceText}")`);
             resultText = originalText.split(findText).join(replaceText);
         } catch (e) {
             console.error(`Manual Replace (${id}): Error during split/join - ${e.message}`);
             resultText = `Error: ${e.message}`;
         }
     } else {
-        // Si 'findText' está vacío, el resultado es el texto original
         resultText = originalText;
-        console.log("   Find text is empty, result is the original input.");
     }
-
     console.log(`   >>> Calculated resultText: "${resultText}"`);
-
-    // Actualizar el nodo (UI y datos) y propagar el resultado
-    updateNodeResult(id, resultText); // Actualiza UI (df-result), node.data.result, propaga y guarda historial
-
+    updateNodeResult(id, resultText);
     console.log(`--- Finished Manual Replace Node ${id} ---`);
 }
-// ==========================================================
-// ====> FIN DE LA NUEVA FUNCIÓN <====
-// ==========================================================
 
-
-
-
-// --- Añade esta nueva función de ejecución ---
 /**
  * Ejecuta la lógica de reemplazo para el nodo 'auto_text_replace'.
- * Puede ser llamado por la llegada de nuevo input o por cambios en find/replace.
  * @param {string} nodeId - El ID del nodo.
- * @param {*} inputTextValue - El texto sobre el cual se realizará el reemplazo (normalmente node.data.lastInput).
+ * @param {*} inputTextValue - El texto sobre el cual se realizará el reemplazo.
  */
 function executeAutoReplace(nodeId, inputTextValue) {
     console.log(`--- Executing Auto Replace Node ${nodeId} ---`);
     const node = editor.getNodeFromId(nodeId);
-
     if (!node || node.name !== 'auto_text_replace') {
         console.error(`Auto Replace (${nodeId}): Node not found or invalid type.`);
         return;
     }
-
-    // Leer los valores ACTUALES de find y replace desde node.data
     const findText = node.data.find ?? '';
     const replaceText = node.data.replace ?? '';
-    // Convertir el valor de entrada a string (maneja null/undefined)
     const currentInputText = String(inputTextValue ?? '');
-
     console.log(`   Input Text for Processing: "${currentInputText}"`);
     console.log(`   Find Text from node.data: "${findText}"`);
     console.log(`   Replace Text from node.data: "${replaceText}"`);
-
     let resultText;
-    // Realizar el reemplazo (solo si 'findText' no está vacío)
     if (findText) {
         try {
-            console.log(`   >>> Attempting: String("${currentInputText}").split("${findText}").join("${replaceText}")`);
             resultText = currentInputText.split(findText).join(replaceText);
         } catch (e) {
-            console.error(`Auto Replace (${id}): Error during split/join - ${e.message}`);
+            console.error(`Auto Replace (${nodeId}): Error during split/join - ${e.message}`);
             resultText = `Error: ${e.message}`;
         }
     } else {
-        // Si 'findText' está vacío, el resultado es el texto original
         resultText = currentInputText;
-        console.log("   Find text is empty, result is the original input.");
     }
-
     console.log(`   >>> Calculated resultText: "${resultText}"`);
-
-    // Actualizar el nodo (UI y datos) y propagar el resultado
-    updateNodeResult(nodeId, resultText); // Actualiza UI(df-result), data.result, propaga y guarda historial (si cambió)
-
+    updateNodeResult(nodeId, resultText);
     console.log(`--- Finished Auto Replace Node ${nodeId} ---`);
 }
 
-
-
-
-
-
 /**
- * [Simplificado] Ejecuta el reemplazo de texto para un nodo.
- * Realiza un reemplazo global y sensible a mayúsculas.
+ * Ejecuta el reemplazo de texto para un nodo 'text_replace'.
  * @param {string} nodeId - El ID del nodo.
- * @param {*}    inputText - Texto o dato a procesar.
+ * @param {*}    inputTextValue - Texto o dato a procesar.
  */
-function executeTextReplace(nodeId, inputTextValue) { // Cambiado nombre de variable para claridad
+function executeTextReplace(nodeId, inputTextValue) {
     console.log(`--- Executing Text Replace Node ${nodeId} ---`);
     const node = editor.getNodeFromId(nodeId);
-
     if (!node || node.name !== 'text_replace') {
         console.error(`Text Replace (${nodeId}): Node not found or invalid type.`);
         return;
     }
-
-    // Obtener los valores ACTUALES de find y replace desde node.data
     const findText = node.data.find ?? '';
     const replaceText = node.data.replace ?? '';
-    // Convertir el valor de entrada a string (maneja null/undefined)
-    const currentInputText = String(inputTextValue ?? ''); // Usamos el argumento
-
-    // *** LOGS DE ENTRADA DETALLADOS ***
+    const currentInputText = String(inputTextValue ?? '');
     console.log(`   Input Text Received: "${currentInputText}" (Type: ${typeof inputTextValue})`);
     console.log(`   Find Text from node.data: "${findText}"`);
     console.log(`   Replace Text from node.data: "${replaceText}"`);
-    // *** FIN LOGS DE ENTRADA ***
-
     let resultText;
     if (findText) {
         try {
-            // *** LOG ANTES DE LA OPERACIÓN ***
-            console.log(`   >>> Attempting: String("${currentInputText}").split("${findText}").join("${replaceText}")`);
-            // *** FIN LOG ANTES ***
             resultText = currentInputText.split(findText).join(replaceText);
         } catch (e) {
             console.error(`Text Replace (${nodeId}): Error during split/join - ${e.message}`);
@@ -894,136 +864,12 @@ function executeTextReplace(nodeId, inputTextValue) { // Cambiado nombre de vari
         }
     } else {
         resultText = currentInputText;
-        console.log("   Find text is empty, result is the original input.");
     }
-
-    // *** LOG RESULTADO CALCULADO ***
     console.log(`   >>> Calculated resultText: "${resultText}"`);
-    // *** FIN LOG RESULTADO ***
-
-    // Llamar a updateNodeResult para actualizar todo
-    updateNodeResult(nodeId, resultText); // Pasamos el resultado calculado
+    updateNodeResult(nodeId, resultText);
     console.log(`--- Finished Text Replace Node ${nodeId} ---`);
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// --- PEGA ESTA FUNCIÓN ARRIBA DENTRO DE TU ARCHIVO xocoflow_logic.js ---
-// --- PUEDES PONERLA CERCA DE LAS OTRAS FUNCIONES DEL NODO LOCAL_IMAGE ---
-// --- O EN LA SECCIÓN GENERAL DE "HELPER FUNCTIONS" ---
-// Asegúrate de que esta es tu función handleNodeDataChange completa
-
-// --- USA ESTA VERSIÓN COMPLETA Y MODIFICADA ---
 // --- USA ESTA VERSIÓN FINAL ---
 function handleNodeDataChange(event) {
     if (!editor || !event?.target) return;
@@ -1034,123 +880,102 @@ function handleNodeDataChange(event) {
     const node = editor.getNodeFromId(id); // Obtener nodo para verificar datos iniciales si es necesario
     if (!node) return;
     let key = null;
-    // Buscar el atributo df-*
     for (const attr of el.attributes) {
         if (attr.name.startsWith('df-')) {
             key = attr.name.substring(3);
             break;
         }
     }
-    if (!key) return; // Si no hay df-*, salir
+    if (!key) return;
 
-    // *** LOG INICIAL en handleNodeDataChange ***
     console.log(`>>> handleNodeDataChange triggered for Node ${id}, Element with df-${key}`);
 
-    requestAnimationFrame(() => { // Usar requestAnimationFrame asegura que el valor en node.data se actualice antes de leerlo
+    requestAnimationFrame(() => {
         try {
-            const updatedNode = editor.getNodeFromId(id); // Volver a obtener para datos actualizados
-            // Verificar que el nodo y la clave aún existen y son válidos después de actualizar
+            const updatedNode = editor.getNodeFromId(id);
             if (!updatedNode?.data || !Object.prototype.hasOwnProperty.call(updatedNode.data, key)) {
                  console.warn(`handleNodeDataChange: Node ${id} or key '${key}' no longer exists or data is invalid after update.`);
                  return;
             }
-            const val = updatedNode.data[key]; // Obtener el valor ACTUALIZADO de los datos del nodo
+            const val = updatedNode.data[key];
             const name = updatedNode.name;
 
-            // *** LOG con el valor actualizado ***
             console.log(`   Node Name: ${name}, Key: ${key}, Updated Value in node.data:`, val);
 
-            let historySavedByExecution = false; // Flag para ver si una ejecución ya guardó historial
+            let historySavedByExecution = false;
 
-            // --- Lógica específica por tipo de nodo y clave cambiada ---
             if ((name === 'url_input' && key === 'url')) {
-                 executeNode(id, val); // Asume que executeNode guarda historial si es necesario
+                 executeNode(id, val);
                  historySavedByExecution = true;
             } else if (name === 'cargarTexto' && key === 'filecontent') {
-                 propagateData(id, name, key, val); // Asume que la propagación final guarda historial si es necesario
-                 historySavedByExecution = true; // Asumimos que sí
+                 propagateData(id, name, key, val);
+                 historySavedByExecution = true;
             } else if (name === 'imagen' && ['imgsrc', 'imgalt', 'imgwidth', 'imgheight'].includes(key)) {
-                 handleImageInputChange(event); // Esta llama a generateImageHtml que llama a saveHistoryState
+                 handleImageInputChange(event); // This calls generateImageHtml which saves history
                  historySavedByExecution = true;
             } else if (name === 'nota' && key === 'notecontent') {
-                 updateCharacterCount(event);
-                 // No necesita ejecución, guardar historial directamente al final
+                 updateCharacterCount(event); // History saved at the end if not by execution
             } else if ((name === 'timer_fetch' || name === 'timer_download' || name === 'loop') && (key === 'interval' || (name === 'timer_fetch' && key === 'url'))) {
-                 executeNode(id, null); // Reinicia timer, no necesita guardar historial extra aquí
-                 historySavedByExecution = true; // El reinicio puede considerarse un cambio
+                 executeNode(id, null);
+                 historySavedByExecution = true;
             }
             else if (['input_number', 'input_text', 'input_range', 'input_date', 'input_time', 'input_color'].includes(name)) {
-                 propagateData(id, name, key, val); // Llama a propagateData, que debería llevar a guardar historial si algo cambia
-                 historySavedByExecution = true; // Asumimos que sí
+                 propagateData(id, name, key, val);
+                 historySavedByExecution = true;
             }
             else if (name === 'template_engine' && key === 'template') {
                  console.log(`Template Node (${id}): Template changed by user. Reprocessing...`);
-                 processTemplateNode(id); // Llama a processTemplateNode que llama a updateNodeResult que guarda historial
+                 processTemplateNode(id); // Saves history internally
                  historySavedByExecution = true;
             }
             else if (name === 'local_image') {
                 if (key === 'imagewidth' || key === 'imageheight') {
-                    updateLocalImageStyle(event); // Llama a handleNodeDataChange -> saveHistoryState
+                    updateLocalImageStyle(event); // Calls handleNodeDataChange again, will eventually save history
                 } else if (key === 'nodewidth' || key === 'nodeheight') {
-                    updateLocalNodeSize(event); // Llama a handleNodeDataChange -> saveHistoryState
+                    updateLocalNodeSize(event); // Calls handleNodeDataChange again, will eventually save history
                 }
-                 // Necesita guardado directo al final
+                // Other df- fields in local_image will fall through to the generic saveHistoryState at the end
             }
-            else if (name === 'image_minimal') {
-                // No requiere acción aquí usualmente, guardar al final si cambia algo relevante
+            else if (name === 'image_minimal') { /* No action specific here, save at end */ }
+            else if (name === 'youtube_minimal' && key === 'videoid') { /* User doesn't directly edit videoid, handled by specific YT functions */ }
+            else if (name === 'youtube_display_node' && key === 'yturl') {
+                 console.log(`   YouTube Display Node (${id}): yturl changed. Button press or explicit call will load.`);
+                 // No automatic load on input change, button click calls loadYouTubeVideoFunctional which saves history
             }
-             // ===================================================================
-             // ====> INICIO: BLOQUE ACTUALIZADO PARA TODOS LOS REEMPLAZOS <====
-             // ===================================================================
-             // Maneja 'text_replace' y 'auto_text_replace' (disparan ejecución)
+            else if (name === 'youtube_player_robust' && key === 'yturl') {
+                // handleRobustYouTubeUrlInput updates node data. Load is via button.
+                console.log(`   Robust YouTube Node (${id}): yturl changed. Button press or explicit call will load.`);
+            }
              else if ((name === 'text_replace' || name === 'auto_text_replace') && (key === 'find' || key === 'replace')) {
                  console.log(`   *** ${name} condition MET for key '${key}' ***`);
                  const lastInput = updatedNode.data.lastInput;
                  if (lastInput !== null && lastInput !== undefined) {
                      console.log(`   ${name} (${id}): Input field '${key}' changed. Reprocessing with lastInput: "${lastInput}"`);
                      const executionFunction = (name === 'auto_text_replace') ? executeAutoReplace : executeTextReplace;
-                     setTimeout(() => executionFunction(id, lastInput), 0);
-                     historySavedByExecution = true; // La ejecución llamará a updateNodeResult -> saveHistoryState
+                     setTimeout(() => executionFunction(id, lastInput), 0); // execute... functions save history
+                     historySavedByExecution = true;
                  } else {
                      console.log(`   ${name} (${id}): Input field '${key}' changed, but no lastInput to process yet.`);
-                     // Si no hay lastInput, solo el cambio en find/replace se guarda al final
                  }
              }
-             // Maneja 'hybrid_text_replace' (NO dispara ejecución)
              else if (name === 'hybrid_text_replace' && ['original', 'find', 'replace'].includes(key)) {
                  console.log(`   Hybrid Replace (${id}): Field '${key}' changed by user. No automatic action.`);
-                 // No se hace nada más, la ejecución es manual vía botón.
-                 // El historial se guarda al final.
              }
-             // ===================================================================
-             // ====> FIN: BLOQUE ACTUALIZADO <====
-             // ===================================================================
-
-             // --- Manejo de text_split (separado por si acaso) ---
              else if (name === 'text_split' && key === 'separator') {
                  const lastInput = updatedNode.data.lastInput;
                  if (lastInput !== null && lastInput !== undefined) {
                       console.log(`   Text Split (${id}): Input field '${key}' changed. Reprocessing with lastInput: "${lastInput}"`);
-                      setTimeout(() => executeTextSplit(id, lastInput), 0);
-                      historySavedByExecution = true; // La ejecución llamará a updateNodeResult -> saveHistoryState
-                 } else {
-                     // console.log(`   Text Split (${id}): Input field '${key}' changed, but no lastInput to process yet.`);
-                 }
+                      setTimeout(() => executeTextSplit(id, lastInput), 0); // executeTextSplit saves history
+                      historySavedByExecution = true;
+                 } else { /* console.log(`   Text Split (${id}): Input field '${key}' changed, but no lastInput to process yet.`); */ }
              }
-             // --- FIN MANEJO NODOS DE TEXTO ---
 
-            // Guardar historial para cambios que no dispararon una ejecución que ya guarda.
             if (!historySavedByExecution) {
-                // ¿Realmente hubo un cambio en los datos? (Drawflow actualiza node.data antes de llamar a esto via rAF)
-                // Podríamos comparar el valor 'val' con el valor original antes del rAF, pero es complejo.
-                // Por simplicidad, guardamos si no fue manejado por una ejecución.
                 console.log(`   Saving history directly from handleNodeDataChange for ${name} (key: ${key})`);
                 saveHistoryState();
             } else {
                  console.log(`   History save deferred or handled by execution for ${name} (key: ${key})`);
             }
-
-
         } catch (e) {
             console.error(`Error handleNodeDataChange (Node: ${id}, Key: ${key}):`, e);
         }
@@ -1191,7 +1016,6 @@ function handleNodeDataChange(event) {
   
 /**
  * Actualiza el resultado de un nodo (datos y UI), propaga y guarda historial.
- * Usada por nodos como text_replace, text_split, etc.
  * @param {string} nodeId - El ID del nodo.
  * @param {*} resultValue - El valor del resultado a guardar y propagar.
  */
@@ -1199,92 +1023,45 @@ function updateNodeResult(nodeId, resultValue) {
     const node = editor.getNodeFromId(nodeId);
     if (!node) return;
 
-    // Solo actualizar si el resultado realmente cambió
     if (node.data.result !== resultValue) {
         console.log(`Node ${nodeId} (${node.name}): Updating result data.`);
-        // Actualizamos el dato en el modelo de Drawflow
         editor.updateNodeDataFromId(nodeId, { result: resultValue });
-
-        // Actualizamos el elemento visual (textarea o input) en la UI
         const nodeElement = document.getElementById(`node-${nodeId}`);
         if (nodeElement) {
-            // Busca textarea o input con df-result
             const resultElement = nodeElement.querySelector('textarea[df-result], input[df-result]');
             if (resultElement) {
-                resultElement.value = resultValue; // Asignar valor
-            } else {
-                console.warn(`Node ${nodeId} (${node.name}): Result element (df-result) not found in UI.`);
-            }
-        } else {
-             console.warn(`Node ${nodeId} (${node.name}): Node element not found in DOM for UI update.`);
-        }
-
-        // Propagamos el nuevo resultado a los nodos conectados
-        // Usamos el nombre del nodo actual para la propagación
+                resultElement.value = resultValue;
+            } else { console.warn(`Node ${nodeId} (${node.name}): Result element (df-result) not found in UI.`); }
+        } else { console.warn(`Node ${nodeId} (${node.name}): Node element not found in DOM for UI update.`); }
         console.log(`Node ${nodeId} (${node.name}): Propagating new result.`);
         propagateData(nodeId, node.name, 'result', resultValue);
-
-        // Guardamos el estado para deshacer/rehacer porque el resultado cambió
         saveHistoryState();
     } else {
          console.log(`Node ${nodeId} (${node.name}): Result unchanged, no update needed.`);
     }
 }
   
-
-  function handleJsonInputChange(event) {
+function handleJsonInputChange(event) {
     const nodeId   = getNodeIdFromEvent(event);
     const textarea = event.target;
     const text     = textarea.value;
     let parsed;
-    const nodeName = 'input_json'; // Nombre del nodo para propagateData
+    const nodeName = 'input_json';
 
-    // 1) Parseo
     try {
-        parsed = JSON.parse(text || '{}'); // Asegura que no sea vacío, parsea a objeto
+        parsed = JSON.parse(text || '{}');
         textarea.classList.remove('error');
     } catch (e) {
         textarea.classList.add('error');
         console.error(`Input JSON (${nodeId}) Parse Error:`, e);
-        // No propagar si hay error de parseo
-        // Podrías limpiar lastInput si quieres
-        // editor.updateNodeDataFromId(nodeId, { json: text, lastInput: null });
         return;
     }
-
-    // 2) Actualizo estado interno
-    // Guardamos tanto el texto original como el objeto parseado
-    editor.updateNodeDataFromId(nodeId, {
-        json: text,
-        lastInput: parsed // Guardamos el objeto parseado
-    });
-
-    // 3) ¡CAMBIO IMPORTANTE! Usar propagateData para enviar el OBJETO PARSEADO
-    // Esto activará la lógica que añadimos para 'template_engine' en propagateData.
-    // Usamos 'lastInput' como "changedKey" conceptual, y 'parsed' como el dato a enviar.
+    editor.updateNodeDataFromId(nodeId, { json: text, lastInput: parsed });
     console.log(`Input JSON (${nodeId}): Propagating parsed data object...`, parsed);
     propagateData(nodeId, nodeName, 'lastInput', parsed);
-
-    // Opcional: Si algún nodo necesita ser *ejecutado* específicamente
-    // por la llegada de este JSON (además de recibir los datos),
-    // podrías mantener la llamada a propagateExecution aquí también,
-    // pero para el nodo Plantilla, propagateData es la necesaria.
-    // propagateExecution(nodeId, parsed); // Podría ser redundante o innecesaria ahora
-
-    // Guardar historial porque el dato cambió y se propagó
     saveHistoryState();
 }
   
-  
-  
-
-
-
-
-
-
-
-// NUEVO: Función para calcular y actualizar el nodo Suma
 /**
  * Calcula la suma de las entradas conectadas a un nodo 'sum' y actualiza su resultado.
  * @param {string} nodeId - El ID del nodo 'sum'.
@@ -1292,151 +1069,66 @@ function updateNodeResult(nodeId, resultValue) {
 function updateSumNode(nodeId) {
   try {
       const node = editor.getNodeFromId(nodeId);
-      // Verificar que el nodo existe, es de tipo 'sum' y tiene el puerto de entrada definido
       if (!node || node.name !== 'sum' || !node.inputs?.input_1) return;
-
       const connections = node.inputs.input_1.connections || [];
       let currentSum = 0;
-
-      // Recorrer todas las conexiones entrantes
       connections.forEach(conn => {
           const sourceNode = editor.getNodeFromId(conn.node);
           if (sourceNode?.data) {
               let value = 0;
-              // Intentar obtener el valor numérico de la fuente
-              // Prioridad: 'number' (de input_number), luego 'result' (de otros nodos), luego 'range'
-              if (sourceNode.data.hasOwnProperty('number')) {
-                  value = parseFloat(sourceNode.data.number);
-              } else if (sourceNode.data.hasOwnProperty('result')) {
-                   value = parseFloat(sourceNode.data.result);
-              } else if (sourceNode.data.hasOwnProperty('range')) { // Añadido para input_range
-                   value = parseFloat(sourceNode.data.range);
-              } // Puedes añadir más campos 'else if' si tienes otros nodos que emiten números con claves diferentes
-
-              // Si es un número válido, añadirlo a la suma
-              if (!isNaN(value)) {
-                  currentSum += value;
-              } else {
-                  console.warn(`Node sum (${nodeId}): Input from ${conn.node} is not a number. Ignored.`);
-              }
+              if (sourceNode.data.hasOwnProperty('number')) value = parseFloat(sourceNode.data.number);
+              else if (sourceNode.data.hasOwnProperty('result')) value = parseFloat(sourceNode.data.result);
+              else if (sourceNode.data.hasOwnProperty('range')) value = parseFloat(sourceNode.data.range);
+              if (!isNaN(value)) currentSum += value;
+              else console.warn(`Node sum (${nodeId}): Input from ${conn.node} is not a number. Ignored.`);
           }
       });
-
-      // Actualizar los datos internos del nodo y la UI solo si el resultado ha cambiado
       if (node.data.result !== currentSum) {
-          console.log(`Node sum (${nodeId}): Updating result from ${node.data.result} to ${currentSum}`);
           editor.updateNodeDataFromId(nodeId, { result: currentSum });
-
-          // Actualizar el textarea visual dentro del nodo
           const nodeElement = document.getElementById(`node-${nodeId}`);
           const resultTextarea = nodeElement?.querySelector('textarea[df-result]');
-          if (resultTextarea) {
-              resultTextarea.value = currentSum;
-          }
-
-          // Propagar el nuevo resultado a los nodos conectados a la salida del nodo Suma
+          if (resultTextarea) resultTextarea.value = currentSum;
           propagateData(nodeId, 'sum', 'result', currentSum);
-          saveHistoryState(); // Guardar estado porque el resultado cambió
+          saveHistoryState();
       }
-  } catch (error) {
-      console.error(`Error updating sum node ${nodeId}:`, error);
-      showToast('error', 'Error en Suma', `No se pudo calcular la suma para el nodo ${nodeId}.`);
-  }
+  } catch (error) { console.error(`Error updating sum node ${nodeId}:`, error); showToast('error', 'Error en Suma', `No se pudo calcular la suma para el nodo ${nodeId}.`); }
 }
-// FIN NUEVA FUNCIÓN
 
-
-// Añade esta función junto a updateSumNode y updateConcatenateNode
-
-// NUEVO: Función para calcular y actualizar el nodo Resta
 /**
  * Calcula la resta de las entradas conectadas a un nodo 'subtract' y actualiza su resultado.
- * El orden se basa en la posición Y de los nodos de entrada (el superior menos los inferiores).
  * @param {string} nodeId - El ID del nodo 'subtract'.
  */
 function updateSubtractNode(nodeId) {
   try {
       const node = editor.getNodeFromId(nodeId);
-      // Verificar que el nodo existe, es de tipo 'subtract' y tiene el puerto de entrada definido
       if (!node || node.name !== 'subtract' || !node.inputs?.input_1) return;
-
       const connectionsRaw = node.inputs.input_1.connections || [];
-
-      // Ordenar conexiones por posición Y del nodo origen (el más alto primero)
-      const connectionsSorted = connectionsRaw.slice().sort((a, b) => {
-          const nodeA_Y = editor.getNodeFromId(a.node)?.pos_y ?? Infinity;
-          const nodeB_Y = editor.getNodeFromId(b.node)?.pos_y ?? Infinity;
-          return nodeA_Y - nodeB_Y;
-      });
-
-      let currentResult = 0;
-      let isFirstNode = true;
-
-      // Recorrer todas las conexiones entrantes ordenadas
+      const connectionsSorted = connectionsRaw.slice().sort((a, b) => (editor.getNodeFromId(a.node)?.pos_y ?? Infinity) - (editor.getNodeFromId(b.node)?.pos_y ?? Infinity));
+      let currentResult = 0; let isFirstNode = true;
       connectionsSorted.forEach(conn => {
           const sourceNode = editor.getNodeFromId(conn.node);
-          let value = 0; // Valor por defecto si no es número
-
+          let value = 0;
           if (sourceNode?.data) {
-              // Intentar obtener el valor numérico de la fuente
-              if (sourceNode.data.hasOwnProperty('number')) {
-                  value = parseFloat(sourceNode.data.number);
-              } else if (sourceNode.data.hasOwnProperty('result')) {
-                   value = parseFloat(sourceNode.data.result);
-              } else if (sourceNode.data.hasOwnProperty('range')) {
-                   value = parseFloat(sourceNode.data.range);
-              } // Añadir más 'else if' si es necesario
-
-              // Asegurarse de que el valor sea numérico, si no, usar 0
-              if (isNaN(value)) {
-                  value = 0;
-                  console.warn(`Node subtract (${nodeId}): Input from ${conn.node} is not a valid number. Using 0.`);
-              }
+              if (sourceNode.data.hasOwnProperty('number')) value = parseFloat(sourceNode.data.number);
+              else if (sourceNode.data.hasOwnProperty('result')) value = parseFloat(sourceNode.data.result);
+              else if (sourceNode.data.hasOwnProperty('range')) value = parseFloat(sourceNode.data.range);
+              if (isNaN(value)) { value = 0; console.warn(`Node subtract (${nodeId}): Input from ${conn.node} is not a valid number. Using 0.`); }
           }
-
-          // Si es el primer nodo (el más arriba), establecerlo como valor inicial
-          if (isFirstNode) {
-              currentResult = value;
-              isFirstNode = false;
-          } else {
-              // Restar los valores de los nodos subsiguientes
-              currentResult -= value;
-          }
+          if (isFirstNode) { currentResult = value; isFirstNode = false; }
+          else currentResult -= value;
       });
-
-      // Si no hubo conexiones, el resultado es 0
-      if (connectionsSorted.length === 0) {
-          currentResult = 0;
-      }
-
-      // Actualizar los datos internos del nodo y la UI solo si el resultado ha cambiado
+      if (connectionsSorted.length === 0) currentResult = 0;
       if (node.data.result !== currentResult) {
-          console.log(`Node subtract (${nodeId}): Updating result from ${node.data.result} to ${currentResult}`);
           editor.updateNodeDataFromId(nodeId, { result: currentResult });
-
-          // Actualizar el textarea visual dentro del nodo
           const nodeElement = document.getElementById(`node-${nodeId}`);
           const resultTextarea = nodeElement?.querySelector('textarea[df-result]');
-          if (resultTextarea) {
-              resultTextarea.value = currentResult;
-          }
-
-          // Propagar el nuevo resultado
+          if (resultTextarea) resultTextarea.value = currentResult;
           propagateData(nodeId, 'subtract', 'result', currentResult);
-          saveHistoryState(); // Guardar estado porque el resultado cambió
+          saveHistoryState();
       }
-  } catch (error) {
-      console.error(`Error updating subtract node ${nodeId}:`, error);
-      showToast('error', 'Error en Resta', `No se pudo calcular la resta para el nodo ${nodeId}.`);
-  }
+  } catch (error) { console.error(`Error updating subtract node ${nodeId}:`, error); showToast('error', 'Error en Resta', `No se pudo calcular la resta para el nodo ${nodeId}.`); }
 }
-// FIN NUEVA FUNCIÓN RESTA
 
-
-
-// Añade esta función
-
-// NUEVO: Función para calcular y actualizar el nodo Multiplicación
 /**
  * Calcula el producto de las entradas conectadas a un nodo 'multiply' y actualiza su resultado.
  * @param {string} nodeId - El ID del nodo 'multiply'.
@@ -1444,442 +1136,142 @@ function updateSubtractNode(nodeId) {
 function updateMultiplyNode(nodeId) {
   try {
       const node = editor.getNodeFromId(nodeId);
-      // Verificar que el nodo existe, es de tipo 'multiply' y tiene el puerto de entrada definido
       if (!node || node.name !== 'multiply' || !node.inputs?.input_1) return;
-
       const connections = node.inputs.input_1.connections || [];
-      let currentResult = 1; // Empezar con la identidad multiplicativa
-      let hasValidInput = false; // Flag para saber si se encontró al menos un número
-
-      // Recorrer todas las conexiones entrantes
+      let currentResult = 1; let hasValidInput = false;
       connections.forEach(conn => {
           const sourceNode = editor.getNodeFromId(conn.node);
-          let value = NaN; // Inicializar como NaN para forzar validación
-
+          let value = NaN;
           if (sourceNode?.data) {
-              // Intentar obtener el valor numérico de la fuente
-              if (sourceNode.data.hasOwnProperty('number')) {
-                  value = parseFloat(sourceNode.data.number);
-              } else if (sourceNode.data.hasOwnProperty('result')) {
-                   value = parseFloat(sourceNode.data.result);
-              } else if (sourceNode.data.hasOwnProperty('range')) {
-                   value = parseFloat(sourceNode.data.range);
-              } // Añadir más 'else if' si es necesario
-
-              // Si es un número válido, multiplicarlo
-              if (!isNaN(value)) {
-                  currentResult *= value;
-                  hasValidInput = true; // Marcamos que encontramos al menos un número
-              } else {
-                  console.warn(`Node multiply (${nodeId}): Input from ${conn.node} is not a valid number. Ignored.`);
-                  // No multiplicamos si no es un número válido
-              }
+              if (sourceNode.data.hasOwnProperty('number')) value = parseFloat(sourceNode.data.number);
+              else if (sourceNode.data.hasOwnProperty('result')) value = parseFloat(sourceNode.data.result);
+              else if (sourceNode.data.hasOwnProperty('range')) value = parseFloat(sourceNode.data.range);
+              if (!isNaN(value)) { currentResult *= value; hasValidInput = true; }
+              else console.warn(`Node multiply (${nodeId}): Input from ${conn.node} is not a valid number. Ignored.`);
           }
       });
-
-      // Si no hubo ninguna conexión válida, el resultado podría ser 0 o 1.
-      // Decidimos que si no hay conexiones O ninguna válida, el resultado es 0.
-      // Si hubo conexiones pero resultaron en NaN (ej. texto * texto), el resultado será NaN.
-      // Si solo hubo conexiones no numéricas (ignoradas), el resultado se quedó en 1.
-      // Para consistencia, si no hubo inputs válidos conectados, forzamos a 0.
-      if (connections.length === 0 || !hasValidInput) {
-           currentResult = 0;
-      }
-
-      // Actualizar los datos internos del nodo y la UI solo si el resultado ha cambiado
-      // Manejar comparación con NaN (NaN !== NaN siempre es true)
+      if (connections.length === 0 || !hasValidInput) currentResult = 0;
       const previousResult = node.data.result;
       if (previousResult !== currentResult && !(isNaN(previousResult) && isNaN(currentResult))) {
-          console.log(`Node multiply (${nodeId}): Updating result from ${previousResult} to ${currentResult}`);
           editor.updateNodeDataFromId(nodeId, { result: currentResult });
-
-          // Actualizar el textarea visual dentro del nodo
           const nodeElement = document.getElementById(`node-${nodeId}`);
           const resultTextarea = nodeElement?.querySelector('textarea[df-result]');
-          if (resultTextarea) {
-              resultTextarea.value = isNaN(currentResult) ? "NaN" : currentResult; // Mostrar NaN si es el caso
-          }
-
-          // Propagar el nuevo resultado
+          if (resultTextarea) resultTextarea.value = isNaN(currentResult) ? "NaN" : currentResult;
           propagateData(nodeId, 'multiply', 'result', currentResult);
-          saveHistoryState(); // Guardar estado porque el resultado cambió
+          saveHistoryState();
       }
-  } catch (error) {
-      console.error(`Error updating multiply node ${nodeId}:`, error);
-      showToast('error', 'Error en Multiplicación', `No se pudo calcular el producto para el nodo ${nodeId}.`);
-  }
+  } catch (error) { console.error(`Error updating multiply node ${nodeId}:`, error); showToast('error', 'Error en Multiplicación', `No se pudo calcular el producto para el nodo ${nodeId}.`); }
 }
-// FIN NUEVA FUNCIÓN MULTIPLICACIÓN
 
-
-
-// Añade esta función
-
-// NUEVO: Función para calcular y actualizar el nodo División
 /**
  * Calcula la división secuencial de las entradas conectadas a un nodo 'divide' y actualiza su resultado.
- * El orden se basa en la posición Y de los nodos de entrada (el superior dividido por los inferiores).
- * Maneja la división por cero resultando en Infinity.
  * @param {string} nodeId - El ID del nodo 'divide'.
  */
 function updateDivideNode(nodeId) {
   try {
       const node = editor.getNodeFromId(nodeId);
-      // Verificar que el nodo existe, es de tipo 'divide' y tiene el puerto de entrada definido
       if (!node || node.name !== 'divide' || !node.inputs?.input_1) return;
-
       const connectionsRaw = node.inputs.input_1.connections || [];
-
-      // Ordenar conexiones por posición Y del nodo origen (el más alto primero)
-      const connectionsSorted = connectionsRaw.slice().sort((a, b) => {
-          const nodeA_Y = editor.getNodeFromId(a.node)?.pos_y ?? Infinity;
-          const nodeB_Y = editor.getNodeFromId(b.node)?.pos_y ?? Infinity;
-          return nodeA_Y - nodeB_Y;
-      });
-
-      let currentResult = NaN; // Empezar como Indefinido
-      let isFirstNode = true;
-      let divisionByZero = false;
-
-      // Se necesitan al menos dos entradas para dividir
-      if (connectionsSorted.length < 2) {
-           currentResult = NaN; // Resultado indefinido si hay menos de 2 entradas
-      } else {
+      const connectionsSorted = connectionsRaw.slice().sort((a, b) => (editor.getNodeFromId(a.node)?.pos_y ?? Infinity) - (editor.getNodeFromId(b.node)?.pos_y ?? Infinity));
+      let currentResult = NaN; let isFirstNode = true; let divisionByZero = false;
+      if (connectionsSorted.length < 2) currentResult = NaN;
+      else {
           connectionsSorted.forEach(conn => {
               const sourceNode = editor.getNodeFromId(conn.node);
-              let value = NaN; // Valor por defecto
-
+              let value = NaN;
               if (sourceNode?.data) {
-                  // Intentar obtener el valor numérico de la fuente
-                  if (sourceNode.data.hasOwnProperty('number')) {
-                      value = parseFloat(sourceNode.data.number);
-                  } else if (sourceNode.data.hasOwnProperty('result')) {
-                       value = parseFloat(sourceNode.data.result);
-                  } else if (sourceNode.data.hasOwnProperty('range')) {
-                       value = parseFloat(sourceNode.data.range);
-                  } // Añadir más 'else if'
-
-                  // Si no es un número válido, tratar como NaN para el cálculo
-                  if (isNaN(value)) {
-                      value = NaN;
-                      console.warn(`Node divide (${nodeId}): Input from ${conn.node} is not a valid number. Result will be NaN.`);
-                  }
-              } else {
-                  value = NaN; // Si no hay nodo o datos, es NaN
-              }
-
-              // Establecer el dividendo inicial (primer nodo)
-              if (isFirstNode) {
-                  currentResult = value;
-                  isFirstNode = false;
-              } else {
-                  // Dividir por los valores subsiguientes (divisores)
-                  // Comprobar división por cero
-                  if (value === 0) {
-                      divisionByZero = true;
-                      currentResult = Infinity; // O puedes poner NaN o un string de error
-                      console.warn(`Node divide (${nodeId}): Division by zero detected from node ${conn.node}. Result set to Infinity.`);
-                      return; // Salir del forEach si hay división por cero (opcional, podría continuar y dar NaN/Infinity)
-                  }
-                  // Si el resultado actual o el divisor es NaN, el resultado sigue siendo NaN
-                  if (isNaN(currentResult) || isNaN(value)) {
-                      currentResult = NaN;
-                  } else {
-                       currentResult /= value;
-                  }
+                  if (sourceNode.data.hasOwnProperty('number')) value = parseFloat(sourceNode.data.number);
+                  else if (sourceNode.data.hasOwnProperty('result')) value = parseFloat(sourceNode.data.result);
+                  else if (sourceNode.data.hasOwnProperty('range')) value = parseFloat(sourceNode.data.range);
+                  if (isNaN(value)) { value = NaN; console.warn(`Node divide (${nodeId}): Input from ${conn.node} is not a valid number. Result will be NaN.`); }
+              } else value = NaN;
+              if (isFirstNode) { currentResult = value; isFirstNode = false; }
+              else {
+                  if (value === 0) { divisionByZero = true; currentResult = Infinity; console.warn(`Node divide (${nodeId}): Division by zero detected from node ${conn.node}. Result set to Infinity.`); return; }
+                  if (isNaN(currentResult) || isNaN(value)) currentResult = NaN;
+                  else currentResult /= value;
               }
           });
       }
-
-      // Actualizar los datos internos y la UI solo si el resultado ha cambiado
       const previousResult = node.data.result;
-      // Comparación especial para NaN (NaN !== NaN es true)
       if (previousResult !== currentResult && !(isNaN(previousResult) && isNaN(currentResult))) {
-          console.log(`Node divide (${nodeId}): Updating result from ${previousResult} to ${currentResult}`);
           editor.updateNodeDataFromId(nodeId, { result: currentResult });
-
-          // Actualizar el textarea visual dentro del nodo
           const nodeElement = document.getElementById(`node-${nodeId}`);
           const resultTextarea = nodeElement?.querySelector('textarea[df-result]');
           if (resultTextarea) {
-              let displayValue = "N/A"; // Valor por defecto para mostrar
-              if (divisionByZero) {
-                   displayValue = "Infinity"; // O "Error Div/0"
-              } else if (!isNaN(currentResult)) {
-                   displayValue = currentResult;
-              } else if (connectionsSorted.length >= 2) {
-                   displayValue = "NaN"; // Si hubo cálculo pero dio NaN
-              }
+              let displayValue = "N/A";
+              if (divisionByZero) displayValue = "Infinity";
+              else if (!isNaN(currentResult)) displayValue = currentResult;
+              else if (connectionsSorted.length >= 2) displayValue = "NaN";
               resultTextarea.value = displayValue;
           }
-
-          // Propagar el nuevo resultado (puede ser NaN o Infinity)
           propagateData(nodeId, 'divide', 'result', currentResult);
-          saveHistoryState(); // Guardar estado porque el resultado cambió
+          saveHistoryState();
       }
-  } catch (error) {
-      console.error(`Error updating divide node ${nodeId}:`, error);
-      showToast('error', 'Error en División', `No se pudo calcular la división para el nodo ${nodeId}.`);
-  }
+  } catch (error) { console.error(`Error updating divide node ${nodeId}:`, error); showToast('error', 'Error en División', `No se pudo calcular la división para el nodo ${nodeId}.`); }
 }
-// FIN NUEVA FUNCIÓN DIVISIÓN
-
-
-
-
-
-// --- Añade estas nuevas funciones en la sección de Helpers o Node Specific UI ---
 
 /**
- * Función central para procesar una imagen cargada (desde cualquier fuente).
- * Actualiza los datos del nodo, la UI y redimensiona el nodo.
+ * Procesar una imagen cargada para el nodo 'image_minimal'.
  * @param {string} nodeId El ID del nodo.
  * @param {string} imageDataUrl La imagen como Data URL.
  */
 function processMinimalImageLoad(nodeId, imageDataUrl) {
   if (!editor || !nodeId || !imageDataUrl) return;
-
-  console.log(`Processing image load for node ${nodeId}...`);
   const nodeElement = document.getElementById(`node-${nodeId}`);
   const imgTag = nodeElement?.querySelector('img[df-imgsrc]');
   const placeholder = nodeElement?.querySelector('.image-placeholder');
-
-  if (!nodeElement || !imgTag || !placeholder) {
-      console.error(`Minimal Image Node elements not found for ID ${nodeId}.`);
-      showToast('error', 'Error Interno', 'No se encontraron elementos del nodo imagen.');
-      return;
-  }
-
-  // Crear imagen en memoria para obtener dimensiones
+  if (!nodeElement || !imgTag || !placeholder) { console.error(`Minimal Image Node elements not found for ID ${nodeId}.`); showToast('error', 'Error Interno', 'No se encontraron elementos del nodo imagen.'); return; }
   const tempImg = new Image();
   tempImg.onload = () => {
       try {
-          const w = tempImg.naturalWidth;
-          const h = tempImg.naturalHeight;
-          console.log(`Image loaded: ${w}x${h}`);
-
+          const w = tempImg.naturalWidth; const h = tempImg.naturalHeight;
           if (w === 0 || h === 0) throw new Error("Invalid image dimensions (0x0).");
-
-          // 1. Actualizar datos internos del nodo en Drawflow
-          editor.updateNodeDataFromId(nodeId, {
-              imgsrc: imageDataUrl,
-              naturalWidth: w,
-              naturalHeight: h
-          });
-
-          // 2. Actualizar UI del nodo
-          imgTag.src = imageDataUrl;
-          imgTag.style.display = 'block';
-          placeholder.style.display = 'none';
-          if (nodeElement.style.border.includes('dashed')) { // Quitar borde punteado si lo tenía
-               nodeElement.style.border = 'none';
-          }
-
-
-          // 3. Redimensionar el elemento del nodo
-          nodeElement.style.width = `${w}px`;
-          nodeElement.style.height = `${h}px`;
-
-          // 4. Forzar actualización de conexiones
-          // Usar un pequeño timeout puede ayudar a que el DOM se actualice antes de redibujar líneas
-          setTimeout(() => {
-              editor.updateConnectionNodes(`node-${nodeId}`);
-              console.log(`Node ${nodeId} connections updated after resize.`);
-          }, 50);
-
-
-          // 5. Guardar historial
-          saveHistoryState();
-          showToast('success', 'Imagen Cargada', `${w}x${h}px`);
-
+          editor.updateNodeDataFromId(nodeId, { imgsrc: imageDataUrl, naturalWidth: w, naturalHeight: h });
+          imgTag.src = imageDataUrl; imgTag.style.display = 'block'; placeholder.style.display = 'none';
+          if (nodeElement.style.border.includes('dashed')) nodeElement.style.border = 'none';
+          // Do not override user-set dimensions on load, only on initial drop or if no user dimensions exist
+          const currentNodeData = editor.getNodeFromId(nodeId).data;
+          nodeElement.style.width = currentNodeData.nodeWidth || `${w}px`;
+          nodeElement.style.height = currentNodeData.nodeHeight || `${h}px`;
+          setTimeout(() => { editor.updateConnectionNodes(`node-${nodeId}`); }, 50);
+          saveHistoryState(); showToast('success', 'Imagen Cargada', `${w}x${h}px`);
       } catch (error) {
-           console.error(`Error processing image dimensions or updating node ${nodeId}:`, error);
-           showToast('error', 'Error Imagen', 'No se pudo procesar la imagen.');
-           // Resetear si falla
-           imgTag.src = '';
-           imgTag.style.display = 'none';
-           placeholder.style.display = 'flex'; // O 'block' según tu layout de placeholder
-           editor.updateNodeDataFromId(nodeId, { imgsrc: '', naturalWidth: 0, naturalHeight: 0 });
+           console.error(`Error processing image dimensions or updating node ${nodeId}:`, error); showToast('error', 'Error Imagen', 'No se pudo procesar la imagen.');
+           imgTag.src = ''; imgTag.style.display = 'none'; placeholder.style.display = 'flex'; editor.updateNodeDataFromId(nodeId, { imgsrc: '', naturalWidth: 0, naturalHeight: 0 });
       }
   };
-  tempImg.onerror = (err) => {
-      console.error("Error loading image data into temp Image object:", err);
-      showToast('error', 'Error Carga', 'El formato de imagen no es válido o está corrupto.');
-      // Resetear UI
-      imgTag.src = '';
-      imgTag.style.display = 'none';
-      placeholder.style.display = 'flex';
-      editor.updateNodeDataFromId(nodeId, { imgsrc: '', naturalWidth: 0, naturalHeight: 0 });
-  };
-  tempImg.src = imageDataUrl; // Iniciar la carga en memoria
+  tempImg.onerror = (err) => { console.error("Error loading image data into temp Image object:", err); showToast('error', 'Error Carga', 'El formato de imagen no es válido o está corrupto.'); imgTag.src = ''; imgTag.style.display = 'none'; placeholder.style.display = 'flex'; editor.updateNodeDataFromId(nodeId, { imgsrc: '', naturalWidth: 0, naturalHeight: 0 }); };
+  tempImg.src = imageDataUrl;
 }
 
-/**
-* Inicia la selección de archivo para el nodo imagen minimalista.
-* @param {Event} event Evento click en el placeholder.
-*/
 function triggerMinimalImageFileSelect(event) {
-  const placeholder = event.currentTarget; // El placeholder que recibió el clic
-  const nodeElement = placeholder.closest('.drawflow-node');
-  if (!nodeElement) return;
-  const nodeId = nodeElement.id.split('-')[1];
-
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = 'image/*';
-  input.style.display = 'none';
-
-  input.onchange = (e) => {
-      const file = e.target.files?.[0];
-      if (file) {
-          const reader = new FileReader();
-          reader.onload = (loadEvent) => {
-              processMinimalImageLoad(nodeId, loadEvent.target.result);
-          };
-          reader.onerror = () => {
-              showToast('error', 'Error Lectura', 'No se pudo leer el archivo.');
-          };
-          reader.readAsDataURL(file);
-      }
-      document.body.removeChild(input); // Limpiar input
-  };
-
-  document.body.appendChild(input);
-  input.click();
-}
-
-/**
-* Maneja el evento dragover sobre el placeholder de imagen.
-* @param {DragEvent} event
-*/
-function handleMinimalImageDragOver(event) {
-   event.preventDefault();
-   event.stopPropagation();
-   event.dataTransfer.dropEffect = 'copy';
-   event.currentTarget.classList.add('dragover'); // currentTarget es el placeholder
-}
-
-/**
-* Maneja el evento dragleave sobre el placeholder de imagen.
-* @param {DragEvent} event
-*/
-function handleMinimalImageDragLeave(event) {
-  event.stopPropagation();
-  event.currentTarget.classList.remove('dragover');
-}
-
-/**
-* Maneja el evento drop sobre el placeholder de imagen.
-* @param {DragEvent} event
-*/
-function handleMinimalImageDrop(event) {
-  event.preventDefault();
-  event.stopPropagation();
   const placeholder = event.currentTarget;
-  placeholder.classList.remove('dragover');
   const nodeElement = placeholder.closest('.drawflow-node');
-  if (!nodeElement) return;
-  const nodeId = nodeElement.id.split('-')[1];
-
-  const files = event.dataTransfer.files;
-  if (files.length > 0) {
-      // Buscar el primer archivo de imagen
-      let imageFile = null;
-      for (let i = 0; i < files.length; i++) {
-          if (files[i].type.startsWith('image/')) {
-              imageFile = files[i];
-              break;
-          }
-      }
-
-      if (imageFile) {
-          const reader = new FileReader();
-          reader.onload = (loadEvent) => {
-              processMinimalImageLoad(nodeId, loadEvent.target.result);
-          };
-          reader.onerror = () => {
-              showToast('error', 'Error Lectura', 'No se pudo leer el archivo arrastrado.');
-          };
-          reader.readAsDataURL(imageFile);
-      } else {
-          showToast('warning', 'Archivo Inválido', 'Arrastra un archivo de imagen.');
-      }
-  }
+  if (!nodeElement) return; const nodeId = nodeElement.id.split('-')[1];
+  const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*'; input.style.display = 'none';
+  input.onchange = (e) => { const file = e.target.files?.[0]; if (file) { const reader = new FileReader(); reader.onload = (loadEvent) => { processMinimalImageLoad(nodeId, loadEvent.target.result); }; reader.onerror = () => { showToast('error', 'Error Lectura', 'No se pudo leer el archivo.'); }; reader.readAsDataURL(file); } document.body.removeChild(input); };
+  document.body.appendChild(input); input.click();
 }
-
-/**
-* Maneja el evento paste sobre el nodo imagen minimalista.
-* @param {ClipboardEvent} event
-*/
+function handleMinimalImageDragOver(event) { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = 'copy'; event.currentTarget.classList.add('dragover'); }
+function handleMinimalImageDragLeave(event) { event.stopPropagation(); event.currentTarget.classList.remove('dragover'); }
+function handleMinimalImageDrop(event) {
+  event.preventDefault(); event.stopPropagation(); const placeholder = event.currentTarget; placeholder.classList.remove('dragover');
+  const nodeElement = placeholder.closest('.drawflow-node'); if (!nodeElement) return; const nodeId = nodeElement.id.split('-')[1];
+  const files = event.dataTransfer.files; if (files.length > 0) { let imageFile = null; for (let i = 0; i < files.length; i++) if (files[i].type.startsWith('image/')) { imageFile = files[i]; break; } if (imageFile) { const reader = new FileReader(); reader.onload = (loadEvent) => { processMinimalImageLoad(nodeId, loadEvent.target.result); }; reader.onerror = () => { showToast('error', 'Error Lectura', 'No se pudo leer el archivo arrastrado.'); }; reader.readAsDataURL(imageFile); } else showToast('warning', 'Archivo Inválido', 'Arrastra un archivo de imagen.'); }
+}
 function handleMinimalImagePaste(event) {
-  const nodeElement = event.currentTarget; // El nodo que tiene el listener
-  if (!nodeElement || !nodeElement.classList.contains('image-minimal-node')) return; // Doble check
-
-  const nodeId = nodeElement.id.split('-')[1];
-  const items = (event.clipboardData || window.clipboardData)?.items;
-  if (!items) return;
-
-  let foundImage = false;
-  for (let i = 0; i < items.length; i++) {
-      if (items[i].kind === 'file' && items[i].type.startsWith('image/')) {
-          event.preventDefault(); // Prevenir pegado default solo si encontramos imagen
-          const blob = items[i].getAsFile();
-          if (blob) {
-               foundImage = true;
-               const reader = new FileReader();
-               reader.onload = (loadEvent) => {
-                   processMinimalImageLoad(nodeId, loadEvent.target.result);
-               };
-               reader.onerror = () => {
-                   showToast('error', 'Error Lectura', 'No se pudo leer la imagen pegada.');
-               };
-               reader.readAsDataURL(blob);
-               break; // Procesar solo la primera imagen encontrada
-          }
-      }
-  }
-  // Si no se encontró imagen en el portapapeles, no hacemos nada (ni prevenimos default)
+  const nodeElement = event.currentTarget; if (!nodeElement || !nodeElement.classList.contains('image-minimal-node')) return;
+  const nodeId = nodeElement.id.split('-')[1]; const items = (event.clipboardData || window.clipboardData)?.items; if (!items) return;
+  let foundImage = false; for (let i = 0; i < items.length; i++) { if (items[i].kind === 'file' && items[i].type.startsWith('image/')) { event.preventDefault(); const blob = items[i].getAsFile(); if (blob) { foundImage = true; const reader = new FileReader(); reader.onload = (loadEvent) => { processMinimalImageLoad(nodeId, loadEvent.target.result); }; reader.onerror = () => { showToast('error', 'Error Lectura', 'No se pudo leer la imagen pegada.'); }; reader.readAsDataURL(blob); break; } } }
 }
-
-
-// --- Modificar o añadir esta función para registrar los listeners ---
-
-/**
-* Registra los listeners específicos para el nodo imagen minimalista.
-* Debe llamarse DESPUÉS de que el nodo se añade al DOM.
-* @param {string} nodeId El ID del nodo recién añadido.
-*/
 function setupMinimalImageNodeListeners(nodeId) {
-  const nodeElement = document.getElementById(`node-${nodeId}`);
-  const placeholder = nodeElement?.querySelector('.image-placeholder');
-
-  if (!nodeElement || !placeholder) {
-      console.warn(`Could not find elements to attach listeners for minimal image node ${nodeId}`);
-      return;
-  }
-
-  console.log(`Attaching listeners to minimal image node ${nodeId}`);
-
-  // Click en placeholder para seleccionar archivo
+  const nodeElement = document.getElementById(`node-${nodeId}`); const placeholder = nodeElement?.querySelector('.image-placeholder');
+  if (!nodeElement || !placeholder) { console.warn(`Could not find elements to attach listeners for minimal image node ${nodeId}`); return; }
   placeholder.onclick = triggerMinimalImageFileSelect;
-
-  // Drag and Drop en placeholder
-  placeholder.ondragover = handleMinimalImageDragOver;
-  placeholder.ondragleave = handleMinimalImageDragLeave;
-  placeholder.ondrop = handleMinimalImageDrop;
-
-  // Paste EN EL NODO (funciona mejor que solo en el placeholder)
-  // Usamos captura para asegurar que lo cojamos aunque el foco esté dentro
-  nodeElement.addEventListener('paste', handleMinimalImagePaste, true); // 'true' para fase de captura
-
-  // Opcional: Listener para borrar la imagen (ej. doble clic en la imagen?)
-  // const imgTag = nodeElement.querySelector('img[df-imgsrc]');
-  // imgTag.ondblclick = (event) => {
-  //    event.stopPropagation();
-  //    clearMinimalImage(nodeId); // Necesitarías crear esta función
-  // };
+  placeholder.ondragover = handleMinimalImageDragOver; placeholder.ondragleave = handleMinimalImageDragLeave; placeholder.ondrop = handleMinimalImageDrop;
+  nodeElement.addEventListener('paste', handleMinimalImagePaste, true); // Listen on node for paste
 }
-
 
 /**
  * Ejecuta la transformación de mayúsculas/minúsculas directamente.
@@ -1889,115 +1281,13 @@ function setupMinimalImageNodeListeners(nodeId) {
  */
 function executeTextCase(nodeId, inputValue, mode) {
     console.log(`Executing Text Case: Node ${nodeId}, Mode: ${mode}`);
-    const inputText = String(inputValue ?? ''); // Asegurar que sea string
+    const inputText = String(inputValue ?? '');
     const result = mode === 'upper' ? inputText.toUpperCase() : inputText.toLowerCase();
-    updateNodeResult(nodeId, result); // Actualiza y propaga el resultado
+    updateNodeResult(nodeId, result);
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/**
- * Escapa caracteres especiales para usar en expresiones regulares.
- * @param {string} string - El string a escapar.
- * @returns {string} - El string escapado.
- */
-function escapeRegExp(string) {
-    // Escapar caracteres especiales para RegExp
-    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
- * Trunca un texto largo para mostrarlo en logs.
- * @param {string} text - El texto a truncar.
- * @param {number} maxLength - Longitud máxima (por defecto 100).
- * @returns {string} - El texto truncado.
- */
-function truncateForLog(text, maxLength = 100) {
-    if (!text) return '';
-    if (text.length <= maxLength) return text;
-    return text.substring(0, maxLength) + '... [truncado]';
-}
+function escapeRegExp(string) { return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+function truncateForLog(text, maxLength = 100) { if (!text) return ''; if (text.length <= maxLength) return text; return text.substring(0, maxLength) + '... [truncado]'; }
 
 /**
  * Ejecuta la división de texto directamente.
@@ -2006,16 +1296,9 @@ function truncateForLog(text, maxLength = 100) {
  */
 function executeTextSplit(nodeId, inputValue) {
     console.log(`Executing Text Split: Node ${nodeId}`);
-    const nodeData = editor.getNodeFromId(nodeId)?.data;
-    if (!nodeData) return;
-    const inputText = String(inputValue ?? '');
-    const separator = nodeData.separator ?? ''; // Obtener 'separator'
-    // Si el separador está vacío, simplemente devuelve el texto original
-    // o decide un comportamiento (ej. dividir por caracter? Por ahora, original).
-    // Dividir y unir con salto de línea para mostrar en textarea.
+    const nodeData = editor.getNodeFromId(nodeId)?.data; if (!nodeData) return;
+    const inputText = String(inputValue ?? ''); const separator = nodeData.separator ?? '';
     const result = (separator === '') ? inputText : inputText.split(separator).join('\n');
-    // Nota: El dato propagado será un string con saltos de línea.
-    // Si necesitaras propagar un array, la lógica cambiaría aquí y en updateNodeResult.
     updateNodeResult(nodeId, result);
 }
 
@@ -2026,9 +1309,8 @@ function executeTextSplit(nodeId, inputValue) {
  */
 function executeTextLength(nodeId, inputValue) {
     console.log(`Executing Text Length: Node ${nodeId}`);
-    const inputText = String(inputValue ?? '');
-    const result = inputText.length; // El resultado es un número
-    updateNodeResult(nodeId, result); // Actualiza (mostrará número) y propaga (número)
+    const inputText = String(inputValue ?? ''); const result = inputText.length;
+    updateNodeResult(nodeId, result);
 }
 
 /**
@@ -2038,248 +1320,548 @@ function executeTextLength(nodeId, inputValue) {
  */
 function executeHtmlStrip(nodeId, inputValue) {
     console.log(`Executing HTML Strip: Node ${nodeId}`);
-    const inputText = String(inputValue ?? '');
-    const result = inputText.replace(/<[^>]*>/g, ''); // Regex para quitar etiquetas
+    const inputText = String(inputValue ?? ''); const result = inputText.replace(/<[^>]*>/g, '');
     updateNodeResult(nodeId, result);
 }
 
-
-/**
- * Obtiene de forma segura un valor anidado de un objeto usando una cadena de ruta.
- * Ejemplo: getValueFromJson(obj, 'user.address.city')
- * @param {object|null} obj - El objeto fuente.
- * @param {string} keyPath - La ruta de la clave (ej. 'nombre', 'pedido.id').
- * @returns {*} El valor encontrado, o undefined si la ruta no existe o el objeto no es válido.
- */
 function getValueFromJson(obj, keyPath) {
-    // Validaciones iniciales
-    if (!obj || typeof obj !== 'object' || obj === null || typeof keyPath !== 'string' || keyPath === '') {
-        return undefined;
-    }
-    const keys = keyPath.split('.'); // Dividir la ruta por puntos
-    let current = obj;
+    if (!obj || typeof obj !== 'object' || obj === null || typeof keyPath !== 'string' || keyPath === '') return undefined;
+    const keys = keyPath.split('.'); let current = obj;
     for (const key of keys) {
-        // Verificar si el nivel actual es un objeto válido antes de acceder
-        if (current === null || current === undefined || typeof current !== 'object') {
-            return undefined; // Ruta no encontrada
-        }
-        // Verificar si la clave existe en el nivel actual
-        if (!Object.prototype.hasOwnProperty.call(current, key)) {
-             return undefined; // Clave específica no encontrada
-        }
-        current = current[key]; // Moverse al siguiente nivel
+        if (current === null || current === undefined || typeof current !== 'object') return undefined;
+        if (!Object.prototype.hasOwnProperty.call(current, key)) return undefined;
+        current = current[key];
     }
-    // Devolver el valor final encontrado (puede ser null, string, number, etc.)
     return current;
 }
 
-/**
- * Procesa la plantilla de un nodo 'template_engine'.
- * @param {string} nodeId - El ID del nodo a procesar.
- * @param {object} [directInputJson] - (Opcional) El objeto JSON pasado directamente.
- */
 function processTemplateNode(nodeId, directInputJson) {
-    const node = editor.getNodeFromId(nodeId);
-    if (!node || node.name !== 'template_engine') return;
-
-    const nodeElement = document.getElementById(`node-${nodeId}`);
-    if (!nodeElement) { console.error(`Template Node (${nodeId}): Element not found.`); return; }
-    const templateTextarea = nodeElement.querySelector('textarea[df-template]');
-    if (!templateTextarea) { console.error(`Template Node (${nodeId}): Template textarea not found.`); return; }
+    const node = editor.getNodeFromId(nodeId); if (!node || node.name !== 'template_engine') return;
+    const nodeElement = document.getElementById(`node-${nodeId}`); if (!nodeElement) return;
+    const templateTextarea = nodeElement.querySelector('textarea[df-template]'); if (!templateTextarea) return;
     const currentTemplate = templateTextarea.value || '';
-
-    if (node.data.template !== currentTemplate) {
-         editor.updateNodeDataFromId(nodeId, { template: currentTemplate });
-    }
-
+    if (node.data.template !== currentTemplate) editor.updateNodeDataFromId(nodeId, { template: currentTemplate });
     const nodeData = editor.getNodeFromId(nodeId).data;
     let inputJson = directInputJson !== undefined ? directInputJson : nodeData.lastInput;
-
-    // Convertir inputJson de string a objeto si es necesario
-    if (typeof inputJson === 'string') {
-        try {
-            inputJson = JSON.parse(inputJson);
-        } catch (error) {
-            console.error(`Template Node (${nodeId}): Failed to parse JSON input`, error);
-            editor.updateNodeDataFromId(nodeId, { result: `Error: JSON inválido - ${error.message}` });
-            return;
-        }
-    }
-
-    // *** LOGS IMPORTANTES ***
-    console.log(`--- Processing Template Node ${nodeId} ---`);
-    console.log("   Template String (Read from UI):", JSON.stringify(currentTemplate));
-    console.log("   Input JSON (Effective):", inputJson ? JSON.stringify(inputJson) : inputJson);
-    // *** FIN LOGS IMPORTANTES ***
-
-    let processedTemplate = '';
-    let errorOccurred = false;
-
+    if (typeof inputJson === 'string') { try { inputJson = JSON.parse(inputJson); } catch (error) { editor.updateNodeDataFromId(nodeId, { result: `Error: JSON inválido - ${error.message}` }); return; } }
+    let processedTemplate = ''; let errorOccurred = false;
     if (inputJson && typeof inputJson === 'object' && inputJson !== null) {
         const regex = /{{\s*([\w.-]+)\s*}}/g;
         try {
             processedTemplate = currentTemplate.replace(regex, (match, key) => {
-                const cleanKey = key.trim();
-                const value = getValueFromJsonPath(inputJson, cleanKey);
-                // *** LOG IMPORTANTE ***
-                console.log(`   -> Replacing {{${cleanKey}}}: Found value:`, value, `(Type: ${typeof value})`);
-                // *** FIN LOG IMPORTANTE ***
-                if (value === undefined) { return match; } // Dejar sin cambiar
-                else if (value === null) { return ''; }
-                else if (typeof value === 'object') { return JSON.stringify(value); }
-                else { return String(value); }
+                const cleanKey = key.trim(); const value = getValueFromJsonPath(inputJson, cleanKey);
+                if (value === undefined) return match;
+                else if (value === null) return '';
+                else if (typeof value === 'object') return JSON.stringify(value);
+                else return String(value);
             });
-        } catch (error) {
-            console.error(`Template Node (${nodeId}): Error during replace`, error);
-            processedTemplate = `Error: ${error.message}`;
-            errorOccurred = true;
-        }
-    } else {
-        processedTemplate = currentTemplate;
-        console.warn(`Template Node (${nodeId}): No effective input JSON.`);
-    }
-
-    // *** LOG IMPORTANTE ***
-    console.log(`   Final Processed Template:`, JSON.stringify(processedTemplate));
-    // *** FIN LOG IMPORTANTE ***
-
+        } catch (error) { processedTemplate = `Error: ${error.message}`; errorOccurred = true; }
+    } else processedTemplate = currentTemplate;
     if (nodeData.result !== processedTemplate || errorOccurred) {
-        console.log(`Template Node (${nodeId}): Updating result.`);
         editor.updateNodeDataFromId(nodeId, { result: processedTemplate });
-
         const resultTextarea = nodeElement.querySelector('textarea[df-result]');
-        if (resultTextarea) {
-            // *** LOG IMPORTANTE ***
-            console.log(`   Attempting to set UI textarea[df-result] value.`);
-            resultTextarea.value = processedTemplate;
-            console.log(`   UI textarea[df-result] value set.`);
-            // *** FIN LOG IMPORTANTE ***
-        } else {
-            // *** ERROR IMPORTANTE ***
-            console.error(`   CRITICAL: UI textarea[df-result] NOT FOUND for node ${nodeId}. Check HTML definition.`);
-            // *** FIN ERROR IMPORTANTE ***
-        }
-        // *** LOG IMPORTANTE ***
-        console.log(`   Attempting to propagate final result...`);
+        if (resultTextarea) resultTextarea.value = processedTemplate;
         propagateData(nodeId, 'template_engine', 'result', processedTemplate);
-        console.log(`   Propagation called.`);
-        // *** FIN LOG IMPORTANTE ***
         saveHistoryState();
-    } else {
-        console.log(`Template Node (${nodeId}): Result unchanged.`);
     }
-    console.log(`--- Finished Processing Template Node ${nodeId} ---`);
 }
 
-/**
- * Obtiene un valor de un objeto JSON usando una ruta de acceso con notación de punto.
- * @param {object} json - El objeto JSON.
- * @param {string} path - La ruta de acceso (ej: "usuario.direccion.calle").
- * @returns {*} El valor encontrado o undefined si no existe.
- */
 function getValueFromJsonPath(json, path) {
-    if (!json || !path) return undefined;
-    
-    const keys = path.split('.');
-    let current = json;
-    
-    for (const key of keys) {
-        if (current === null || typeof current !== 'object') {
-            return undefined;
-        }
-        current = current[key];
-        if (current === undefined) {
-            return undefined;
-        }
-    }
-    
+    if (!json || !path) return undefined; const keys = path.split('.'); let current = json;
+    for (const key of keys) { if (current === null || typeof current !== 'object') return undefined; current = current[key]; if (current === undefined) return undefined; }
     return current;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+// --- YouTube Helper: Extract Video ID (Common for all YouTube nodes) ---
+function _extractYouTubeVideoId(url) {
+    if (!url) return null;
+    if (url.length === 11 && !url.includes('.') && !url.includes('/')) {
+        return url; // It's already an ID
+    }
+    // Regex patterns to extract video ID from various YouTube URL formats
+    const patterns = [
+        /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i, // Standard, embed, shortlinks
+        /youtube\.com\/shorts\/([A-Za-z0-9_-]{11})/i, // YouTube Shorts
+        /youtube\.com\/live\/([A-Za-z0-9_-]{11})/i // YouTube Live
+    ];
+    for (const pattern of patterns) {
+        const match = url.match(pattern);
+        if (match && match[1]) return match[1];
+    }
+    return null;
+}
+
+
+// --- YouTube Minimal Node Specific Functions ---
+function _getMinimalYouTubeNodeElements(nodeId) {
+    const nodeElement = document.getElementById(`node-${nodeId}`);
+    if (!nodeElement) return null;
+    return {
+        nodeElement,
+        placeholder: nodeElement.querySelector('.youtube-placeholder'),
+        playerContainer: nodeElement.querySelector('.yt-player-container')
+    };
+}
+
+function createOrUpdateYouTubePlayer(nodeId, videoId) { // For youtube_minimal
+    if (!isYouTubeApiReady) {
+        youtubeApiReadyQueue.push(() => createOrUpdateYouTubePlayer(nodeId, videoId));
+        console.log(`YouTube API not ready for minimal player ${nodeId}, queueing.`);
+        return;
+    }
+    console.log(`Attempting to create/update minimal YouTube player for Node ${nodeId} with Video ID: ${videoId}`);
+    const els = _getMinimalYouTubeNodeElements(nodeId);
+    if (!els || !els.playerContainer) {
+        console.error(`Minimal YouTube Node ${nodeId}: Player container not found.`);
+        return;
+    }
+
+    if (youtubePlayers[nodeId]) {
+        try { youtubePlayers[nodeId].destroy(); } catch (e) { console.warn(`Error destroying existing minimal player ${nodeId}:`, e); }
+        delete youtubePlayers[nodeId];
+    }
+
+    els.playerContainer.innerHTML = ''; // Clear previous player
+    const playerDivId = `yt-player-minimal-${nodeId}`;
+    const playerDiv = document.createElement('div');
+    playerDiv.id = playerDivId;
+    els.playerContainer.appendChild(playerDiv);
+
+    const nodeData = editor.getNodeFromId(nodeId)?.data;
+    const width = els.nodeElement.offsetWidth || parseInt(nodeData?.nodeWidth, 10) || 320;
+    const height = els.nodeElement.offsetHeight || parseInt(nodeData?.nodeHeight, 10) || 180;
+
+    try {
+        youtubePlayers[nodeId] = new YT.Player(playerDivId, {
+            width: width,
+            height: height,
+            videoId: videoId,
+            playerVars: { 'autoplay': 0, 'controls': 1, 'modestbranding': 1, 'rel': 0, 'showinfo': 0 },
+            events: {
+                'onReady': (event) => {
+                    console.log(`Minimal YouTube player ${nodeId} READY.`);
+                    if (els.placeholder) els.placeholder.style.display = 'none';
+                    if (els.playerContainer) els.playerContainer.style.display = 'block';
+                    if (els.nodeElement) els.nodeElement.style.border = 'none';
+                },
+                'onError': (event) => {
+                    console.error(`Minimal YouTube player ${nodeId} ERROR:`, event.data);
+                    if (els.placeholder) els.placeholder.style.display = 'flex';
+                    if (els.playerContainer) els.playerContainer.style.display = 'none';
+                    if (els.nodeElement) els.nodeElement.style.border = '2px dashed #cccccc';
+                    showToast('error', `Error reproductor YT (${nodeId})`, `Código: ${event.data}`);
+                    editor.updateNodeDataFromId(nodeId, { videoid: '' });
+                }
+            }
+        });
+    } catch (e) {
+        console.error(`Error initializing minimal YouTube player ${nodeId}:`, e);
+        if (els.placeholder) els.placeholder.style.display = 'flex';
+        if (els.playerContainer) els.playerContainer.style.display = 'none';
+        if (els.nodeElement) els.nodeElement.style.border = '2px dashed #cccccc';
+    }
+}
+
+function processMinimalYouTubeLoad(nodeId, urlOrId) {
+    const videoId = _extractYouTubeVideoId(urlOrId.trim());
+    const els = _getMinimalYouTubeNodeElements(nodeId);
+
+    if (videoId) {
+        console.log(`Minimal YouTube Node ${nodeId}: Valid Video ID extracted: ${videoId}`);
+        editor.updateNodeDataFromId(nodeId, { videoid: videoId });
+        createOrUpdateYouTubePlayer(nodeId, videoId);
+    } else {
+        console.warn(`Minimal YouTube Node ${nodeId}: Invalid YouTube URL/ID: ${urlOrId}`);
+        if (els.placeholder) els.placeholder.style.display = 'flex';
+        if (els.playerContainer) els.playerContainer.style.display = 'none';
+        if (els.nodeElement) els.nodeElement.style.border = '2px dashed #cccccc';
+        showToast('error', 'URL/ID de YouTube no válido');
+        editor.updateNodeDataFromId(nodeId, { videoid: '' });
+    }
+    saveHistoryState();
+}
+
+function setupYouTubeMinimalNodeListeners(nodeId) {
+    const els = _getMinimalYouTubeNodeElements(nodeId);
+    if (!els || !els.placeholder) {
+        console.warn(`setupYouTubeMinimalNodeListeners: Elements not found for node ${nodeId}`);
+        return;
+    }
+    els.placeholder.onclick = (event) => {
+        event.stopPropagation();
+        Swal.fire({
+            title: 'Cargar Video de YouTube', input: 'text', inputPlaceholder: 'Pega URL o ID de YouTube',
+            showCancelButton: true, confirmButtonText: 'Cargar', cancelButtonText: 'Cancelar',
+            inputValidator: (value) => {
+                if (!value || !_extractYouTubeVideoId(value.trim())) return 'URL/ID de YouTube no válido.';
+            }
+        }).then((result) => { if (result.isConfirmed && result.value) processMinimalYouTubeLoad(nodeId, result.value); });
+    };
+    els.nodeElement.onpaste = (event) => {
+        if (event.target.closest('input, textarea')) return;
+        const pastedText = (event.clipboardData || window.clipboardData).getData('text');
+        if (pastedText) { event.preventDefault(); event.stopPropagation(); processMinimalYouTubeLoad(nodeId, pastedText); }
+    };
+    els.placeholder.ondragover = (event) => { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = 'copy'; els.placeholder.style.backgroundColor = '#e0e0e0'; };
+    els.placeholder.ondragleave = (event) => { event.stopPropagation(); els.placeholder.style.backgroundColor = ''; };
+    els.placeholder.ondrop = (event) => {
+        event.preventDefault(); event.stopPropagation(); els.placeholder.style.backgroundColor = '';
+        const droppedText = event.dataTransfer.getData('text');
+        if (droppedText) processMinimalYouTubeLoad(nodeId, droppedText);
+    };
+}
+
+
+// --- YouTube Display Node Specific Functions ---
+function _getFunctionalYouTubeNodeElements(nodeId) {
+    const nodeElement = document.getElementById(`node-${nodeId}`);
+    if (!nodeElement) return null;
+    return {
+        nodeElement,
+        urlInput: nodeElement.querySelector('input[df-yturl]'),
+        playerContainer: nodeElement.querySelector('.yt-player-container-functional'),
+        urlInputContainer: nodeElement.querySelector('.youtube-url-input-container')
+    };
+}
+
+function createOrUpdateYouTubePlayerFunctional(nodeId, videoId) { // For youtube_display_node
+    if (!isYouTubeApiReady) {
+        youtubeApiReadyQueue.push(() => createOrUpdateYouTubePlayerFunctional(nodeId, videoId));
+        console.log(`YouTube API not ready for functional player ${nodeId}, queueing.`);
+        return;
+    }
+    console.log(`Attempting to create/update functional YouTube player for Node ${nodeId} with Video ID: ${videoId}`);
+
+    const els = _getFunctionalYouTubeNodeElements(nodeId);
+    if (!els || !els.playerContainer) {
+        console.error(`Functional YouTube Node ${nodeId}: Player container not found.`);
+        return;
+    }
+
+    if (youtubePlayersFunctional[nodeId]) {
+        try { youtubePlayersFunctional[nodeId].destroy(); } catch (e) { console.warn(`Error destroying existing functional player ${nodeId}:`, e); }
+        delete youtubePlayersFunctional[nodeId];
+    }
+
+    els.playerContainer.innerHTML = '';
+    const playerDivId = `yt-player-functional-${nodeId}`;
+    const playerDiv = document.createElement('div');
+    playerDiv.id = playerDivId;
+    els.playerContainer.appendChild(playerDiv);
+
+    try {
+        youtubePlayersFunctional[nodeId] = new YT.Player(playerDivId, {
+            width: '100%', height: '100%', videoId: videoId,
+            playerVars: { 'autoplay': 0, 'controls': 1, 'modestbranding': 1, 'rel': 0, 'showinfo': 0 },
+            events: {
+                'onReady': (event) => {
+                    console.log(`Functional YouTube player ${nodeId} READY.`);
+                    if (els.playerContainer) els.playerContainer.style.display = 'block';
+                },
+                'onError': (event) => {
+                    console.error(`Functional YouTube player ${nodeId} ERROR:`, event.data);
+                    if (els.playerContainer) els.playerContainer.style.display = 'none';
+                    showToast('error', `Error reproductor YT (${nodeId})`, `Código: ${event.data}`);
+                    editor.updateNodeDataFromId(nodeId, { videoid: '' });
+                }
+            }
+        });
+    } catch (e) {
+        console.error(`Error initializing functional YouTube player ${nodeId}:`, e);
+        if (els.playerContainer) els.playerContainer.style.display = 'none';
+    }
+}
+
+function loadYouTubeVideoFunctional(eventOrNodeId) {
+    const nodeId = typeof eventOrNodeId === 'string' ? eventOrNodeId : getNodeIdFromEvent(eventOrNodeId);
+    if (!nodeId) return;
+
+    const els = _getFunctionalYouTubeNodeElements(nodeId);
+    if (!els || !els.urlInput) {
+        console.error(`Functional YouTube Node ${nodeId}: URL input not found.`);
+        return;
+    }
+    const urlOrId = els.urlInput.value;
+    const videoId = _extractYouTubeVideoId(urlOrId.trim());
+
+    if (videoId) {
+        console.log(`Functional YouTube Node ${nodeId}: Valid Video ID extracted: ${videoId}`);
+        editor.updateNodeDataFromId(nodeId, { videoid: videoId, yturl: urlOrId.trim() });
+        createOrUpdateYouTubePlayerFunctional(nodeId, videoId);
+    } else {
+        console.warn(`Functional YouTube Node ${nodeId}: Invalid YouTube URL/ID: ${urlOrId}`);
+        if (els.playerContainer) els.playerContainer.style.display = 'none';
+        showToast('error', 'URL/ID de YouTube no válido');
+        editor.updateNodeDataFromId(nodeId, { videoid: '' });
+    }
+    saveHistoryState();
+}
+
+// --- Image Display Node Specific Functions ---
+function loadImageForDisplayNode(eventOrNodeId) {
+    const nodeId = typeof eventOrNodeId === 'string' ? eventOrNodeId : getNodeIdFromEvent(eventOrNodeId);
+    if (!nodeId) return;
+    const nodeElement = document.getElementById(`node-${nodeId}`);
+    if (!nodeElement) return;
+
+    const urlInput = nodeElement.querySelector('input[df-imgsrcdisplay]');
+    const imgPreview = nodeElement.querySelector('img[df-imgpreview]');
+    const placeholder = nodeElement.querySelector('.img-container-functional .placeholder-text');
+
+    if (!urlInput || !imgPreview || !placeholder) {
+        console.error(`Image Display Node ${nodeId}: Missing essential elements.`);
+        return;
+    }
+    const imageUrl = urlInput.value.trim();
+    if (imageUrl) {
+        imgPreview.onload = () => {
+            imgPreview.style.display = 'block';
+            placeholder.style.display = 'none';
+            editor.updateNodeDataFromId(nodeId, { imgsrcdisplay: imageUrl });
+            saveHistoryState();
+        };
+        imgPreview.onerror = () => {
+            imgPreview.style.display = 'none';
+            placeholder.textContent = 'Error al cargar imagen';
+            placeholder.style.display = 'block';
+            showToast('error', 'Error Imagen', 'No se pudo cargar la imagen desde la URL.');
+            editor.updateNodeDataFromId(nodeId, { imgsrcdisplay: imageUrl }); // Save URL even if error
+            saveHistoryState();
+        };
+        imgPreview.src = imageUrl;
+    } else {
+        imgPreview.src = '';
+        imgPreview.style.display = 'none';
+        placeholder.textContent = 'No image loaded';
+        placeholder.style.display = 'block';
+        showToast('warning', 'URL Vacía', 'Introduce una URL de imagen.');
+        editor.updateNodeDataFromId(nodeId, { imgsrcdisplay: '' });
+        saveHistoryState();
+    }
+}
+
+// --- START: YouTube Player (Robust) Node Functions ---
+/**
+ * Helper to get common DOM elements for a robust YouTube node.
+ * @param {string} nodeId
+ * @returns {object|null} Object with elements or null if node not found.
+ */
+function _getRobustYouTubeNodeElements(nodeId) {
+    const nodeElement = document.getElementById(`node-${nodeId}`);
+    if (!nodeElement) return null;
+    return {
+        nodeElement,
+        urlInput: nodeElement.querySelector('input[df-yturl]'),
+        playerWrapper: nodeElement.querySelector('.yt-player-wrapper-robust'),
+        placeholder: nodeElement.querySelector('.yt-placeholder-robust'),
+        playerContainer: nodeElement.querySelector('.yt-player-container-robust'),
+        statusOverlay: nodeElement.querySelector('.yt-status-overlay-robust'),
+        statusMessage: nodeElement.querySelector('.yt-status-message-robust'),
+        errorDetail: nodeElement.querySelector('.yt-error-detail-robust'),
+        loadingIcon: nodeElement.querySelector('[data-yt-loading-icon]'),
+        retryButton: nodeElement.querySelector('.yt-retry-button-robust'),
+        clearButton: nodeElement.querySelector('.yt-clear-button-robust')
+    };
+}
+
+/**
+ * Updates the status display of the robust YouTube node.
+ * @param {string} nodeId
+ * @param {'idle'|'loading'|'ready'|'error'} state
+ * @param {string} [message=''] - Main status message.
+ * @param {string} [detail=''] - Detailed error message.
+ */
+function _updateRobustPlayerStatus(nodeId, state, message = '', detail = '') {
+    const els = _getRobustYouTubeNodeElements(nodeId);
+    if (!els) return;
+
+    if (els.placeholder) els.placeholder.style.display = 'none';
+    if (els.playerContainer) els.playerContainer.style.display = 'none';
+    if (els.statusOverlay) els.statusOverlay.style.display = 'none';
+    if (els.loadingIcon) els.loadingIcon.style.display = 'none';
+    if (els.retryButton) els.retryButton.style.display = 'none';
+    if (els.clearButton) els.clearButton.style.display = 'none';
+
+    switch (state) {
+        case 'idle':
+            if (els.placeholder) els.placeholder.style.display = 'flex';
+            if (els.urlInput) els.urlInput.value = editor.getNodeFromId(nodeId)?.data?.yturl || '';
+            break;
+        case 'loading':
+            if (els.statusOverlay) els.statusOverlay.style.display = 'flex';
+            if (els.statusMessage) els.statusMessage.textContent = message || 'Cargando video...';
+            if (els.errorDetail) els.errorDetail.textContent = '';
+            if (els.loadingIcon) els.loadingIcon.style.display = 'inline-block';
+            break;
+        case 'ready':
+            if (els.playerContainer) els.playerContainer.style.display = 'block';
+            if (els.clearButton) els.clearButton.style.display = 'block';
+            const nodeDataReady = editor.getNodeFromId(nodeId)?.data;
+            if (els.urlInput && nodeDataReady?.lastKnownGoodUrl) els.urlInput.value = nodeDataReady.lastKnownGoodUrl;
+            break;
+        case 'error':
+            if (els.statusOverlay) els.statusOverlay.style.display = 'flex';
+            if (els.statusMessage) els.statusMessage.textContent = message || 'Error al cargar';
+            if (els.errorDetail) els.errorDetail.textContent = detail;
+            if (els.retryButton) els.retryButton.style.display = 'inline-block';
+            if (els.clearButton) els.clearButton.style.display = 'block';
+            break;
+    }
+    try {
+        editor.updateNodeDataFromId(nodeId, { playerState: state, errorMessage: (state === 'error' ? `${message} ${detail}`.trim() : '') });
+    } catch(e) { console.warn("Could not update node data for player status:", e); }
+}
+
+/**
+ * Creates or updates the YouTube player for the robust node.
+ * @param {string} nodeId
+ * @param {string} videoId
+ */
+function createOrUpdateRobustYouTubePlayer(nodeId, videoId) {
+    if (!isYouTubeApiReady) {
+        youtubeApiReadyQueue.push(() => createOrUpdateRobustYouTubePlayer(nodeId, videoId));
+        return;
+    }
+    const els = _getRobustYouTubeNodeElements(nodeId);
+    if (!els || !els.playerContainer) {
+        _updateRobustPlayerStatus(nodeId, 'error', 'Error interno', 'Contenedor del reproductor no encontrado.');
+        return;
+    }
+    if (youtubePlayersRobust[nodeId]) {
+        try { youtubePlayersRobust[nodeId].destroy(); } catch (e) { /* ignore */ }
+        delete youtubePlayersRobust[nodeId];
+    }
+    els.playerContainer.innerHTML = '';
+    const playerDivId = `yt-player-robust-${nodeId}`;
+    const playerDiv = document.createElement('div');
+    playerDiv.id = playerDivId;
+    els.playerContainer.appendChild(playerDiv);
+
+    try {
+        youtubePlayersRobust[nodeId] = new YT.Player(playerDivId, {
+            height: '100%', width: '100%', videoId: videoId,
+            playerVars: { autoplay: 1, controls: 1, modestbranding: 1, rel: 0, showinfo: 0 },
+            events: {
+                'onReady': () => _updateRobustPlayerStatus(nodeId, 'ready'),
+                'onError': (event) => {
+                    let errorMsg = 'Error desconocido.';
+                    switch (event.data) {
+                        case 2: errorMsg = 'Solicitud inválida.'; break;
+                        case 5: errorMsg = 'Error de reproducción HTML5.'; break;
+                        case 100: errorMsg = 'Video no encontrado/privado.'; break;
+                        case 101: case 150: errorMsg = 'Reproducción embebida no permitida.'; break;
+                    }
+                    _updateRobustPlayerStatus(nodeId, 'error', 'Error del reproductor', errorMsg);
+                }
+            }
+        });
+    } catch (e) { _updateRobustPlayerStatus(nodeId, 'error', 'Error al inicializar', e.message); }
+}
+
+/**
+ * Processes the URL/ID to load a video in the robust YouTube node.
+ * @param {string} nodeId
+ * @param {string} urlOrId
+ */
+function processRobustYouTubeLoad(nodeId, urlOrId) {
+    if (!urlOrId || urlOrId.trim() === '') {
+        _updateRobustPlayerStatus(nodeId, 'error', 'Entrada vacía', 'Introduce URL o ID.');
+        return;
+    }
+    _updateRobustPlayerStatus(nodeId, 'loading', 'Procesando URL...');
+    const videoId = _extractYouTubeVideoId(urlOrId.trim());
+    if (videoId) {
+        editor.updateNodeDataFromId(nodeId, { videoid: videoId, yturl: urlOrId.trim(), lastKnownGoodUrl: urlOrId.trim() });
+        _updateRobustPlayerStatus(nodeId, 'loading', `Cargando ID: ${videoId}...`);
+        createOrUpdateRobustYouTubePlayer(nodeId, videoId);
+    } else {
+        editor.updateNodeDataFromId(nodeId, { videoid: '' });
+        _updateRobustPlayerStatus(nodeId, 'error', 'URL/ID no válido', 'No se encontró ID de video.');
+    }
+}
+
+/**
+ * Handles the "Load Video" button click for robust YouTube node.
+ * @param {Event|string} eventOrNodeId
+ * @param {string} [directUrl=null]
+ */
+function loadRobustYouTubeFromInput(eventOrNodeId, directUrl = null) {
+    const nodeId = typeof eventOrNodeId === 'string' ? eventOrNodeId : getNodeIdFromEvent(eventOrNodeId);
+    if (!nodeId) return;
+    let urlToLoad = directUrl;
+    if (!urlToLoad) {
+        const els = _getRobustYouTubeNodeElements(nodeId);
+        if (els && els.urlInput) urlToLoad = els.urlInput.value;
+        else { _updateRobustPlayerStatus(nodeId, 'error', 'Error interno', 'Campo URL no hallado.'); return; }
+    }
+    processRobustYouTubeLoad(nodeId, urlToLoad);
+    saveHistoryState();
+}
+
+/**
+ * Handles input/paste in the URL field for robust YouTube node.
+ * @param {Event} event
+ */
+function handleRobustYouTubeUrlInput(event) {
+    const nodeId = getNodeIdFromEvent(event);
+    if (!nodeId) return;
+    const url = event.target.value;
+    editor.updateNodeDataFromId(nodeId, { yturl: url });
+    // History will be saved by handleNodeDataChange or explicit action
+}
+
+/**
+ * Clears the currently loaded video and resets the robust YouTube node.
+ * @param {Event} event
+ */
+function clearRobustYouTubePlayer(event) {
+    const nodeId = getNodeIdFromEvent(event);
+    if (!nodeId) return;
+    if (youtubePlayersRobust[nodeId]) {
+        try { youtubePlayersRobust[nodeId].destroy(); } catch (e) { /* ignore */ }
+        delete youtubePlayersRobust[nodeId];
+    }
+    editor.updateNodeDataFromId(nodeId, { yturl: '', videoid: '', playerState: 'idle', errorMessage: '', lastKnownGoodUrl: '' });
+    _updateRobustPlayerStatus(nodeId, 'idle');
+    saveHistoryState();
+}
+
+/**
+ * Retries loading the last known good URL or the current input URL.
+ * @param {Event} event
+ */
+function retryRobustYouTubeLoad(event) {
+    const nodeId = getNodeIdFromEvent(event);
+    if (!nodeId) return;
+    const nodeData = editor.getNodeFromId(nodeId)?.data;
+    const urlToTry = nodeData?.lastKnownGoodUrl || nodeData?.yturl;
+    if (urlToTry) processRobustYouTubeLoad(nodeId, urlToTry);
+    else _updateRobustPlayerStatus(nodeId, 'error', 'Nada que reintentar', 'No hay URL previa.');
+}
+
+/**
+ * Sets up event listeners for the robust YouTube node.
+ * @param {string} nodeId
+ */
+function setupRobustYouTubeNodeListeners(nodeId) {
+    const els = _getRobustYouTubeNodeElements(nodeId);
+    if (!els || !els.placeholder) return;
+    els.placeholder.onpaste = (event) => {
+        event.preventDefault(); event.stopPropagation();
+        const pastedText = (event.clipboardData || window.clipboardData).getData('text');
+        if (els.urlInput) els.urlInput.value = pastedText;
+        editor.updateNodeDataFromId(nodeId, { yturl: pastedText });
+        loadRobustYouTubeFromInput(nodeId, pastedText); // This will also save history
+    };
+    els.placeholder.ondragover = (event) => { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = 'copy'; els.placeholder.style.backgroundColor = '#333'; };
+    els.placeholder.ondragleave = (event) => { event.stopPropagation(); els.placeholder.style.backgroundColor = '#222'; };
+    els.placeholder.ondrop = (event) => {
+        event.preventDefault(); event.stopPropagation(); els.placeholder.style.backgroundColor = '#222';
+        const droppedText = event.dataTransfer.getData('text');
+        if (droppedText) { if (els.urlInput) els.urlInput.value = droppedText; editor.updateNodeDataFromId(nodeId, { yturl: droppedText }); loadRobustYouTubeFromInput(nodeId, droppedText); }
+    };
+}
+// --- END: YouTube Player (Robust) Node Functions ---
 
 
 // --- Interval Management ---
@@ -2311,296 +1893,88 @@ const EXECUTE_NODE_SYSTEM_TYPES = [
   
     try {
       switch (nName) {
-        // —————————————————————————————————————————————
         case 'timer_fetch':
         case 'timer_download':
         case 'loop': {
           cleanupNodeIntervals(nodeId);
           let intMs = parseInt(readField(nodeId, 'df-interval') || node.data?.interval, 10);
-          const defInt = nName === 'loop'
-            ? 1000
-            : (nName === 'timer_fetch' ? 60000 : 10000);
+          const defInt = nName === 'loop' ? 1000 : (nName === 'timer_fetch' ? 60000 : 10000);
           if (isNaN(intMs) || intMs < 100) intMs = defInt;
           const initP = payload;
-          console.log(`Start ${nName} ${nodeId} every ${intMs} ms.`);
           const execInt = async () => {
-            const currN = editor.getNodeFromId(nodeId);
-            if (!currN) { cleanupNodeIntervals(nodeId); return; }
+            const currN = editor.getNodeFromId(nodeId); if (!currN) { cleanupNodeIntervals(nodeId); return; }
             if (nName === 'timer_fetch') {
               let url = readField(nodeId, 'df-url');
-              if (!url?.trim()) {
-                const cs = getConnections(nodeId, 'input');
-                for (const c of cs) {
-                  const src = editor.getNodeFromId(c.node);
-                  if (src?.name === 'url_input') {
-                    url = readField(c.node, 'df-url');
-                    if (url?.trim()) break;
-                  }
-                }
-              }
+              if (!url?.trim()) { const cs = getConnections(nodeId, 'input'); for (const c of cs) { const src = editor.getNodeFromId(c.node); if (src?.name === 'url_input') { url = readField(c.node, 'df-url'); if (url?.trim()) break; } } }
               if (url?.trim()) {
-                url = url.trim();
-                if (!url.startsWith('http')) url = 'https://' + url;
-                try {
-                  const r = await fetch(CORS_PROXY + encodeURIComponent(url));
-                  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                  const d = await r.json();
-                  propagateExecution(nodeId, d.contents);
-                } catch (err) {
-                  console.error(`TFetch ${nodeId} err:`, err);
-                  propagateExecution(nodeId, `// ERR Fetch:\n// ${err.message}`);
-                }
+                url = url.trim(); if (!url.startsWith('http')) url = 'https://' + url;
+                try { const r = await fetch(CORS_PROXY + encodeURIComponent(url)); if (!r.ok) throw new Error(`HTTP ${r.status}`); const d = await r.json(); propagateExecution(nodeId, d.contents); }
+                catch (err) { console.error(`TFetch ${nodeId} err:`, err); propagateExecution(nodeId, `// ERR Fetch:\n// ${err.message}`); }
               } else propagateExecution(nodeId, '// ERR: No URL');
             }
-            else if (nName === 'loop') {
-              propagateExecution(nodeId, initP);
-            }
-            else {
-              propagateExecution(nodeId, Date.now());
-            }
+            else if (nName === 'loop') propagateExecution(nodeId, initP);
+            else propagateExecution(nodeId, Date.now());
           };
-          const intId = setInterval(execInt, intMs);
-          nodeIntervals[nodeId] = nodeIntervals[nodeId] || [];
-          nodeIntervals[nodeId].push(intId);
+          const intId = setInterval(execInt, intMs); nodeIntervals[nodeId] = nodeIntervals[nodeId] || []; nodeIntervals[nodeId].push(intId);
           if (nName === 'timer_fetch') await execInt();
           break;
         }
-  
-        // —————————————————————————————————————————————
         case 'fetch_html': {
-          let url = payload;
-          if (typeof url !== 'string' || !url?.trim()) {
-            propagateExecution(nodeId, '// ERR: Invalid URL');
-            return;
-          }
-          url = url.trim();
-          if (!url.startsWith('http')) url = 'https://' + url;
-          try {
-            const r = await fetch(CORS_PROXY + encodeURIComponent(url));
-            if (!r.ok) throw new Error(`HTTP ${r.status}`);
-            const d = await r.json();
-            outP = d.contents;
-          } catch (err) {
-            console.error(`Fetch ${nodeId} err:`, err);
-            outP = `// ERR Fetch:\n// ${err.message}`;
-          }
-          propagateExecution(nodeId, outP);
-          break;
+          let url = payload; if (typeof url !== 'string' || !url?.trim()) { propagateExecution(nodeId, '// ERR: Invalid URL'); return; }
+          url = url.trim(); if (!url.startsWith('http')) url = 'https://' + url;
+          try { const r = await fetch(CORS_PROXY + encodeURIComponent(url)); if (!r.ok) throw new Error(`HTTP ${r.status}`); const d = await r.json(); outP = d.contents; }
+          catch (err) { console.error(`Fetch ${nodeId} err:`, err); outP = `// ERR Fetch:\n// ${err.message}`; }
+          propagateExecution(nodeId, outP); break;
         }
-  
-        // —————————————————————————————————————————————
         case 'display_text': {
-          const txt = String(payload ?? '(null)');
-          editor.updateNodeDataFromId(nodeId, { display: txt });
-          const el = document.getElementById(`node-${nodeId}`);
-          const ta = el?.querySelector('textarea[df-display]');
-          if (ta) ta.value = txt;
-          outP = payload;
-          propagateExecution(nodeId, outP);
-          break;
+          const txt = String(payload ?? '(null)'); editor.updateNodeDataFromId(nodeId, { display: txt });
+          const el = document.getElementById(`node-${nodeId}`); const ta = el?.querySelector('textarea[df-display]'); if (ta) ta.value = txt;
+          outP = payload; propagateExecution(nodeId, outP); break;
         }
-  
-        // —————————————————————————————————————————————
         case 'repeat': {
-          let c = parseInt(readField(nodeId, 'df-count') || node.data?.count, 10);
-          if (isNaN(c) || c <= 0) return;
-          const p = payload;
-          for (let i = 0; i < c; i++) {
-            setTimeout(() => propagateExecution(nodeId, p), 0);
-          }
-          return;
+          let c = parseInt(readField(nodeId, 'df-count') || node.data?.count, 10); if (isNaN(c) || c <= 0) return;
+          const p = payload; for (let i = 0; i < c; i++) setTimeout(() => propagateExecution(nodeId, p), 0); return;
         }
-  
-        // —————————————————————————————————————————————
         case 'download_file': {
           if (payload == null) return;
-          const f = (readField(nodeId, 'df-filename')?.trim() || 'd.txt');
-          const s = String(payload);
-          editor.updateNodeDataFromId(nodeId, { contentfordownload: s, filename: f });
-          try {
-            const sf = f.replace(/[^a-zA-Z0-9._-]/g, '_') || 'd.txt';
-            const m  = getMimeType(sf.split('.').pop().toLowerCase());
-            const b  = new Blob([s], { type: m });
-            const l  = document.createElement('a');
-            l.href = URL.createObjectURL(b);
-            l.download = sf;
-            document.body.appendChild(l);
-            l.click();
-            document.body.removeChild(l);
-            URL.revokeObjectURL(l.href);
-          } catch (err) {
-            console.error(`Download ${nodeId} error:`, err);
-            showToast('error', 'Error', 'Error descarga.');
-          }
-          return;
+          const f = (readField(nodeId, 'df-filename')?.trim() || 'd.txt'); const s = String(payload); editor.updateNodeDataFromId(nodeId, { contentfordownload: s, filename: f });
+          try { const sf = f.replace(/[^a-zA-Z0-9._-]/g, '_') || 'd.txt'; const m  = getMimeType(sf.split('.').pop().toLowerCase()); const b  = new Blob([s], { type: m }); const l  = document.createElement('a'); l.href = URL.createObjectURL(b); l.download = sf; document.body.appendChild(l); l.click(); document.body.removeChild(l); URL.revokeObjectURL(l.href); }
+          catch (err) { console.error(`Download ${nodeId} error:`, err); showToast('error', 'Error', 'Error descarga.'); } return;
         }
-  
-        // —————————————————————————————————————————————
-        case 'url_input': {
-          const u = readField(nodeId, 'df-url');
-          outP = u;
-          propagateExecution(nodeId, outP);
-          break;
-        }
-  
-        // —————————————————————————————————————————————
+        case 'url_input': { const u = readField(nodeId, 'df-url'); outP = u; propagateExecution(nodeId, outP); break; }
         case 'extract_value': {
-          const txt = String(payload ?? '');
-          const pat = readField(nodeId, 'df-selector_received') || '';
-          let val = null, res = '(Esperando)';
-          if (txt && pat) {
-            try {
-              const r = new RegExp(pat);
-              const m = txt.match(r);
-              if (m) { val = m[1] ?? m[0]; res = val; }
-              else res = '(No encontrado)';
-            } catch {
-              res = '(Error Regex)';
-            }
-          } else if (!pat) res = '(Esperando patrón)';
-          else res = '(Esperando texto)';
-  
-          editor.updateNodeDataFromId(nodeId, { result: res });
-          const el = document.getElementById(`node-${nodeId}`);
-          const rt = el?.querySelector('textarea[df-result]');
-          if (rt) rt.value = res;
-  
-          outP = val;
-          propagateExecution(nodeId, outP);
-          break;
+          const txt = String(payload ?? ''); const pat = readField(nodeId, 'df-selector_received') || ''; let val = null, res = '(Esperando)';
+          if (txt && pat) { try { const r = new RegExp(pat); const m = txt.match(r); if (m) { val = m[1] ?? m[0]; res = val; } else res = '(No encontrado)'; } catch { res = '(Error Regex)'; } }
+          else if (!pat) res = '(Esperando patrón)'; else res = '(Esperando texto)';
+          editor.updateNodeDataFromId(nodeId, { result: res }); const el = document.getElementById(`node-${nodeId}`); const rt = el?.querySelector('textarea[df-result]'); if (rt) rt.value = res;
+          outP = val; propagateExecution(nodeId, outP); break;
         }
-  
-        // —————————————————————————————————————————————
-        default: {
-          // en cualquier otro caso, si es nodo “de sistema” vuelve a propagar
-          if (!baseNodeDefinitions[nName] || EXECUTE_NODE_SYSTEM_TYPES.includes(nName)) {
-            propagateExecution(nodeId, outP);
-          }
-        }
+        default: { if (!baseNodeDefinitions[nName] || EXECUTE_NODE_SYSTEM_TYPES.includes(nName)) propagateExecution(nodeId, outP); }
       }
-    } catch (error) {
-      console.error(`Error executing ${nName} (${nodeId}):`, error);
-      showToast('error', `Error ${nName}`, error.message.substring(0,50), 4000);
-    } finally {
-      if (node) node._executing = false;
-    }
+    } catch (error) { console.error(`Error executing ${nName} (${nodeId}):`, error); showToast('error', `Error ${nName}`, error.message.substring(0,50), 4000); }
+    finally { if (node) node._executing = false; }
   }
-  
   
   function propagateExecution(sourceNodeId, payload) {
     const conns = getConnections(sourceNodeId, 'output');
     conns.forEach(conn => {
-      const targetId   = conn.node;
-      const targetNode = editor.getNodeFromId(targetId);
-      if (!targetNode) return;
-      const targetPort = conn.output;
-  
-      // — Nodos de sistema que disparan executeNode ——
+      const targetId   = conn.node; const targetNode = editor.getNodeFromId(targetId); if (!targetNode) return; const targetPort = conn.output;
       if (EXECUTE_NODE_SYSTEM_TYPES.includes(targetNode.name)) {
         if (targetNode.name === 'extract_value') {
-          if (targetPort === 'input_1') {
-            setTimeout(() => executeNode(targetId, payload), 0);
-          } else if (targetPort === 'input_2') {
-            const s = String(payload ?? '');
-            editor.updateNodeDataFromId(targetId, { selector_received: s });
-            const el = document.getElementById(`node-${targetId}`);
-            const i  = el?.querySelector('input[df-selector_received]');
-            if (i) i.value = s;
-          }
-        } else {
-          setTimeout(() => executeNode(targetId, payload), 0);
-        }
-  
-      // — Nodo JS: actualizamos lastInput y ejecutamos instantáneamente ——
-      } else if (targetNode.name === 'javascript_code') {
-        editor.updateNodeDataFromId(targetId, { lastInput: payload });
-        setTimeout(() => executeNode(targetId, payload), 0);
-  
-      // — Resto de nodos personalizados —————————
-      } else if (['mostrarPasar', 'guardarTexto', 'concatenar'].includes(targetNode.name)) {
-        const val = String(payload ?? '');
-        if (targetPort === 'input_1') {
-          // mostrarPasar
-          if (targetNode.name === 'mostrarPasar') {
-            editor.updateNodeDataFromId(targetId, { result: val });
-            const el = document.getElementById(`node-${targetId}`);
-            const ta = el?.querySelector('textarea[df-result]');
-            if (ta) ta.value = val;
-            setTimeout(() => propagateData(targetId, targetNode.name, 'result', val), 0);
-  
-          // guardarTexto
-          } else if (targetNode.name === 'guardarTexto') {
-            editor.updateNodeDataFromId(targetId, { savecontent: val });
-            const el = document.getElementById(`node-${targetId}`);
-            const ta = el?.querySelector('textarea[df-savecontent]');
-            if (ta) ta.value = val;
-  
-          // concatenar
-          } else if (targetNode.name === 'concatenar') {
-            setTimeout(() => updateConcatenateNode(targetId), 0);
-          }
+          if (targetPort === 'input_1') setTimeout(() => executeNode(targetId, payload), 0);
+          else if (targetPort === 'input_2') { const s = String(payload ?? ''); editor.updateNodeDataFromId(targetId, { selector_received: s }); const el = document.getElementById(`node-${targetId}`); const i  = el?.querySelector('input[df-selector_received]'); if (i) i.value = s; }
+        } else setTimeout(() => executeNode(targetId, payload), 0);
+      } else if (targetNode.name === 'javascript_code') { editor.updateNodeDataFromId(targetId, { lastInput: payload }); setTimeout(() => executeNode(targetId, payload), 0); }
+      else if (['mostrarPasar', 'guardarTexto', 'concatenar'].includes(targetNode.name)) {
+        const val = String(payload ?? ''); if (targetPort === 'input_1') {
+          if (targetNode.name === 'mostrarPasar') { editor.updateNodeDataFromId(targetId, { result: val }); const el = document.getElementById(`node-${targetId}`); const ta = el?.querySelector('textarea[df-result]'); if (ta) ta.value = val; setTimeout(() => propagateData(targetId, targetNode.name, 'result', val), 0); }
+          else if (targetNode.name === 'guardarTexto') { editor.updateNodeDataFromId(targetId, { savecontent: val }); const el = document.getElementById(`node-${targetId}`); const ta = el?.querySelector('textarea[df-savecontent]'); if (ta) ta.value = val; }
+          else if (targetNode.name === 'concatenar') setTimeout(() => updateConcatenateNode(targetId), 0);
         }
       }
     });
   }
-// MODIFICADO: handleNodeDataChange para propagar cambios de nodos de entrada básicos
-function handleNodeDataChange(event) {
-  if (!editor || !event?.target) return;
-  const el = event.target;
-  const nodeEl = el.closest('.drawflow-node');
-  if (!nodeEl) return;
-  const id = nodeEl.id.split('-')[1];
-  const node = editor.getNodeFromId(id);
-  if (!node) return;
-  let key = null;
-  for (const attr of el.attributes) if (attr.name.startsWith('df-')) { key = attr.name.substring(3); break; }
-  if (!key) return;
 
-  // Usar requestAnimationFrame para asegurar que el valor en node.data esté actualizado
-  requestAnimationFrame(() => {
-      try {
-          const updatedNode = editor.getNodeFromId(id);
-          if (!updatedNode?.data?.hasOwnProperty(key)) return; // Verifica que la clave exista en los datos
-          const val = updatedNode.data[key]; // Obtiene el valor actualizado de los datos del nodo
-          const name = updatedNode.name;
-
-          // Lógica específica para ciertos nodos que necesitan ejecutar/propagar al cambiar
-          if ((name === 'url_input' && key === 'url')) {
-               executeNode(id, val);
-          } else if (name === 'cargarTexto' && key === 'filecontent') {
-               propagateData(id, name, key, val);
-          } else if (name === 'imagen' && ['imgsrc', 'imgalt', 'imgwidth', 'imgheight'].includes(key)) {
-               handleImageInputChange(event); // Llama a la función que actualiza la imagen y propaga
-          } else if (name === 'nota' && key === 'notecontent') {
-               updateCharacterCount(event); // Actualiza contador, no necesita propagar
-          } else if ((name === 'timer_fetch' || name === 'timer_download' || name === 'loop') && key === 'interval') {
-               executeNode(id, null); // Reinicia el timer con el nuevo intervalo
-          } else if (name === 'timer_fetch' && key === 'url') {
-               executeNode(id, null); // Reinicia el fetch timer (usará la nueva URL en la próxima ejecución)
-          }
-          // --- INICIO MODIFICACIÓN: Propagar para nodos de entrada simples ---
-          else if (['input_number', 'input_text', 'input_range', 'input_date', 'input_time', 'input_color'].includes(name)) {
-               console.log(`Propagating data from ${name} node ${id}, key: ${key}, value:`, val);
-               propagateData(id, name, key, val); // Propaga el valor cambiado
-          }
-          // --- FIN MODIFICACIÓN ---
-          // Nota: input_json ya se maneja en handleJsonInputChange
-
-          // Siempre guardar el historial después de un cambio en los datos del nodo
-          saveHistoryState();
-
-      } catch (e) {
-          console.error(`Error handleNodeDataChange (${id}/${key}):`, e);
-      }
-  });
-}
-
-
-
-
-// MODIFICADO: propagateData con manejo de nodos aritméticos, texto (auto) y PLANTILLA
-// ACTUALIZADO: propagateData con manejo de nodos aritméticos, texto (auto) y PLANTILLA (corregido)
-// --- USA ESTA VERSIÓN COMPLETA Y MODIFICADA ---
 function propagateData(sourceNodeId, sourceNodeName, changedKey, outputData) {
     try {
         const sourceNode = editor.getNodeFromId(sourceNodeId); if (!sourceNode) return;
@@ -2611,19 +1985,10 @@ function propagateData(sourceNodeId, sourceNodeName, changedKey, outputData) {
         else {
             const commonOutputKeys = ['result', 'content', 'codecontent', 'outputhtml', 'filecontent', 'display', 'url', 'jscode'];
             const inputNodeKeys = ['number', 'text', 'range', 'date', 'time', 'color', 'json', 'notecontent', 'original'];
-            let searchKeys = [];
-            if (changedKey && (commonOutputKeys.includes(changedKey) || inputNodeKeys.includes(changedKey))) {
-                searchKeys = [changedKey, ...commonOutputKeys, ...inputNodeKeys];
-            } else {
-                searchKeys = [...commonOutputKeys, ...inputNodeKeys];
-            }
+            let searchKeys = (changedKey && (commonOutputKeys.includes(changedKey) || inputNodeKeys.includes(changedKey))) ? [changedKey, ...commonOutputKeys, ...inputNodeKeys] : [...commonOutputKeys, ...inputNodeKeys];
             searchKeys = searchKeys.filter(Boolean).filter((v, i, a) => a.indexOf(v) === i);
-
             for (const k of searchKeys) { if (Object.prototype.hasOwnProperty.call(sourceData, k)) { dataToPropagate = sourceData[k]; break; } }
-            if (dataToPropagate === undefined) {
-                const validKeys = Object.keys(sourceData).filter(k => !['lastInput', 'lastInputs', 'selector_received', 'nodeWidth', 'nodeHeight', 'isMovementLocked', 'naturalWidth', 'naturalHeight'].includes(k));
-                if (validKeys.length > 0) dataToPropagate = sourceData[validKeys[0]]; else return;
-            }
+            if (dataToPropagate === undefined) { const validKeys = Object.keys(sourceData).filter(k => !['lastInput', 'lastInputs', 'selector_received', 'nodeWidth', 'nodeHeight', 'isMovementLocked', 'naturalWidth', 'naturalHeight', 'playerState', 'errorMessage', 'lastKnownGoodUrl'].includes(k)); if (validKeys.length > 0) dataToPropagate = sourceData[validKeys[0]]; else return; }
         }
         connections.forEach(conn => {
             const targetId = conn.node; const targetNode = editor.getNodeFromId(targetId); if (!targetNode) return;
@@ -2650,10 +2015,7 @@ function propagateData(sourceNodeId, sourceNodeName, changedKey, outputData) {
     } catch (error) { console.error(`Error propagating data from node ${sourceNodeId} (${sourceNodeName}):`, error); }
 }
 
-
-
-
-function updateConcatenateNode(nodeId) { const n = editor.getNodeFromId(nodeId); if (!n || n.name !== 'concatenar' || !n.inputs?.input_1) return; const conns = (n.inputs.input_1.connections || []).slice().sort((a, b) => (editor.getNodeFromId(a.node)?.pos_y ?? 0) - (editor.getNodeFromId(b.node)?.pos_y ?? 0)); let str = ""; conns.forEach(c => { const sN = editor.getNodeFromId(c.node); if (!sN?.data) return; let dC = ''; const d = sN.data; const keys = ['result', 'content', 'codecontent', 'outputhtml', 'filecontent', 'display', 'url', 'jscode']; for(const k of keys){if(d.hasOwnProperty(k)){ dC = d[k]; break; }} if (dC === '' && Object.keys(d).length > 0) { const validKeys = Object.keys(d).filter(k => !['lastInput', 'lastInputs', 'selector_received', 'nodeWidth', 'nodeHeight', 'isMovementLocked', 'naturalWidth', 'naturalHeight'].includes(k)); if (validKeys.length > 0) dC = d[validKeys[0]];} str += String(dC ?? ''); }); if (n.data.result !== str) { editor.updateNodeDataFromId(nodeId, { result: str }); propagateData(nodeId, 'concatenar', 'result', str); saveHistoryState(); } }
+function updateConcatenateNode(nodeId) { const n = editor.getNodeFromId(nodeId); if (!n || n.name !== 'concatenar' || !n.inputs?.input_1) return; const conns = (n.inputs.input_1.connections || []).slice().sort((a, b) => (editor.getNodeFromId(a.node)?.pos_y ?? 0) - (editor.getNodeFromId(b.node)?.pos_y ?? 0)); let str = ""; conns.forEach(c => { const sN = editor.getNodeFromId(c.node); if (!sN?.data) return; let dC = ''; const d = sN.data; const keys = ['result', 'content', 'codecontent', 'outputhtml', 'filecontent', 'display', 'url', 'jscode']; for(const k of keys){if(d.hasOwnProperty(k)){ dC = d[k]; break; }} if (dC === '' && Object.keys(d).length > 0) { const validKeys = Object.keys(d).filter(k => !['lastInput', 'lastInputs', 'selector_received', 'nodeWidth', 'nodeHeight', 'isMovementLocked', 'naturalWidth', 'naturalHeight', 'playerState', 'errorMessage', 'lastKnownGoodUrl'].includes(k)); if (validKeys.length > 0) dC = d[validKeys[0]];} str += String(dC ?? ''); }); if (n.data.result !== str) { editor.updateNodeDataFromId(nodeId, { result: str }); propagateData(nodeId, 'concatenar', 'result', str); saveHistoryState(); } }
 
 // --- Node Activation ---
 function activateNodeIfNeeded(nodeId) {
@@ -2667,7 +2029,8 @@ function activateNodeIfNeeded(nodeId) {
         else if (nName === 'texto') { const c = node.data?.content; if(c) propagateData(nodeId, nName, 'content', c); }
         else if (nName === 'static_code_snippet') { const c = node.data?.codecontent; if(c) propagateData(nodeId, nName, 'codecontent', c); }
         else if (nName === 'imagen') generateImageHtml(nodeId);
-        // No specific activation for youtube_display_node or image_display_node on flow recalculation.
+        // No specific activation for youtube_display_node, youtube_minimal, youtube_player_robust on flow recalculation.
+        // Their state is restored during loadProjectFromFile or addNodeToDrawFlow or pasteNode.
     } catch (error) { console.error(`Error activating ${nodeId}:`, error); }
 }
 function activateExistingAutoNodes() { console.log("Activating initial/auto nodes..."); let nodes = {}; try { nodes = editor.export()?.drawflow?.[editor.module]?.data ?? {}; } catch (e) { console.error("Err get nodes for activation:", e); return; } cleanupAllModuleIntervals(); const ids = Object.keys(nodes); if (ids.length > 0) { ids.forEach(id => { activateNodeIfNeeded(id); }); ids.forEach(id => { if (nodes[id]?.name === 'concatenar') updateConcatenateNode(id); }); } console.log("Initial activation complete."); }
@@ -2692,356 +2055,411 @@ function saveHistoryState(force = false) { if (!editor || (isLocked() && !force)
 function undo() { if (historyIndex <= 0 || isLocked()) return; try { historyIndex--; const prev = JSON.parse(historyStack[historyIndex]); const mod = editor.module; cleanupAllModuleIntervals(); editor.import(prev); if (editor.module === mod) { activateExistingAutoNodes(); updateUIDisabledStates(); if(currentlyEditingNodeId && !editor.getNodeFromId(currentlyEditingNodeId)) closeCodeEditorSidebar(false); else if (currentlyEditingNodeId) openCodeEditorSidebar(currentlyEditingNodeId); } else console.warn("Module changed during Undo."); } catch (e) { console.error("Error Undo:", e); historyIndex++; updateUIDisabledStates(); showToast('error', 'Error', 'Failed to undo.'); } }
 function redo() { if (historyIndex >= historyStack.length - 1 || isLocked()) return; try { historyIndex++; const next = JSON.parse(historyStack[historyIndex]); const mod = editor.module; cleanupAllModuleIntervals(); editor.import(next); if (editor.module === mod) { activateExistingAutoNodes(); updateUIDisabledStates(); if(currentlyEditingNodeId && !editor.getNodeFromId(currentlyEditingNodeId)) closeCodeEditorSidebar(false); else if (currentlyEditingNodeId) openCodeEditorSidebar(currentlyEditingNodeId); } else console.warn("Module changed during Redo."); } catch (e) { console.error("Error Redo:", e); historyIndex--; updateUIDisabledStates(); showToast('error', 'Error', 'Failed to redo.'); } }
 
+
+// --- Copy, Paste, Duplicate ---
+function copySelectedNode() {
+    if (isLocked() || !selectedNodeId) {
+        showToast('warning', 'No se puede copiar', selectedNodeId ? 'Editor bloqueado.' : 'Ningún nodo seleccionado.');
+        return;
+    }
+    try {
+        const node = editor.getNodeFromId(selectedNodeId);
+        if (!node) {
+            showToast('error', 'Error al Copiar', 'Nodo no encontrado.');
+            return;
+        }
+        copiedNodeData = {
+            name: node.name,
+            html: node.html, // Drawflow uses registered HTML, but store for reference
+            data: JSON.parse(JSON.stringify(node.data || {})), // Deep copy of data
+            inputs: Object.keys(node.inputs || {}).length,
+            outputs: Object.keys(node.outputs || {}).length,
+            cssClass: node.class,
+            original_pos_x: node.pos_x,
+            original_pos_y: node.pos_y
+        };
+        console.log('Node copied:', copiedNodeData);
+        showToast('success', 'Nodo Copiado', `${copiedNodeData.name}`);
+        updateUIDisabledStates(); // Enable paste button
+    } catch (e) {
+        console.error("Error copying node:", e);
+        showToast('error', 'Error al Copiar', e.message);
+        copiedNodeData = null;
+    }
+}
+
+function pasteNode() {
+    if (isLocked() || !copiedNodeData) {
+        showToast('warning', 'No se puede pegar', copiedNodeData ? 'Editor bloqueado.' : 'Nada que pegar.');
+        return;
+    }
+    try {
+        const offsetX = 30;
+        const offsetY = 30;
+        let new_pos_x, new_pos_y;
+
+        if (copiedNodeData.original_pos_x !== undefined && copiedNodeData.original_pos_y !== undefined) {
+            new_pos_x = copiedNodeData.original_pos_x + offsetX;
+            new_pos_y = copiedNodeData.original_pos_y + offsetY;
+        } else {
+            const rect = editor.container.getBoundingClientRect();
+            const zoom = editor.zoom || 1;
+            new_pos_x = (rect.width / 2 - editor.canvas_x) / zoom - 110; // Approx half node width
+            new_pos_y = (rect.height / 2 - editor.canvas_y) / zoom - 50; // Approx half node height
+        }
+
+        const nodeDef = customNodeTypes[copiedNodeData.name];
+        if (!nodeDef) throw new Error(`Tipo "${copiedNodeData.name}" desconocido para pegar.`);
+
+        const newNodeData = JSON.parse(JSON.stringify(copiedNodeData.data));
+        newNodeData.isMovementLocked = false; // Pasted nodes are unlocked
+
+        // Ensure nodeWidth and nodeHeight are properly carried over or defaulted
+        newNodeData.nodeWidth = copiedNodeData.data.nodeWidth || nodeDef.data?.nodeWidth || '220px';
+        newNodeData.nodeHeight = copiedNodeData.data.nodeHeight || nodeDef.data?.nodeHeight || 'auto';
+
+
+        const nodeId = editor.addNode(
+            copiedNodeData.name,
+            copiedNodeData.inputs,
+            copiedNodeData.outputs,
+            new_pos_x,
+            new_pos_y,
+            copiedNodeData.cssClass || '',
+            newNodeData,
+            nodeDef.html // Use HTML from definition
+        );
+
+        if (nodeId === false || nodeId === undefined) {
+             throw new Error("Fallo al añadir nodo al editor durante el pegado.");
+        }
+        console.log(`Node pasted with ID: ${nodeId}, Name: ${copiedNodeData.name}`);
+
+        // Replicate post-addition logic from addNodeToDrawFlow
+        setTimeout(() => {
+             const nodeElement = document.getElementById(`node-${nodeId}`);
+             if (nodeElement) {
+                  const dataForInit = editor.getNodeFromId(nodeId).data;
+                  nodeElement.style.width = dataForInit.nodeWidth;
+                  if (dataForInit.nodeHeight && dataForInit.nodeHeight !== 'auto') nodeElement.style.height = dataForInit.nodeHeight;
+                  else nodeElement.style.height = 'auto';
+
+                  const resizer = nodeElement.querySelector('.node-resizer');
+                  if (resizer) resizer.addEventListener('mousedown', (e) => startNodeResize(e, nodeId, resizer));
+
+                  updateNodeVisualLockState(nodeId, dataForInit.isMovementLocked);
+
+                  const nodeName = copiedNodeData.name;
+                  // Specific initializations (replicating parts of addNodeToDrawFlow and loadProjectFromFile)
+                  if (nodeName === 'image_minimal') {
+                      if (getComputedStyle(nodeElement).borderStyle.includes('none') && !dataForInit.imgsrc) nodeElement.style.border = '2px dashed #cccccc';
+                      const placeholder = nodeElement.querySelector('.image-placeholder');
+                      const imgTag = nodeElement.querySelector('img[df-imgsrc]');
+                      if(placeholder) placeholder.style.display = dataForInit.imgsrc ? 'none' : 'flex';
+                      if(imgTag) {
+                        imgTag.src = dataForInit.imgsrc || '';
+                        imgTag.style.display = dataForInit.imgsrc ? 'block' : 'none';
+                      }
+                      setupMinimalImageNodeListeners(nodeId);
+                  }
+                  else if (nodeName === 'youtube_minimal') {
+                      // Size already set. Player creation based on videoid.
+                      setupYouTubeMinimalNodeListeners(nodeId);
+                      if (dataForInit.videoid) createOrUpdateYouTubePlayer(nodeId, dataForInit.videoid);
+                      else {
+                          const placeholder = nodeElement.querySelector('.youtube-placeholder');
+                          const playerContainerDiv = nodeElement.querySelector('.yt-player-container');
+                          if (placeholder) placeholder.style.display = 'flex';
+                          if (playerContainerDiv) playerContainerDiv.style.display = 'none';
+                          nodeElement.style.border = '2px dashed #cccccc';
+                      }
+                  }
+                  else if (nodeName === 'youtube_display_node') {
+                        const urlInput = nodeElement.querySelector('input[df-yturl]'); if(urlInput) urlInput.value = dataForInit.yturl || '';
+                        if (dataForInit.videoid) createOrUpdateYouTubePlayerFunctional(nodeId, dataForInit.videoid);
+                        else { const playerContainerFunc = nodeElement.querySelector('.yt-player-container-functional'); if(playerContainerFunc) playerContainerFunc.style.display = 'none'; }
+                  }
+                  else if (nodeName === 'image_display_node') {
+                        const urlInput = nodeElement.querySelector('input[df-imgsrcdisplay]'); const imgPreview = nodeElement.querySelector('img[df-imgpreview]'); const placeholder = nodeElement.querySelector('.img-container-functional .placeholder-text');
+                        if(urlInput) urlInput.value = dataForInit.imgsrcdisplay || '';
+                        if (imgPreview && placeholder) { if (dataForInit.imgsrcdisplay) { imgPreview.src = dataForInit.imgsrcdisplay; imgPreview.style.display = 'block'; placeholder.style.display = 'none'; } else { imgPreview.src = ''; imgPreview.style.display = 'none'; placeholder.style.display = 'block'; placeholder.textContent = "No image loaded"; } }
+                  }
+                  else if (nodeName === 'youtube_player_robust') {
+                        const urlInputRobust = nodeElement.querySelector('input[df-yturl]'); if(urlInputRobust) urlInputRobust.value = dataForInit.yturl || '';
+                        setupRobustYouTubeNodeListeners(nodeId);
+                        if (dataForInit.videoid) {
+                            _updateRobustPlayerStatus(nodeId, 'loading', `Cargando ID: ${dataForInit.videoid}...`);
+                            createOrUpdateRobustYouTubePlayer(nodeId, dataForInit.videoid);
+                        } else if (dataForInit.yturl) {
+                             processRobustYouTubeLoad(nodeId, dataForInit.yturl);
+                        } else { _updateRobustPlayerStatus(nodeId, 'idle'); }
+                  }
+                  else if (nodeName === 'nota' && dataForInit.notecolor) {
+                        nodeElement.style.backgroundColor = dataForInit.notecolor;
+                        const tb = nodeElement.querySelector('.title-box');
+                        if(tb) {
+                            const darkBgs = ['#ccccff', '#e0e0e0'];
+                            tb.style.backgroundColor = darkBgs.includes(dataForInit.notecolor) ? '#f0f0f0' : '';
+                            tb.style.color = darkBgs.includes(dataForInit.notecolor) ? '#333' : '';
+                        }
+                        const selectEl = nodeElement.querySelector('select[df-notecolor]');
+                        if (selectEl) selectEl.value = dataForInit.notecolor;
+                        const charcountEl = nodeElement.querySelector('[df-charcount]');
+                        if(charcountEl) charcountEl.textContent = (dataForInit.notecontent || '').length;
+                  }
+                  else if (nodeName === 'local_image') {
+                        const imgTag = nodeElement.querySelector('img[df-imagesrc]');
+                        if (imgTag){
+                            if(dataForInit.imagewidth) imgTag.style.width = dataForInit.imagewidth;
+                            if(dataForInit.imageheight) imgTag.style.height = dataForInit.imageheight;
+                            imgTag.src = dataForInit.imagesrc || '';
+                            imgTag.style.display = dataForInit.imagesrc ? 'block' : 'none';
+                            const placeholder = nodeElement.querySelector('.placeholder-text');
+                            if(placeholder) placeholder.style.display = dataForInit.imagesrc ? 'none' : 'block';
+                        }
+                        const filenameSpan = nodeElement.querySelector('span[df-filename]');
+                        if (filenameSpan) {filenameSpan.textContent = dataForInit.filename || ''; filenameSpan.title = dataForInit.filename || '';}
+                  }
+                  editor.updateConnectionNodes(`node-${nodeId}`);
+             }
+             if (nodeName !== 'youtube_minimal' && nodeName !== 'youtube_display_node' && nodeName !== 'youtube_player_robust') {
+                 activateNodeIfNeeded(nodeId);
+             }
+        }, 0);
+
+        saveHistoryState();
+        showToast('success', 'Nodo Pegado', `${copiedNodeData.name}`);
+    } catch (e) {
+        console.error("Error pasting node:", e);
+        showToast('error', 'Error al Pegar', e.message);
+    }
+}
+
+function duplicateSelectedNode() {
+    if (isLocked() || !selectedNodeId) {
+        showToast('warning', 'No se puede duplicar', selectedNodeId ? 'Editor bloqueado.' : 'Ningún nodo seleccionado.');
+        return;
+    }
+    const originalNode = editor.getNodeFromId(selectedNodeId);
+    if (!originalNode) {
+        showToast('error', 'Error Duplicar', 'Nodo original no encontrado.');
+        return;
+    }
+    // Store original data before copySelectedNode potentially overwrites copiedNodeData if it was from a different node
+    const tempCopiedData = {
+        name: originalNode.name,
+        html: originalNode.html,
+        data: JSON.parse(JSON.stringify(originalNode.data || {})),
+        inputs: Object.keys(originalNode.inputs || {}).length,
+        outputs: Object.keys(originalNode.outputs || {}).length,
+        cssClass: originalNode.class,
+        original_pos_x: originalNode.pos_x,
+        original_pos_y: originalNode.pos_y
+    };
+    const previousCopiedNodeData = copiedNodeData; // Save current clipboard
+    copiedNodeData = tempCopiedData; // Set node to duplicate as the one to be pasted
+
+    pasteNode(); // Paste it (uses offset from original_pos_x/y)
+    
+    copiedNodeData = previousCopiedNodeData; // Restore original clipboard
+    updateUIDisabledStates(); // Update UI based on restored clipboard state
+    // Don't show "Nodo Duplicado" toast, pasteNode shows "Nodo Pegado"
+}
+
+function deleteSelectedNode() {
+    if (isLocked() || !selectedNodeId) return;
+    editor.removeNodeId(`node-${selectedNodeId}`);
+    // selectedNodeId is nulled by 'nodeUnselected' or 'nodeRemoved' events
+    // saveHistoryState is called by 'nodeRemoved' event
+}
+
 // --- Project Management ---
 function triggerLoad() { if (fileInputElement) fileInputElement.click(); else showToast('error', 'Error', 'File input missing.'); }
 if (fileInputElement) fileInputElement.addEventListener('change', loadProjectFromFile);
 
-/**
- * Carga un proyecto Xocoflow desde un archivo JSON seleccionado por el usuario.
- * @param {Event} event - El evento 'change' del input de tipo 'file'.
- */
 function loadProjectFromFile(event) {
-  console.log(">>> loadProjectFromFile FUNCTION CALLED <<<");
-  const fileInput = event.target; // Referencia al input
+  const fileInput = event.target;
   const file = fileInput?.files?.[0];
-
-  if (!file) {
-      if(fileInput) fileInput.value = null; // Limpia si no hay archivo
-      return;
-  }
-
+  if (!file) { if(fileInput) fileInput.value = null; return; }
   const expectedProjectName = file.name.replace(/\.json$/i, "");
-  console.log(`Intentando cargar archivo: ${file.name}`);
   const reader = new FileReader();
-
   reader.onload = (e) => {
-      let projectData;
-      const fileContent = e.target.result;
-
+      let projectData; const fileContent = e.target.result;
       try {
-          // --- PASO 1: Parsear JSON ---
+          try { projectData = JSON.parse(fileContent); }
+          catch (parseError) { showToast('error', 'Error de Parseo', `JSON inválido: ${parseError.message}`); if(fileInput) fileInput.value = null; return; }
+          if (!projectData?.drawflow) { showToast('error', 'Formato Incorrecto', 'El archivo no parece un proyecto Xocoflow válido.'); if(fileInput) fileInput.value = null; return; }
+          
           try {
-              projectData = JSON.parse(fileContent);
-          } catch (parseError) { /* ... (manejo de error existente) ... */ return; }
-
-          // --- PASO 2: Verificar estructura básica ---
-          if (!projectData?.drawflow) { /* ... (manejo de error existente) ... */ return; }
-
-          // --- PASO 3: Procesar Nodos Personalizados ---
-          console.log("JSON parseado, procesando nodos personalizados...");
-          try {
-              // Cargar definiciones personalizadas del archivo o del localStorage
               const customDefsFromFile = projectData.customNodeDefinitions;
               if (customDefsFromFile && typeof customDefsFromFile === 'object') {
-                  saveCustomNodeTypes(customDefsFromFile); // Guarda en localStorage
-                  customNodeTypes = { ...baseNodeDefinitions, ...customDefsFromFile };
-              } else {
-                  // Si no hay definiciones en el archivo, usa las que ya están en localStorage
-                  customNodeTypes = { ...baseNodeDefinitions, ...getStoredCustomNodeTypes() };
-              }
-              loadCustomNodesToSidebar(); // Actualiza sidebar ANTES de importar
-          } catch (nodeError) { /* ... (manejo de error/warning existente) ... */ }
+                  saveCustomNodeTypes(customDefsFromFile); customNodeTypes = { ...baseNodeDefinitions, ...customDefsFromFile };
+              } else customNodeTypes = { ...baseNodeDefinitions, ...getStoredCustomNodeTypes() };
+              loadCustomNodesToSidebar();
+          } catch (nodeError) { console.warn("Error procesando nodos personalizados del archivo:", nodeError); showToast('warning', 'Nodos Personalizados', 'Problema al cargar definiciones de nodos personalizados del archivo.'); }
 
-
-          // --- PASO 4: Importar en Drawflow y Sincronizar UI ---
-          console.log("Importando datos en Drawflow...");
           const currentModuleBeforeImport = editor.module;
           try {
-              cleanupAllModuleIntervals(); // Detener timers antes de importar
-              editor.import(projectData); // ¡La importación ocurre aquí!
-
-              // --- INICIO: ACTUALIZACIÓN MANUAL DE UI POST-IMPORTACIÓN ---
-              console.log("Sincronizando UI de nodos con datos importados...");
-              const targetModule = editor.module || currentModuleBeforeImport; // Módulo actual después de importar
-              const drawflowExportAfterImport = editor.export(); // Obtenemos el estado *después* de importar
+              cleanupAllModuleIntervals(); editor.import(projectData);
+              const targetModule = editor.module || currentModuleBeforeImport;
+              const drawflowExportAfterImport = editor.export();
               const currentModuleNodes = drawflowExportAfterImport?.drawflow?.[targetModule]?.data;
-
               if (currentModuleNodes) {
                   Object.keys(currentModuleNodes).forEach(nodeId => {
-                      // Obtener datos y elemento del nodo recién importado
-                      const node = currentModuleNodes[nodeId]; // Nodo completo de la exportación
-                      const nodeData = node.data || {};
-                      const nodeElement = document.getElementById(`node-${nodeId}`);
-                      const nodeName = node.name;
-
+                      const node = currentModuleNodes[nodeId]; const nodeData = node.data || {};
+                      const nodeElement = document.getElementById(`node-${nodeId}`); const nodeName = node.name;
                       if (nodeElement) {
-                          // --- Sincronización General (para la mayoría de nodos) ---
-                          // Itera sobre los datos para actualizar los elementos df-* correspondientes
-                          Object.keys(nodeData).forEach(dataKey => {
-                              // Saltar claves especiales que no se reflejan directamente o se manejan abajo
-                              if (['naturalWidth', 'naturalHeight'].includes(dataKey) && (nodeName === 'image_minimal' || nodeName === 'youtube_minimal')) return;
-                              // Claves que pueden ser internas y no tener elemento df-* directo
-                              if (['lastInput', 'lastInputs', 'selector_received'].includes(dataKey)) return;
+                           // Apply nodeWidth and nodeHeight first as it affects layout for player init
+                          if (nodeData.nodeWidth) nodeElement.style.width = nodeData.nodeWidth;
+                          if (nodeData.nodeHeight && nodeData.nodeHeight !== 'auto') nodeElement.style.height = nodeData.nodeHeight;
+                          else if (nodeData.nodeHeight === 'auto') nodeElement.style.height = 'auto';
+                          
+                          const resizer = nodeElement.querySelector('.node-resizer');
+                          if (resizer) resizer.addEventListener('mousedown', (e) => startNodeResize(e, nodeId, resizer));
+                          updateNodeVisualLockState(nodeId, nodeData.isMovementLocked === true);
 
+
+                          Object.keys(nodeData).forEach(dataKey => {
+                              if (['naturalWidth', 'naturalHeight', 'playerState', 'errorMessage', 'lastKnownGoodUrl'].includes(dataKey) && (nodeName === 'image_minimal' || nodeName === 'youtube_minimal' || nodeName === 'youtube_player_robust' || nodeName === 'youtube_display_node')) return;
+                              if (['lastInput', 'lastInputs', 'selector_received', 'nodeWidth', 'nodeHeight', 'isMovementLocked'].includes(dataKey)) return; // Handled separately
+                              
                               const inputElement = nodeElement.querySelector(`[df-${dataKey}]`);
                               if (inputElement) {
                                   const value = nodeData[dataKey];
-                                  // Lógica existente para inputs, textareas, selects...
                                   if (inputElement.tagName === 'TEXTAREA' || (inputElement.tagName === 'INPUT' && ['text', 'number', 'url', 'email', 'password', 'range', 'date', 'time', 'color'].includes(inputElement.type))) {
                                       inputElement.value = value ?? '';
-                                      // Si es un range, actualiza el span asociado si existe
-                                      if (inputElement.type === 'range' && inputElement.nextElementSibling?.hasAttribute('df-rangeval')) {
-                                           inputElement.nextElementSibling.textContent = value ?? '0';
-                                      }
-                                  } else if (inputElement.tagName === 'SELECT'){
-                                      inputElement.value = value ?? '';
-                                      if (dataKey === 'notecolor' && nodeName === 'nota') { // Trigger 'change' para actualizar color de nota
-                                          const changeEvent = new Event('change', { bubbles: true });
-                                          inputElement.dispatchEvent(changeEvent);
-                                      }
-                                  } else if (inputElement.tagName === 'IMG' && dataKey === 'imgsrc' && nodeName !== 'image_minimal' && nodeName !== 'youtube_minimal' && nodeName !== 'image_display_node') { // Caso local_image original
-                                      inputElement.src = value ?? '';
-                                      inputElement.style.display = value ? 'block' : 'none';
-                                      const placeholder = nodeElement.querySelector('.placeholder-text');
-                                      if(placeholder) placeholder.style.display = value ? 'none' : (placeholder.classList.contains('youtube-placeholder') ? 'flex' : 'block');
-                                  } else if (inputElement.tagName === 'SPAN' && dataKey === 'filename'){
-                                      inputElement.textContent = value ?? '';
-                                      inputElement.title = value ?? '';
-                                  } else if (inputElement.hasAttribute('df-charcount')  && nodeName === 'nota') {
-                                      inputElement.textContent = nodeElement.querySelector('[df-notecontent]')?.value?.length || '0';
-                                  }
-                                  // ... otros casos si son necesarios ...
+                                      if (inputElement.type === 'range' && inputElement.nextElementSibling?.hasAttribute('df-rangeval')) inputElement.nextElementSibling.textContent = value ?? '0';
+                                  } else if (inputElement.tagName === 'SELECT'){ inputElement.value = value ?? ''; if (dataKey === 'notecolor' && nodeName === 'nota') inputElement.dispatchEvent(new Event('change', { bubbles: true })); }
+                                  else if (inputElement.tagName === 'IMG' && dataKey === 'imgsrc' && nodeName !== 'image_minimal' && nodeName !== 'youtube_minimal' && nodeName !== 'image_display_node' && nodeName !== 'youtube_player_robust') { inputElement.src = value ?? ''; inputElement.style.display = value ? 'block' : 'none'; const placeholder = nodeElement.querySelector('.placeholder-text'); if(placeholder) placeholder.style.display = value ? 'none' : (placeholder.classList.contains('youtube-placeholder') ? 'flex' : 'block'); }
+                                  else if (inputElement.tagName === 'SPAN' && dataKey === 'filename'){ inputElement.textContent = value ?? ''; inputElement.title = value ?? ''; }
+                                  else if (inputElement.hasAttribute('df-charcount')  && nodeName === 'nota') inputElement.textContent = nodeElement.querySelector('[df-notecontent]')?.value?.length || '0';
                               }
                           });
-
-                          // --- Sincronización Específica por Tipo de Nodo ---
-
-                          // Caso: Nodo Nota (color del fondo y título)
-                          if (nodeName === 'nota' && nodeData.notecolor) {
-                              nodeElement.style.backgroundColor = nodeData.notecolor;
-                              const tb = nodeElement.querySelector('.title-box');
-                              if(tb) {
-                                  const darkBgs = ['#ccccff', '#e0e0e0'];
-                                  tb.style.backgroundColor = darkBgs.includes(nodeData.notecolor) ? '#f0f0f0' : '';
-                                  tb.style.color = darkBgs.includes(nodeData.notecolor) ? '#333' : '';
-                              }
+                          if (nodeName === 'nota' && nodeData.notecolor) { nodeElement.style.backgroundColor = nodeData.notecolor; const tb = nodeElement.querySelector('.title-box'); if(tb) { const darkBgs = ['#ccccff', '#e0e0e0']; tb.style.backgroundColor = darkBgs.includes(nodeData.notecolor) ? '#f0f0f0' : ''; tb.style.color = darkBgs.includes(nodeData.notecolor) ? '#333' : ''; } }
+                          else if (nodeName === 'local_image') { // Size already set above
+                            const imgTag = nodeElement.querySelector('img[df-imagesrc]');
+                            if (imgTag){
+                                if(nodeData.imagewidth) imgTag.style.width = nodeData.imagewidth;
+                                if(nodeData.imageheight) imgTag.style.height = nodeData.imageheight;
+                                imgTag.src = nodeData.imagesrc ?? '';
+                                imgTag.style.display = nodeData.imagesrc ? 'block' : 'none';
+                                const placeholder = nodeElement.querySelector('.placeholder-text');
+                                if(placeholder) placeholder.style.display = nodeData.imagesrc ? 'none' : 'block';
+                            }
+                            const filenameSpan = nodeElement.querySelector('span[df-filename]');
+                            if (filenameSpan) {filenameSpan.textContent = nodeData.filename || ''; filenameSpan.title = nodeData.filename || '';}
                           }
-                          // Caso: Nodo Local Image (tamaño del nodo e imagen interna)
-                          else if (nodeName === 'local_image') {
-                              if (nodeData.nodewidth) nodeElement.style.width = nodeData.nodewidth;
-                              if (nodeData.nodeheight) nodeElement.style.height = nodeData.nodeheight;
-                              const imgTag = nodeElement.querySelector('img[df-imagesrc]');
-                              if (imgTag){
-                                  if(nodeData.imagewidth) imgTag.style.width = nodeData.imagewidth;
-                                  if(nodeData.imageheight) imgTag.style.height = nodeData.imageheight;
-                                  // Restaurar src y visibilidad también, aunque debería hacerse en el bucle general
-                                  imgTag.src = nodeData.imagesrc ?? '';
-                                  imgTag.style.display = nodeData.imagesrc ? 'block' : 'none';
-                                  const placeholder = nodeElement.querySelector('.placeholder-text');
-                                   if(placeholder) placeholder.style.display = nodeData.imagesrc ? 'none' : 'block';
-                              }
-                          }
-                          // --- INICIO: Caso image_minimal ---
                           else if (nodeName === 'image_minimal') {
                               const imgTag = nodeElement.querySelector('img[df-imgsrc]');
                               const placeholder = nodeElement.querySelector('.image-placeholder');
-
                               if (imgTag && placeholder) {
-                                  // Verificar si hay una imagen válida guardada
-                                  const hasValidImage = nodeData.imgsrc && nodeData.naturalWidth > 0 && nodeData.naturalHeight > 0;
-
+                                  const hasValidImage = nodeData.imgsrc; // Removed naturalWidth/Height check as they might not be saved if image was from URL
                                   if (hasValidImage) {
-                                      // Restaurar imagen y tamaño
-                                      imgTag.src = nodeData.imgsrc;
-                                      imgTag.style.display = 'block';
-                                      placeholder.style.display = 'none';
-                                      nodeElement.style.width = nodeData.nodeWidth || `${nodeData.naturalWidth}px`;
-                                      nodeElement.style.height = nodeData.nodeHeight || `${nodeData.naturalHeight}px`;
-                                      nodeElement.style.border = 'none'; // Quitar borde punteado
-                                      console.log(`Restored image_minimal ${nodeId} to ${nodeData.naturalWidth}x${nodeData.naturalHeight}`);
+                                      imgTag.src = nodeData.imgsrc; imgTag.style.display = 'block'; placeholder.style.display = 'none';
+                                      nodeElement.style.border = 'none';
+                                      // If naturalWidth/Height were saved (e.g. from local file), use them for initial size if no nodeWidth/Height
+                                      if (!nodeData.nodeWidth && nodeData.naturalWidth) nodeElement.style.width = `${nodeData.naturalWidth}px`;
+                                      if (!nodeData.nodeHeight && nodeData.naturalHeight) nodeElement.style.height = `${nodeData.naturalHeight}px`;
                                   } else {
-                                      // Mostrar placeholder y tamaño mínimo
-                                      imgTag.src = '';
-                                      imgTag.style.display = 'none';
-                                      placeholder.style.display = 'flex'; // O 'block'
-                                      nodeElement.style.width = nodeData.nodeWidth || baseNodeDefinitions['image_minimal'].data.nodeWidth;
-                                      nodeElement.style.height = nodeData.nodeHeight || baseNodeDefinitions['image_minimal'].data.nodeHeight;
-                                      nodeElement.style.border = '2px dashed #cccccc'; // Poner borde
-                                      console.log(`Restored image_minimal ${nodeId} to placeholder state.`);
+                                      imgTag.src = ''; imgTag.style.display = 'none'; placeholder.style.display = 'flex';
+                                      nodeElement.style.border = '2px dashed #cccccc';
                                   }
-
-                                  // SIEMPRE re-adjuntar listeners después de cargar el proyecto
-                                  setTimeout(() => setupMinimalImageNodeListeners(nodeId), 50);
-
-                                  // Forzar actualización de conexiones después de ajustar tamaño
-                                  // Dar un poco más de tiempo para que el DOM se estabilice
-                                  setTimeout(() => editor.updateConnectionNodes(`node-${nodeId}`), 100);
-                              } else {
-                                  console.warn(`Could not find img/placeholder elements for image_minimal node ${nodeId} during project load.`);
+                                  setupMinimalImageNodeListeners(nodeId);
                               }
                           }
-                          // --- FIN: Caso image_minimal ---
-
-                      } else {
-                          console.warn(`Node element not found in DOM for ID ${nodeId} during post-import UI sync.`);
-                      }
-                  }); // Fin forEach nodeId
-              } else {
-                  console.warn("No nodes found in the current module after import to sync UI:", targetModule);
-              }
-              console.log("Post-import UI synchronization completed.");
-              // --- FIN: ACTUALIZACIÓN MANUAL DE UI POST-IMPORTACIÓN ---
-
-          } catch (importError) { /* ... (manejo de error existente) ... */ return; }
-
-          // --- PASO 5: Éxito - Finalizar la carga ---
-          console.log("Importación completada. Actualizando estado de la aplicación.");
-          currentProjectName = expectedProjectName;
-          renderModuleTabs();
-          initializeHistory();
-          selectedNodeId = null;
-          copiedNodeData = null;
-          currentlyEditingNodeId = null; // Asegurarse de limpiar esto también
-          updateUIDisabledStates();
-          closeCodeEditorSidebar(false);
-          document.title = `Xocoflow | ${currentProjectName} - ${editor.module}`;
-          saveHistoryState(true); // Guarda estado inicial cargado
-          // Activar nodos automáticos DESPUÉS de sincronizar UI
-          activateExistingAutoNodes();
-          showToast('success', 'Proyecto Cargado', `"${escapeHtml(currentProjectName)}" cargado.`);
-
-      } catch (err) { /* ... (manejo de error existente) ... */ }
-      finally {
-          if (fileInput) fileInput.value = null; // Limpiar input de archivo
-      }
-  }; // Fin reader.onload
-
-  reader.onerror = (e) => { /* ... (manejo de error existente) ... */ };
-
-  reader.readAsText(file); // Iniciar lectura
+                          else if (nodeName === 'youtube_minimal') {
+                              setupYouTubeMinimalNodeListeners(nodeId);
+                              if (nodeData.videoid) {
+                                  createOrUpdateYouTubePlayer(nodeId, nodeData.videoid);
+                              } else {
+                                  const placeholder = nodeElement.querySelector('.youtube-placeholder');
+                                  const playerContainerDiv = nodeElement.querySelector('.yt-player-container');
+                                  if (placeholder) placeholder.style.display = 'flex';
+                                  if (playerContainerDiv) playerContainerDiv.style.display = 'none';
+                                  nodeElement.style.border = '2px dashed #cccccc';
+                              }
+                          }
+                           else if (nodeName === 'youtube_display_node') {
+                              const urlInput = nodeElement.querySelector('input[df-yturl]');
+                              if (urlInput) urlInput.value = nodeData.yturl || '';
+                              if (nodeData.videoid) {
+                                  createOrUpdateYouTubePlayerFunctional(nodeId, nodeData.videoid);
+                              } else {
+                                  const playerContainerFunc = nodeElement.querySelector('.yt-player-container-functional');
+                                  if (playerContainerFunc) playerContainerFunc.style.display = 'none';
+                              }
+                          }
+                          else if (nodeName === 'image_display_node') {
+                                const urlInput = nodeElement.querySelector('input[df-imgsrcdisplay]');
+                                const imgPreview = nodeElement.querySelector('img[df-imgpreview]');
+                                const placeholder = nodeElement.querySelector('.img-container-functional .placeholder-text');
+                                if (urlInput) urlInput.value = nodeData.imgsrcdisplay || '';
+                                if (imgPreview && placeholder) {
+                                    if (nodeData.imgsrcdisplay) {
+                                        imgPreview.src = nodeData.imgsrcdisplay; imgPreview.style.display = 'block'; placeholder.style.display = 'none';
+                                    } else {
+                                        imgPreview.src = ''; imgPreview.style.display = 'none'; placeholder.style.display = 'block'; placeholder.textContent = "No image loaded";
+                                    }
+                                }
+                          }
+                          else if (nodeName === 'youtube_player_robust') {
+                              const urlInputRobust = nodeElement.querySelector('input[df-yturl]');
+                              if(urlInputRobust) urlInputRobust.value = nodeData.yturl || '';
+                              setupRobustYouTubeNodeListeners(nodeId);
+                              if (nodeData.videoid) {
+                                  _updateRobustPlayerStatus(nodeId, 'loading', `Cargando ID: ${nodeData.videoid}...`);
+                                  createOrUpdateRobustYouTubePlayer(nodeId, nodeData.videoid);
+                              } else if (nodeData.yturl) {
+                                   processRobustYouTubeLoad(nodeId, nodeData.yturl);
+                              } else {
+                                  _updateRobustPlayerStatus(nodeId, 'idle');
+                              }
+                          }
+                          setTimeout(() => editor.updateConnectionNodes(`node-${nodeId}`), 150); // Ensure connections are redrawn after all potential size changes
+                      } else console.warn(`Node element not found in DOM for ID ${nodeId} during post-import UI sync.`);
+                  });
+              } else console.warn("No nodes found in the current module after import to sync UI:", targetModule);
+          } catch (importError) { showToast('error', 'Error de Importación', `No se pudo importar: ${importError.message}`); if(fileInput) fileInput.value = null; return; }
+          
+          currentProjectName = expectedProjectName; renderModuleTabs(); initializeHistory();
+          selectedNodeId = null; copiedNodeData = null; currentlyEditingNodeId = null;
+          updateUIDisabledStates(); closeCodeEditorSidebar(false); document.title = `Xocoflow | ${currentProjectName} - ${editor.module}`;
+          saveHistoryState(true); activateExistingAutoNodes(); showToast('success', 'Proyecto Cargado', `"${escapeHtml(currentProjectName)}" cargado.`);
+      } catch (err) { console.error("Error fatal cargando proyecto:", err); showToast('error', 'Error Crítico', `Fallo al cargar: ${err.message}`); }
+      finally { if (fileInput) fileInput.value = null; }
+  };
+  reader.onerror = () => { showToast('error', 'Error de Lectura', 'No se pudo leer el archivo.'); if(fileInput) fileInput.value = null; };
+  reader.readAsText(file);
 }
 
-
-// --- Project Management & Module Actions ---
-// **MODIFIED renderModuleTabs to v1.7.5 style**
 function renderModuleTabs() {
     if (!moduleListElement || !editor) return;
     try {
-        moduleListElement.innerHTML = '';
-        const modulesData = editor.export().drawflow || {};
-        const currentModule = editor.module; // Use editor.module directly
-
-        let moduleNames = Object.keys(modulesData);
-
-        // If no modules exist or 'Home' is missing, create 'Home'
-        // This part is crucial and should align with how v1.7.5 handled it.
-        if (moduleNames.length === 0 || !modulesData['Home']) {
-            if (!modulesData['Home']) {
-                editor.addModule('Home'); // This itself might trigger 'moduleChanged'
-            }
-            // Ensure 'Home' is the current module if logic above didn't set it
-            if (editor.module !== 'Home') {
-                 editor.changeModule('Home'); // This will trigger 'moduleChanged'
-            }
-            // It's possible 'moduleChanged' already called renderModuleTabs.
-            // To avoid double rendering or potential issues, we can return here
-            // if a change was made that would cause a re-render via the event.
-            // However, v1.7.5 proceeded to render, let's stick to that for now.
-            // Re-fetch moduleNames after potential addModule.
-            moduleNames = Object.keys(editor.export().drawflow || {});
-            if (moduleNames.length === 0) moduleNames = ['Home']; // Safety for empty after add
-        }
-
-
+        moduleListElement.innerHTML = ''; const modulesData = editor.export().drawflow || {}; let moduleNames = Object.keys(modulesData);
+        if (moduleNames.length === 0 || !modulesData['Home']) { if (!modulesData['Home']) editor.addModule('Home'); if (editor.module !== 'Home') editor.changeModule('Home'); moduleNames = Object.keys(editor.export().drawflow || {}); if (moduleNames.length === 0) moduleNames = ['Home']; }
         moduleNames.sort((a, b) => (a === 'Home' ? -1 : b === 'Home' ? 1 : a.localeCompare(b)));
-
         moduleNames.forEach(moduleName => {
-            const li = document.createElement('li');
-            li.textContent = moduleName;
-            li.dataset.moduleName = moduleName;
-            li.title = `Cambiar a: ${moduleName}`;
-
-            li.onclick = () => {
-                // Only change if it's a different module
-                if (editor.module !== moduleName) {
-                    editor.changeModule(moduleName);
-                }
-                // v1.7.5 style: re-render tabs immediately on click
-                renderModuleTabs();
-            };
-
-            if (moduleName === editor.module) { // Use editor.module for selection
-                li.classList.add('selected');
-            }
-
-            if (moduleName !== 'Home' && moduleNames.length > 1) {
-                const closeBtn = document.createElement('span');
-                closeBtn.innerHTML = '×';
-                closeBtn.title = `Eliminar ${moduleName}`;
-                closeBtn.className = 'close-tab-btn';
-                 closeBtn.style.cssText = ` margin-left: 8px; cursor: pointer; color: #aaa; font-weight: bold; padding: 0 4px; border-radius: 3px; font-size: 14px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; height: 16px; width: 16px; vertical-align: middle; transition: all 0.2s; `;
-                 closeBtn.onmouseover = () => { closeBtn.style.color = '#fff'; closeBtn.style.backgroundColor = '#ffb3b3'; };
-                 closeBtn.onmouseout = () => { closeBtn.style.color = '#aaa'; closeBtn.style.backgroundColor = 'transparent'; };
-                closeBtn.onclick = (ev) => {
-                    ev.stopPropagation();
-                    removeModuleTab(moduleName);
-                };
-                li.appendChild(closeBtn);
-            }
+            const li = document.createElement('li'); li.textContent = moduleName; li.dataset.moduleName = moduleName; li.title = `Cambiar a: ${moduleName}`;
+            li.onclick = () => { if (editor.module !== moduleName) editor.changeModule(moduleName); renderModuleTabs(); };
+            if (moduleName === editor.module) li.classList.add('selected');
+            if (moduleName !== 'Home' && moduleNames.length > 1) { const closeBtn = document.createElement('span'); closeBtn.innerHTML = '×'; closeBtn.title = `Eliminar ${moduleName}`; closeBtn.className = 'close-tab-btn'; closeBtn.style.cssText = ` margin-left: 8px; cursor: pointer; color: #aaa; font-weight: bold; padding: 0 4px; border-radius: 3px; font-size: 14px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; height: 16px; width: 16px; vertical-align: middle; transition: all 0.2s; `; closeBtn.onmouseover = () => { closeBtn.style.color = '#fff'; closeBtn.style.backgroundColor = '#ffb3b3'; }; closeBtn.onmouseout = () => { closeBtn.style.color = '#aaa'; closeBtn.style.backgroundColor = 'transparent'; }; closeBtn.onclick = (ev) => { ev.stopPropagation(); removeModuleTab(moduleName); }; li.appendChild(closeBtn); }
             moduleListElement.appendChild(li);
         });
-
-        const addBtn = document.createElement('li');
-        addBtn.innerHTML = '<i class="fas fa-plus"></i>';
-        addBtn.title = "Añadir módulo";
-        addBtn.className = 'add-tab-btn';
-        addBtn.style.cssText = `cursor: pointer; border-right: none; padding: 0 10px; background-color: transparent; margin-left: 5px; opacity: 0.7; transition: opacity 0.2s;`;
-        addBtn.onmouseover = () => { addBtn.style.opacity = '1'; };
-        addBtn.onmouseout = () => { addBtn.style.opacity = '0.7'; };
-        addBtn.onclick = promptAddModule;
-        moduleListElement.appendChild(addBtn);
-
-    } catch (e) {
-        console.error("Error en renderModuleTabs:", e);
-    }
+        const addBtn = document.createElement('li'); addBtn.innerHTML = '<i class="fas fa-plus"></i>'; addBtn.title = "Añadir módulo"; addBtn.className = 'add-tab-btn'; addBtn.style.cssText = `cursor: pointer; border-right: none; padding: 0 10px; background-color: transparent; margin-left: 5px; opacity: 0.7; transition: opacity 0.2s;`; addBtn.onmouseover = () => { addBtn.style.opacity = '1'; }; addBtn.onmouseout = () => { addBtn.style.opacity = '0.7'; }; addBtn.onclick = promptAddModule; moduleListElement.appendChild(addBtn);
+    } catch (e) { console.error("Error en renderModuleTabs:", e); }
 }
 
-// **MODIFIED promptAddModule to v1.7.5 style**
 async function promptAddModule() {
     try {
-        const { value: moduleNameInput } = await Swal.fire({
-            title: 'Nuevo Módulo',
-            input: 'text',
-            inputLabel: 'Nombre del módulo',
-            inputValue: '',
-            showCancelButton: true,
-            confirmButtonText: 'Crear',
-            cancelButtonText: 'Cancelar',
-            inputValidator: (v) => {
-                const t = v?.trim();
-                if (!t) return 'El nombre del módulo no puede estar vacío.';
-                const existingModules = Object.keys(editor.export()?.drawflow || {});
-                if (existingModules.some(m => m.toLowerCase() === t.toLowerCase())) {
-                    return `El módulo "${t}" ya existe.`;
-                }
-                if (/[<>:"/\\|?*]/.test(t)) {
-                    return 'El nombre contiene caracteres inválidos.';
-                }
-                return null;
-            }
-        });
-
-        const moduleName = moduleNameInput?.trim();
-        if (moduleName) {
-            console.log(`Añadiendo módulo: ${moduleName}`);
-            editor.addModule(moduleName);
-            editor.changeModule(moduleName); // Explicitly change to the new module
-            renderModuleTabs();             // Re-render tabs immediately (v1.7.5 style)
-            addWelcomeNode(moduleName);
-            console.log(`Módulo "${moduleName}" añadido y activado.`);
-        } else {
-            console.log("Creación de módulo cancelada por el usuario.");
-        }
-    } catch (e) {
-        console.error("Error en promptAddModule:", e);
-        showToast('error', 'Error', 'No se pudo crear el módulo.');
-    }
+        const { value: moduleNameInput } = await Swal.fire({ title: 'Nuevo Módulo', input: 'text', inputLabel: 'Nombre del módulo', inputValue: '', showCancelButton: true, confirmButtonText: 'Crear', cancelButtonText: 'Cancelar', inputValidator: (v) => { const t = v?.trim(); if (!t) return 'El nombre no puede estar vacío.'; const existing = Object.keys(editor.export()?.drawflow || {}); if (existing.some(m => m.toLowerCase() === t.toLowerCase())) return `El módulo "${t}" ya existe.`; if (/[<>:"/\\|?*]/.test(t)) return 'Nombre con caracteres inválidos.'; return null; } });
+        const moduleName = moduleNameInput?.trim(); if (moduleName) { editor.addModule(moduleName); editor.changeModule(moduleName); renderModuleTabs(); addWelcomeNode(moduleName); }
+    } catch (e) { console.error("Error en promptAddModule:", e); showToast('error', 'Error', 'No se pudo crear módulo.'); }
 }
 
 function removeModuleTab(moduleName) {
     if (moduleName === 'Home') { Swal.fire('No permitido', 'No puedes eliminar "Home".', 'warning'); return; }
     const moduleCount = Object.keys(editor.export().drawflow || {}).length; if (moduleCount <= 1) { Swal.fire('No permitido', 'No puedes eliminar el último módulo.', 'warning'); return; }
-    try { Swal.fire({ title: `¿Eliminar Módulo "${moduleName}"?`, text: "Acción permanente.", icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33', cancelButtonColor: '#3085d6', confirmButtonText: 'Sí, eliminar', cancelButtonText: 'Cancelar' }).then((result) => { if (result.isConfirmed) { const currentActiveModule = editor.module; if (currentActiveModule === moduleName) cleanupAllModuleIntervals(); try { editor.removeModule(moduleName); if (currentActiveModule === moduleName) editor.changeModule('Home'); else { renderModuleTabs(); saveHistoryState(true); } } catch (removeError) { console.error(`Error eliminando módulo:`, removeError); Swal.fire('Error', `No se pudo eliminar: ${removeError.message}`, 'error'); } } }); } catch (e) { console.error("Error confirmación eliminar:", e); }
+    try { Swal.fire({ title: `¿Eliminar Módulo "${moduleName}"?`, text: "Acción permanente.", icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33', cancelButtonColor: '#3085d6', confirmButtonText: 'Sí, eliminar', cancelButtonText: 'Cancelar' }).then((result) => { if (result.isConfirmed) { const currentActiveModule = editor.module; if (currentActiveModule === moduleName) cleanupAllModuleIntervals(); try { editor.removeModule(moduleName); if (currentActiveModule === moduleName) editor.changeModule('Home'); else { renderModuleTabs(); saveHistoryState(true); } } catch (removeError) { Swal.fire('Error', `No se pudo eliminar: ${removeError.message}`, 'error'); } } }); } catch (e) {}
 }
 
 // --- UI Helpers ---
@@ -3063,6 +2481,7 @@ function addNodeToDrawFlow(name, pos_x, pos_y) {
                 else if (name === 'youtube_minimal') data.nodeWidth = '320px';
                 else if (name === 'youtube_display_node') data.nodeWidth = '480px';
                 else if (name === 'image_display_node') data.nodeWidth = '350px';
+                else if (name === 'youtube_player_robust') data.nodeWidth = '380px';
                 else data.nodeWidth = '220px';
             }
             if (!data.nodeHeight) {
@@ -3070,6 +2489,7 @@ function addNodeToDrawFlow(name, pos_x, pos_y) {
                 else if (name === 'youtube_minimal') data.nodeHeight = '180px';
                 else if (name === 'youtube_display_node') data.nodeHeight = 'auto';
                 else if (name === 'image_display_node') data.nodeHeight = 'auto';
+                else if (name === 'youtube_player_robust') data.nodeHeight = 'auto';
                 else data.nodeHeight = 'auto';
             }
         }
@@ -3081,6 +2501,7 @@ function addNodeToDrawFlow(name, pos_x, pos_y) {
         else if (name === 'youtube_minimal') initialWidthPx = 320;
         else if (name === 'youtube_display_node') initialWidthPx = 480;
         else if (name === 'image_display_node') initialWidthPx = 350;
+        else if (name === 'youtube_player_robust') initialWidthPx = 380;
         if (isNaN(initialWidthPx) || initialWidthPx <=0) initialWidthPx = 220;
 
         const canvasX = (pos_x - rect.left - editor.canvas_x) / zoom;
@@ -3093,66 +2514,57 @@ function addNodeToDrawFlow(name, pos_x, pos_y) {
         setTimeout(() => {
              const nodeElement = document.getElementById(`node-${nodeId}`);
              if (nodeElement) {
-                  if (data.nodeWidth) nodeElement.style.width = data.nodeWidth;
-                  if (data.nodeHeight && data.nodeHeight !== 'auto') nodeElement.style.height = data.nodeHeight;
-                  else if (data.nodeHeight === 'auto') nodeElement.style.height = 'auto';
+                  const currentData = editor.getNodeFromId(nodeId).data; // Get fresh data
+                  nodeElement.style.width = currentData.nodeWidth;
+                  if (currentData.nodeHeight && currentData.nodeHeight !== 'auto') nodeElement.style.height = currentData.nodeHeight;
+                  else nodeElement.style.height = 'auto';
 
                   const resizer = nodeElement.querySelector('.node-resizer');
                   if (resizer) resizer.addEventListener('mousedown', (e) => startNodeResize(e, nodeId, resizer));
 
+                  updateNodeVisualLockState(nodeId, currentData.isMovementLocked);
+
                   if (name === 'image_minimal') {
-                      if (getComputedStyle(nodeElement).borderStyle.includes('none')) nodeElement.style.border = '2px dashed #cccccc';
+                      if (getComputedStyle(nodeElement).borderStyle.includes('none') && !currentData.imgsrc) nodeElement.style.border = '2px dashed #cccccc';
                       const placeholder = nodeElement.querySelector('.image-placeholder'); if(placeholder) placeholder.style.display = 'flex';
                       setupMinimalImageNodeListeners(nodeId);
                   }
                   else if (name === 'youtube_minimal') {
-                      nodeElement.style.width = data.nodeWidth;
-                      nodeElement.style.height = data.nodeHeight;
-                      if (data.videoid) createOrUpdateYouTubePlayer(nodeId, data.videoid);
-                      else {
-                         const placeholder = nodeElement.querySelector('.youtube-placeholder');
-                         const playerContainerDiv = nodeElement.querySelector('.yt-player-container');
-                         if (placeholder) placeholder.style.display = 'flex';
-                         if (playerContainerDiv) playerContainerDiv.style.display = 'none';
-                         nodeElement.style.border = '2px dashed #cccccc';
-                      }
                       setupYouTubeMinimalNodeListeners(nodeId);
+                      if (currentData.videoid) createOrUpdateYouTubePlayer(nodeId, currentData.videoid);
+                      else {
+                          const placeholder = nodeElement.querySelector('.youtube-placeholder');
+                          const playerContainerDiv = nodeElement.querySelector('.yt-player-container');
+                          if (placeholder) placeholder.style.display = 'flex';
+                          if (playerContainerDiv) playerContainerDiv.style.display = 'none';
+                          nodeElement.style.border = '2px dashed #cccccc';
+                      }
                   }
                   else if (name === 'youtube_display_node') {
-                        nodeElement.style.width = data.nodeWidth || baseNodeDefinitions['youtube_display_node'].data.nodeWidth;
-                        nodeElement.style.height = data.nodeHeight || baseNodeDefinitions['youtube_display_node'].data.nodeHeight;
-                        if (data.videoid) {
-                            createOrUpdateYouTubePlayerFunctional(nodeId, data.videoid);
-                        } else {
-                            const playerContainerFunc = nodeElement.querySelector('.yt-player-container-functional');
-                            const urlInputContainerFunc = nodeElement.querySelector('.youtube-url-input-container');
-                            if(playerContainerFunc) playerContainerFunc.style.display = 'none';
-                            if(urlInputContainerFunc) urlInputContainerFunc.style.display = 'block';
-                        }
-                        const urlInput = nodeElement.querySelector('input[df-yturl]');
-                        if(urlInput) urlInput.value = data.yturl || '';
+                        const urlInput = nodeElement.querySelector('input[df-yturl]'); if(urlInput) urlInput.value = currentData.yturl || '';
+                        if (currentData.videoid) createOrUpdateYouTubePlayerFunctional(nodeId, currentData.videoid);
+                        else { const playerContainerFunc = nodeElement.querySelector('.yt-player-container-functional'); if(playerContainerFunc) playerContainerFunc.style.display = 'none'; }
                   }
                   else if (name === 'image_display_node') {
-                        nodeElement.style.width = data.nodeWidth || baseNodeDefinitions['image_display_node'].data.nodeWidth;
-                        nodeElement.style.height = data.nodeHeight || baseNodeDefinitions['image_display_node'].data.nodeHeight;
-                        const urlInput = nodeElement.querySelector('input[df-imgsrcdisplay]');
-                        const imgPreview = nodeElement.querySelector('img[df-imgpreview]');
-                        const placeholder = nodeElement.querySelector('.img-container-functional .placeholder-text');
-                        if(urlInput) urlInput.value = data.imgsrcdisplay || '';
-                        if (imgPreview && placeholder) {
-                            if (data.imgsrcdisplay) {
-                                imgPreview.src = data.imgsrcdisplay;
-                                imgPreview.style.display = 'block';
-                                placeholder.style.display = 'none';
-                            } else {
-                                placeholder.style.display = 'block';
-                                placeholder.textContent = "No image loaded";
-                            }
+                        const urlInput = nodeElement.querySelector('input[df-imgsrcdisplay]'); const imgPreview = nodeElement.querySelector('img[df-imgpreview]'); const placeholder = nodeElement.querySelector('.img-container-functional .placeholder-text');
+                        if(urlInput) urlInput.value = currentData.imgsrcdisplay || '';
+                        if (imgPreview && placeholder) { if (currentData.imgsrcdisplay) { imgPreview.src = currentData.imgsrcdisplay; imgPreview.style.display = 'block'; placeholder.style.display = 'none'; } else { imgPreview.src = ''; imgPreview.style.display = 'none'; placeholder.style.display = 'block'; placeholder.textContent = "No image loaded"; } }
+                  }
+                  else if (name === 'youtube_player_robust') {
+                        const urlInputRobust = nodeElement.querySelector('input[df-yturl]'); if(urlInputRobust) urlInputRobust.value = currentData.yturl || '';
+                        setupRobustYouTubeNodeListeners(nodeId);
+                        if (currentData.videoid) {
+                            _updateRobustPlayerStatus(nodeId, 'loading', `Cargando ID: ${currentData.videoid}...`);
+                            createOrUpdateRobustYouTubePlayer(nodeId, currentData.videoid);
+                        } else if (currentData.yturl) {
+                             processRobustYouTubeLoad(nodeId, currentData.yturl);
+                        } else {
+                            _updateRobustPlayerStatus(nodeId, 'idle');
                         }
                   }
-                  updateNodeVisualLockState(nodeId, data.isMovementLocked);
+                  editor.updateConnectionNodes(`node-${nodeId}`);
              }
-             if (name !== 'youtube_minimal' && name !== 'youtube_display_node') {
+             if (name !== 'youtube_minimal' && name !== 'youtube_display_node' && name !== 'youtube_player_robust') {
                  activateNodeIfNeeded(nodeId);
              }
         }, 0);
@@ -3220,6 +2632,7 @@ function setupDrawflowListeners() {
             cleanupNodeIntervals(id); hideCustomContextMenu();
             if (youtubePlayers[id]) { try { youtubePlayers[id].destroy(); delete youtubePlayers[id]; } catch (e) { console.error(`Error destroying YouTube minimal player ${id}:`, e); } }
             if (youtubePlayersFunctional[id]) { try { youtubePlayersFunctional[id].destroy(); delete youtubePlayersFunctional[id]; } catch (e) { console.error(`Error destroying YouTube display player ${id}:`, e); } }
+            if (youtubePlayersRobust[id]) { try { youtubePlayersRobust[id].destroy(); delete youtubePlayersRobust[id]; console.log(`Robust YouTube (${id}): Player instance destroyed.`); } catch (e) { console.error(`Error destroying Robust YouTube player ${id}:`, e); } }
             if (selectedNodeId === id) { selectedNodeId = null; updateNodePositionStatus(null); } if (currentlyEditingNodeId === id) closeCodeEditorSidebar(false);
             let connectionsFromRemovedNode = []; try { const nodeDataBeforeRemoval = editor.getNodeFromId(id); if (nodeDataBeforeRemoval?.outputs) Object.values(nodeDataBeforeRemoval.outputs).forEach(op => connectionsFromRemovedNode = connectionsFromRemovedNode.concat(op.connections || [])); } catch (e) {}
             if (connectionsFromRemovedNode.length > 0) {
@@ -3251,37 +2664,21 @@ function setupDrawflowListeners() {
             }, 50);
         });
 
-        // **REVERTED 'moduleChanged' listener logic to v1.7.5 style**
         editor.on('moduleChanged', (name) => {
             console.log(`%cEVENT: Module Changed -> ${name}`, 'color: blue; font-weight: bold;');
-            hideCustomContextMenu(); // Ocultar menú si está abierto al cambiar de módulo
+            hideCustomContextMenu();
             const modulesData = editor.export()?.drawflow;
             if (!modulesData || !modulesData[name]) {
                  console.warn(`Module ${name} not found after moduleChanged event. Falling back to Home.`);
                  name = 'Home';
-                 if (!modulesData || !modulesData[name]) {
-                     editor.addModule('Home');
-                 }
-                 editor.changeModule('Home'); // This will re-trigger 'moduleChanged'
-                 return; // Exit and let the new event handle the rendering
+                 if (!modulesData || !modulesData[name]) editor.addModule('Home');
+                 editor.changeModule('Home'); return;
             }
-            renderModuleTabs(); // Render immediately as in v1.7.5
-            initializeHistory();
-            selectedNodeId = null;
-            copiedNodeData = null;
-            currentlyEditingNodeId = null;
-            updateUIDisabledStates();
-            updateZoomStatus(editor.zoom);
-            updateNodePositionStatus(null);
+            renderModuleTabs(); initializeHistory(); selectedNodeId = null; copiedNodeData = null; currentlyEditingNodeId = null;
+            updateUIDisabledStates(); updateZoomStatus(editor.zoom); updateNodePositionStatus(null);
             document.title = `Xocoflow | ${currentProjectName} - ${name}`;
             closeCodeEditorSidebar(false);
-            setTimeout(() => { // Keep timeout for async operations after UI updates
-                if(editor.module === name){
-                    saveHistoryState(true);
-                    activateExistingAutoNodes();
-                    console.log(` -> Module ${name} processing complete.`);
-                }
-            }, 100);
+            setTimeout(() => { if(editor.module === name){ saveHistoryState(true); activateExistingAutoNodes(); } }, 100);
         });
 
         editor.on('zoom', (level) => { updateZoomStatus(level); });
@@ -3306,67 +2703,21 @@ function initializeApp() {
         try { editor = new Drawflow(drawflowElement); editor.reroute = true; editor.editor_mode = 'edit'; editor.zoom_max = 1.8; editor.zoom_min = 0.25; editor.zoom_value = 0.08; } catch (e) { throw new Error(`Failed to create Drawflow editor: ${e.message}`); }
         
         editor.start();
-        setupDrawflowListeners(); // Sets up editor.on('moduleChanged', ...)
+        setupDrawflowListeners();
 
-        // --- Initial Module Logic (closer to v1.7.5) ---
-        const initialExport = editor.export();
-        const initialModules = initialExport?.drawflow;
-        let homeExists = initialModules?.hasOwnProperty('Home');
-
-        if (!initialModules || Object.keys(initialModules).length === 0 || !homeExists) {
-            if (!homeExists) {
-                editor.addModule('Home');
-            }
-            if (editor.module !== 'Home') { // Ensure 'Home' is active if it was just created or if current module is invalid
-                editor.changeModule('Home'); // This will trigger 'moduleChanged' which handles full init
-            } else {
-                // If 'Home' was the module and it was just added (empty canvas), then 'moduleChanged' handles init.
-                // If 'Home' already existed and was active, we manually trigger the necessary UI updates and state init here.
-                renderModuleTabs(); // Call directly as 'moduleChanged' might not fire if module was already 'Home'
-                initializeHistory();
-                const currentModuleData = editor.export()?.drawflow?.[editor.module]?.data ?? {};
-                if (Object.keys(currentModuleData).length === 0) {
-                    addWelcomeNode(editor.module);
-                }
-                saveHistoryState(true);
-                activateExistingAutoNodes();
-            }
-        } else if (!editor.module || !initialModules[editor.module]) {
-            // Current module is invalid, switch to 'Home'
-            editor.changeModule('Home'); // 'moduleChanged' handles the rest
-        } else {
-            // Valid initial state, editor.module is already set
-            renderModuleTabs(); // Render tabs for current state
-            initializeHistory();
-            const currentModuleData = initialModules[editor.module]?.data ?? {};
-            if (Object.keys(currentModuleData).length === 0 && editor.module === 'Home') {
-                addWelcomeNode(editor.module);
-            }
-            saveHistoryState(true);
-            activateExistingAutoNodes();
-        }
-        console.log(`Initial active module finalized as: ${editor.module}`);
-        // --- End Initial Module Logic ---
-
-        if (drawflowElement) { drawflowElement.addEventListener('mousedown', (e) => { if (e.target.closest('.input') || e.target.closest('.output')) return; const nodeElement = e.target.closest(".drawflow-node"); if (!nodeElement) return; const nodeId = nodeElement.id.slice(5); try { const node = editor.getNodeFromId(nodeId); if (!node) return; const isNodeMovementLocked = node.data?.isMovementLocked === true; if (isNodeMovementLocked) { const trulyInteractiveSelector = `input[type="color"], input[type="range"], input[type="date"], input[type="time"], select, button, a[href], .lock-indicator, .node-resizer, details, summary, .image-placeholder, .youtube-placeholder, .CodeMirror, [contenteditable="true"]`; const clickedTrulyInteractive = e.target.closest(trulyInteractiveSelector); if (clickedTrulyInteractive) { if (e.button === 0 && clickedTrulyInteractive.closest('.lock-indicator')) { toggleNodeMovementLock(nodeId); e.stopPropagation(); e.preventDefault(); return; } if (e.button === 0 && clickedTrulyInteractive.closest('.node-resizer')) return; return; } const isTextInputElement = e.target.matches('input[type="text"], input[type="number"], input[type="url"], input[type="email"], input[type="password"], textarea'); if (isTextInputElement) { if (e.button === 0) { e.stopPropagation(); return; } return; } e.stopPropagation(); if (e.button === 0 && !nodeElement.classList.contains('selected')) editor.selectNode(nodeElement.id); if (e.button !== 2) e.preventDefault(); } } catch (error) { console.warn(`Lock mousedown error for ${nodeId}:`, error); } }, true); console.log("Mousedown listener for movement lock attached."); } else console.error("drawflowElement not found! Cannot attach mousedown listener.");
+        const initialExport = editor.export(); const initialModules = initialExport?.drawflow; let homeExists = initialModules?.hasOwnProperty('Home');
+        if (!initialModules || Object.keys(initialModules).length === 0 || !homeExists) { if (!homeExists) editor.addModule('Home'); if (editor.module !== 'Home') editor.changeModule('Home'); else { renderModuleTabs(); initializeHistory(); const currentModuleData = editor.export()?.drawflow?.[editor.module]?.data ?? {}; if (Object.keys(currentModuleData).length === 0) addWelcomeNode(editor.module); saveHistoryState(true); activateExistingAutoNodes(); } }
+        else if (!editor.module || !initialModules[editor.module]) editor.changeModule('Home');
+        else { renderModuleTabs(); initializeHistory(); const currentModuleData = initialModules[editor.module]?.data ?? {}; if (Object.keys(currentModuleData).length === 0 && editor.module === 'Home') addWelcomeNode(editor.module); saveHistoryState(true); activateExistingAutoNodes(); }
         
-        loadCustomNodesToSidebar();
-        updateUIDisabledStates();
-        updateZoomStatus(editor.zoom);
-        updateNodePositionStatus(null);
-        document.title = `Xocoflow | ${currentProjectName} - ${editor.module}`;
-        changeMode('edit');
+        if (drawflowElement) { drawflowElement.addEventListener('mousedown', (e) => { if (e.target.closest('.input') || e.target.closest('.output')) return; const nodeElement = e.target.closest(".drawflow-node"); if (!nodeElement) return; const nodeId = nodeElement.id.slice(5); try { const node = editor.getNodeFromId(nodeId); if (!node) return; const isNodeMovementLocked = node.data?.isMovementLocked === true; if (isNodeMovementLocked) { const trulyInteractiveSelector = `input[type="color"], input[type="range"], input[type="date"], input[type="time"], select, button, a[href], .lock-indicator, .node-resizer, details, summary, .image-placeholder, .youtube-placeholder, .yt-placeholder-robust, .CodeMirror, [contenteditable="true"]`; const clickedTrulyInteractive = e.target.closest(trulyInteractiveSelector); if (clickedTrulyInteractive) { if (e.button === 0 && clickedTrulyInteractive.closest('.lock-indicator')) { toggleNodeMovementLock(nodeId); e.stopPropagation(); e.preventDefault(); return; } if (e.button === 0 && clickedTrulyInteractive.closest('.node-resizer')) return; return; } const isTextInputElement = e.target.matches('input[type="text"], input[type="number"], input[type="url"], input[type="email"], input[type="password"], textarea'); if (isTextInputElement) { if (e.button === 0) { e.stopPropagation(); return; } return; } e.stopPropagation(); if (e.button === 0 && !nodeElement.classList.contains('selected')) editor.selectNode(nodeElement.id); if (e.button !== 2) e.preventDefault(); } } catch (error) { console.warn(`Lock mousedown error for ${nodeId}:`, error); } }, true); }
         
+        loadCustomNodesToSidebar(); updateUIDisabledStates(); updateZoomStatus(editor.zoom); updateNodePositionStatus(null);
+        document.title = `Xocoflow | ${currentProjectName} - ${editor.module}`; changeMode('edit');
         if (recalculateButton) recalculateButton.addEventListener('click', recalculateAllNodesInCurrentModule);
         initializeCodeMirror();
-
-        console.log("%cXocoflow Ready.", "color: green; font-weight: bold;");
-        showToast('success', 'Ready', '', 1500);
-
-    } catch (error) {
-        console.error("❌ FATAL INITIALIZATION ERROR:", error);
-        showInitializationError(`Initialization failed: ${error.message}`);
-    }
+        console.log("%cXocoflow Ready.", "color: green; font-weight: bold;"); showToast('success', 'Ready', '', 1500);
+    } catch (error) { console.error("❌ FATAL INITIALIZATION ERROR:", error); showInitializationError(`Initialization failed: ${error.message}`); }
 }
 
 function addWelcomeNode(moduleName) { if (!editor || !moduleName || isLocked()) return; try { const exported = editor.export(); const existing = exported?.drawflow?.[moduleName]?.data ?? {}; if (Object.keys(existing).length > 0) return; const html = `<div><div class="title-box welcome-title"><i class="fas fa-rocket"></i> Welcome to ${escapeHtml(moduleName)}!</div><div class="box welcome-box"><p><strong>Quick Start:</strong></p><ul><li><i class="fas fa-mouse-pointer"></i> Drag nodes.</li><li><i class="fas fa-link"></i> Connect outputs <i class="fas fa-arrow-right"></i> to inputs <i class="fas fa-arrow-left"></i>.</li><li><i class="fas fa-edit"></i> Click "Edit Content/Code".</li><li><i class="fas fa-save"></i> Save work.</li><li><i class="fas fa-plus-circle"></i> Explore "Create Node Type".</li></ul></div><div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div></div>`; const w=280, h=210; const rect = editor.container.getBoundingClientRect(), z=editor.zoom||1; const cx=(rect.width/2-editor.canvas_x)/z, cy=(rect.height/2-editor.canvas_y)/z; const x=cx-w/2, y=cy-h/2; const name='xocoflow_welcome_info'; const nodeData = { nodeWidth: `${w}px`, nodeHeight: `${h}px`, isMovementLocked: false }; if (!customNodeTypes[name]) editor.registerNode(name, null , {}, {}); const id = editor.addNode(name, 0, 0, x, y, 'welcome-node resizable-node-class', nodeData, html); setTimeout(() => { const nodeElement = document.getElementById(`node-${id}`); if (nodeElement) { nodeElement.style.width = nodeData.nodeWidth; nodeElement.style.height = nodeData.nodeHeight; const resizer = nodeElement.querySelector('.node-resizer'); if(resizer) resizer.addEventListener('mousedown', (e) => startNodeResize(e, id, resizer)); updateNodeVisualLockState(id, false);}}, 0); } catch (e) { console.error(`Error adding welcome node:`, e); } }
