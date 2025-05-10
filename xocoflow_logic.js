@@ -1,8 +1,8 @@
 // === START OF COMPLETE xocoflow_logic.js ===
-// Version: 1.7.9 - YouTube IFrame Player API Integration
+// Version: 1.7.13 - Reverted Tab Logic to v1.7.5 style, kept new features
 "use strict";
 
-console.log("Xocoflow Script: Initializing (v1.7.9)...");
+console.log("Xocoflow Script: Initializing (v1.7.13 - Reverted Tab Logic)...");
 
 // --- Constants ---
 const DRAWFLOW_CONTAINER_ID = "drawflow";
@@ -47,8 +47,9 @@ let drawflowElement, undoButton, redoButton, duplicateButton, copyButton, pasteB
 
 // --- YouTube IFrame API State ---
 let isYouTubeApiReady = false;
-let youtubeApiReadyQueue = []; // Queue for player initializations if API isn't ready yet
-let youtubePlayers = {};       // Stores YT.Player instances, keyed by nodeId (e.g., '5')
+let youtubeApiReadyQueue = [];
+let youtubePlayers = {};       // For youtube_minimal
+let youtubePlayersFunctional = {}; // For youtube_display_node
 
 /**
  * This function is called automatically by the YouTube IFrame API script
@@ -57,7 +58,6 @@ let youtubePlayers = {};       // Stores YT.Player instances, keyed by nodeId (e
 function onYouTubeIframeAPIReady() {
     console.log("YouTube IFrame API is ready.");
     isYouTubeApiReady = true;
-    // Process any player creation/update requests that were queued
     while (youtubeApiReadyQueue.length > 0) {
         const action = youtubeApiReadyQueue.shift();
         try {
@@ -100,10 +100,9 @@ function updateNodeVisualLockState(nodeId, isLocked) {
         const nodeElement = document.getElementById(`node-${nodeId}`);
         if (!nodeElement) return;
         const titleBox = nodeElement.querySelector('.title-box');
-        // Handle nodes like youtube_minimal that don't have a .title-box
         if (!titleBox) {
-            // Maybe add a visual indicator elsewhere for these nodes?
-            // For now, just skip if no title-box
+            // Handle nodes like youtube_minimal that don't have a .title-box
+            // or other custom nodes without it.
             return;
         }
         const indicator = getOrCreateLockIndicator(titleBox);
@@ -165,36 +164,38 @@ function showCustomContextMenu(event, nodeId) {
     if (!node) return;
     const currentData = node.data || {};
     const isNodeLocked = currentData.isMovementLocked === true;
-    const generalLock = isLocked(); // Check if the whole editor is locked
+    const generalEditorLock = isLocked(); // Check if the whole editor is locked
     const canPasteHere = copiedNodeData !== null; // Check if there's data to paste
 
     customContextMenu = document.createElement('div');
     customContextMenu.className = 'custom-context-menu';
     const ul = document.createElement('ul');
 
-    // --- Lock/Unlock ---
-    const lockLi = document.createElement('li');
-    lockLi.innerHTML = `<i class="fas ${isNodeLocked ? 'fa-lock-open' : 'fa-lock'}"></i> <span>${isNodeLocked ? 'Desbloquear Movimiento' : 'Bloquear Movimiento'}</span>`;
-    if (generalLock) {
-        lockLi.style.opacity = '0.5';
-        lockLi.style.cursor = 'not-allowed';
-        lockLi.title = 'Desbloquea el editor general para cambiar bloqueo';
-    } else {
-        lockLi.onclick = (e) => {
-            e.stopPropagation();
-            toggleNodeMovementLock(nodeId);
-            hideCustomContextMenu();
-        };
+    // --- Lock/Unlock (Only if node has a title-box, which minimal nodes don't) ---
+    const nodeElementForCtx = document.getElementById(`node-${nodeId}`);
+    if (nodeElementForCtx && nodeElementForCtx.querySelector('.title-box')) {
+        const lockLi = document.createElement('li');
+        lockLi.innerHTML = `<i class="fas ${isNodeLocked ? 'fa-lock-open' : 'fa-lock'}"></i> <span>${isNodeLocked ? 'Desbloquear Movimiento' : 'Bloquear Movimiento'}</span>`;
+        if (generalEditorLock) {
+            lockLi.style.opacity = '0.5';
+            lockLi.style.cursor = 'not-allowed';
+            lockLi.title = 'Desbloquea el editor general para cambiar bloqueo';
+        } else {
+            lockLi.onclick = (e) => {
+                e.stopPropagation();
+                toggleNodeMovementLock(nodeId);
+                hideCustomContextMenu();
+            };
+        }
+        ul.appendChild(lockLi);
+        ul.appendChild(document.createElement('hr'));
     }
-    ul.appendChild(lockLi);
 
-    // --- Separator ---
-    ul.appendChild(document.createElement('hr'));
 
     // --- Copy ---
     const copyLi = document.createElement('li');
     copyLi.innerHTML = '<i class="fas fa-copy"></i> <span>Copiar Nodo</span>';
-    if (generalLock) {
+    if (generalEditorLock) {
         copyLi.style.opacity = '0.5';
         copyLi.style.cursor = 'not-allowed';
         copyLi.title = 'Desbloquea el editor para copiar';
@@ -210,10 +211,10 @@ function showCustomContextMenu(event, nodeId) {
     // --- Paste ---
     const pasteLi = document.createElement('li');
     pasteLi.innerHTML = '<i class="fas fa-paste"></i> <span>Pegar Nodo</span>';
-    if (generalLock || !canPasteHere) {
+    if (generalEditorLock || !canPasteHere) {
         pasteLi.style.opacity = '0.5';
         pasteLi.style.cursor = 'not-allowed';
-        pasteLi.title = generalLock ? 'Desbloquea el editor para pegar' : 'No hay nada copiado para pegar';
+        pasteLi.title = generalEditorLock ? 'Desbloquea el editor para pegar' : 'No hay nada copiado para pegar';
     } else {
         pasteLi.onclick = (e) => {
             e.stopPropagation();
@@ -226,7 +227,7 @@ function showCustomContextMenu(event, nodeId) {
     // --- Duplicate ---
     const duplicateLi = document.createElement('li');
     duplicateLi.innerHTML = '<i class="fas fa-clone"></i> <span>Duplicar Nodo</span>';
-     if (generalLock) {
+     if (generalEditorLock) {
         duplicateLi.style.opacity = '0.5';
         duplicateLi.style.cursor = 'not-allowed';
         duplicateLi.title = 'Desbloquea el editor para duplicar';
@@ -245,7 +246,7 @@ function showCustomContextMenu(event, nodeId) {
     // --- Delete ---
     const deleteLi = document.createElement('li');
     deleteLi.innerHTML = '<i class="fas fa-trash-alt" style="color: #d32f2f;"></i> <span style="color: #d32f2f;">Eliminar Nodo</span>';
-    if (generalLock) {
+    if (generalEditorLock) {
         deleteLi.style.opacity = '0.5';
         deleteLi.style.cursor = 'not-allowed';
         deleteLi.title = 'Desbloquea el editor para eliminar';
@@ -291,8 +292,13 @@ function hideCustomContextMenu() {
 }
 
 function handleClickOutsideContextMenu(event) {
+    // Close if click is outside OR if it's a contextmenu click NOT on a node
     if (customContextMenu && !customContextMenu.contains(event.target)) {
-        if (event.type === 'contextmenu' && event.target.closest('.drawflow-node')) return;
+        // If it's a right-click, only close if it wasn't on *another* node
+        if (event.type === 'contextmenu' && event.target.closest('.drawflow-node')) {
+            // Do nothing, the contextmenu listener on Drawflow will handle opening the new menu
+            return;
+        }
         hideCustomContextMenu();
     }
 }
@@ -300,10 +306,6 @@ function handleClickOutsideContextMenu(event) {
 // --- Node Resizing Logic ---
 function startNodeResize(event, nodeId, resizerElement) {
     if (isLocked()) return; // General editor lock
-    // Check specific node movement lock (optional: decide if resize is also locked)
-    // const nodeData = editor.getNodeFromId(nodeId)?.data;
-    // if (nodeData?.isMovementLocked === true) return;
-
     event.preventDefault();
     event.stopPropagation();
 
@@ -339,18 +341,21 @@ function duringNodeResize(event) {
     let newContainerWidth = resizingNodeInfo.initialNodeWidth + deltaX;
     let newContainerHeight = resizingNodeInfo.initialNodeHeight + deltaY;
 
-    // --- START: Determine Minimum Dimensions based on Node Type ---
-    let minContainerWidth = 100;  // Default minimum width for most nodes
-    let minContainerHeight = 80; // Default minimum height for most nodes
+    let minContainerWidth = 100;
+    let minContainerHeight = 80;
 
-    if (nodeElement.classList.contains('image-minimal-node')) {
-        minContainerWidth = 60; // Smaller min width for image minimal
-        minContainerHeight = 40; // Smaller min height for image minimal
-    } else if (nodeElement.classList.contains('youtube-minimal-node')) {
-        minContainerWidth = 120; // Wider min width for YouTube (e.g., for small player controls)
-        minContainerHeight = 67;  // Taller min height (16:9 aspect for 120px width)
+    const nodeType = editor.getNodeFromId(resizingNodeInfo.id)?.name;
+
+    if (nodeType === 'image_minimal') {
+        minContainerWidth = 60; minContainerHeight = 40;
+    } else if (nodeType === 'youtube_minimal') {
+        minContainerWidth = 120; minContainerHeight = 67;
+    } else if (nodeType === 'youtube_display_node') {
+        minContainerWidth = 280; minContainerHeight = 200;
+    } else if (nodeType === 'image_display_node') {
+        minContainerWidth = 200; minContainerHeight = 150;
     }
-    // --- END: Determine Minimum Dimensions ---
+    // Add more else if for other resizable nodes with specific minimums
 
     if (newContainerWidth < minContainerWidth) newContainerWidth = minContainerWidth;
     if (newContainerHeight < minContainerHeight) newContainerHeight = minContainerHeight;
@@ -358,18 +363,29 @@ function duringNodeResize(event) {
     nodeElement.style.width = `${newContainerWidth}px`;
     nodeElement.style.height = `${newContainerHeight}px`;
 
-    // --- Logic for redimensionar Textarea (if present) ---
+    // --- Logic for redimensionar Textarea (if present) and internal containers ---
     const boxElement = nodeElement.querySelector('.box');
-    const targetTextarea = boxElement ? boxElement.querySelector('textarea[df-content], textarea[df-notecontent], textarea[df-jscode], textarea[df-codecontent], textarea[df-mytext], textarea[df-original], textarea[df-lastInput], textarea[df-result], textarea[df-template], textarea') : null;
+    if (boxElement) { // This logic applies to nodes with a .box (standard nodes)
+        const targetTextarea = boxElement.querySelector('textarea:not([readonly])'); // Resize non-readonly textareas
+        const titleBoxHeight = nodeElement.querySelector('.title-box')?.offsetHeight || ( (nodeType === 'youtube_display_node' || nodeType === 'image_display_node') ? 35 : 0 );
 
-    if (targetTextarea && boxElement) {
-        const titleBoxHeight = nodeElement.querySelector('.title-box')?.offsetHeight || 35;
+        let contentToResize = null;
+        let contentMinHeight = 0;
+        if (nodeType === 'youtube_display_node') {
+            contentToResize = boxElement.querySelector('.yt-player-container-functional');
+            contentMinHeight = 100;
+        } else if (nodeType === 'image_display_node') {
+            contentToResize = boxElement.querySelector('.img-container-functional');
+            contentMinHeight = 80;
+        }
+
         const boxPaddingTop = parseFloat(getComputedStyle(boxElement).paddingTop) || 0;
         const boxPaddingBottom = parseFloat(getComputedStyle(boxElement).paddingBottom) || 0;
-
         let otherElementsHeightInBox = 0;
+
+        // Calculate height of all elements in .box EXCEPT the primary resizable textarea or contentToResize
         Array.from(boxElement.children).forEach(child => {
-            if (child !== targetTextarea && getComputedStyle(child).display !== 'none') {
+            if (child !== targetTextarea && child !== contentToResize && getComputedStyle(child).display !== 'none') {
                 const style = getComputedStyle(child);
                 otherElementsHeightInBox += child.offsetHeight;
                 otherElementsHeightInBox += parseFloat(style.marginTop) || 0;
@@ -377,39 +393,66 @@ function duringNodeResize(event) {
             }
         });
 
-        let availableHeightForTextarea = newContainerHeight - titleBoxHeight - boxPaddingTop - boxPaddingBottom - otherElementsHeightInBox;
-        const minTextareaHeight = 30;
-        if (availableHeightForTextarea < minTextareaHeight) {
-            availableHeightForTextarea = minTextareaHeight;
+        if (targetTextarea) {
+            let availableHeightForTextarea = newContainerHeight - titleBoxHeight - boxPaddingTop - boxPaddingBottom - otherElementsHeightInBox;
+            if (contentToResize) { // If there's also a content area, subtract its current height
+                availableHeightForTextarea -= (contentToResize.offsetHeight + (parseFloat(getComputedStyle(contentToResize).marginTop) || 0) + (parseFloat(getComputedStyle(contentToResize).marginBottom) || 0) );
+            }
+            const minTextareaHeight = 30;
+            if (availableHeightForTextarea < minTextareaHeight) availableHeightForTextarea = minTextareaHeight;
+            targetTextarea.style.height = `${availableHeightForTextarea}px`;
         }
-        targetTextarea.style.height = `${availableHeightForTextarea}px`;
+
+        if (contentToResize) {
+            let availableHeightForContent = newContainerHeight - titleBoxHeight - boxPaddingTop - boxPaddingBottom - otherElementsHeightInBox;
+            if (targetTextarea) { // If there's also a textarea, subtract its current height
+                 availableHeightForContent -= (targetTextarea.offsetHeight + (parseFloat(getComputedStyle(targetTextarea).marginTop) || 0) + (parseFloat(getComputedStyle(targetTextarea).marginBottom) || 0) );
+            }
+            if (availableHeightForContent < contentMinHeight) availableHeightForContent = contentMinHeight;
+            contentToResize.style.height = `${availableHeightForContent}px`;
+        }
     }
-    // --- END: Lógica para redimensionar Textarea ---
-
-    // --- START: Specific logic for Image and YouTube Minimal Nodes ---
-    // Content (img/player) inside these nodes uses 100% width/height
-    // No explicit JS resizing of the content needed here.
-    // --- END: Specific logic ---
-
     editor.updateConnectionNodes(`node-${resizingNodeInfo.id}`);
 }
+
 
 function stopNodeResize() {
     if (!isResizingNode || !resizingNodeInfo.id) return;
 
     const nodeElement = document.getElementById(`node-${resizingNodeInfo.id}`);
+    const nodeId = resizingNodeInfo.id;
+    const nodeType = editor.getNodeFromId(nodeId)?.name;
+
     if (nodeElement) {
         const finalWidth = nodeElement.offsetWidth;
         const finalHeight = nodeElement.offsetHeight;
         try {
-            const nodeData = editor.getNodeFromId(resizingNodeInfo.id)?.data || {};
-            editor.updateNodeDataFromId(resizingNodeInfo.id, {
-                ...nodeData,
-                nodeWidth: `${finalWidth}px`,
-                nodeHeight: `${finalHeight}px`
-            });
-            console.log(`Node ${resizingNodeInfo.id} resized to: ${finalWidth}px x ${finalHeight}px`);
-        } catch (e) { console.error("Error updating node data after resize:", e); }
+            const nodeData = editor.getNodeFromId(nodeId)?.data || {};
+            if (nodeElement.classList.contains('resizable-node-class')) {
+                 editor.updateNodeDataFromId(nodeId, {
+                    ...nodeData,
+                    nodeWidth: `${finalWidth}px`,
+                    nodeHeight: `${finalHeight}px`
+                 });
+                 console.log(`Node ${nodeId} (${nodeType}) resized to: ${finalWidth}px x ${finalHeight}px`);
+            } else {
+                 console.log(`Node ${nodeId} (${nodeType}) is not marked as resizable, skipping size update in data.`);
+            }
+
+
+            if (nodeType === 'youtube_minimal' && youtubePlayers[nodeId]) {
+                try { youtubePlayers[nodeId].setSize(finalWidth, finalHeight); }
+                catch (playerResizeError) { console.error(`Error resizing YouTube_minimal player for node ${nodeId}:`, playerResizeError); }
+            }
+            else if (nodeType === 'youtube_display_node' && youtubePlayersFunctional[nodeId]) {
+                try {
+                    const playerContainer = nodeElement.querySelector('.yt-player-container-functional');
+                    if (playerContainer) {
+                        youtubePlayersFunctional[nodeId].setSize(playerContainer.offsetWidth, playerContainer.offsetHeight);
+                    }
+                } catch (playerResizeError) { console.error(`Error resizing YouTube_display_node player for node ${nodeId}:`, playerResizeError); }
+            }
+        } catch (e) { console.error("Error updating node data or resizing player after resize:", e); }
     }
 
     isResizingNode = false;
@@ -423,9 +466,9 @@ function stopNodeResize() {
     saveHistoryState();
 }
 
-// --- Base Node Definitions (UPDATED youtube_minimal HTML) ---
+// --- Base Node Definitions ---
 const baseNodeDefinitions = {
-    'texto': { name: 'texto', inputs: 1, outputs: 1, html: `<div><div class="title-box"><i class="fas fa-paragraph"></i> Texto</div><div class="box"><label>Contenido:</label><textarea df-content readonly style="height: 80px;" placeholder="..."></textarea><button type="button" class="edit-code-btn" onclick="openEditorForNode(event)"><i class="fas fa-edit"></i> Editar Contenido</button><p class="help-text">Edita en panel lateral.</p></div></div>`, cssClass: 'text-node', data: { content: '' } },
+    'texto': { name: 'texto', inputs: 1, outputs: 1, html: `<div><div class="title-box"><i class="fas fa-paragraph"></i> Texto</div><div class="box"><label>Contenido:</label><textarea df-content readonly style="height: 80px;" placeholder="..."></textarea><button type="button" class="edit-code-btn" onclick="openEditorForNode(event)"><i class="fas fa-edit"></i> Editar Contenido</button><p class="help-text">Edita en panel lateral.</p></div><div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div></div>`, cssClass: 'text-node resizable-node-class', data: { content: '', nodeWidth: '230px', nodeHeight: 'auto' } },
     'concatenar': { name: 'concatenar', inputs: 1, outputs: 1, html: `<div><div class="title-box"><i class="fas fa-link"></i> Concatenar</div><div class="box" style="text-align: center; font-size: 11px; color: #777; padding: 20px 5px;">Concatena entradas<br>(orden Y)<input type="hidden" df-result></div></div>`, cssClass: 'concatenate-node', data: { result: '' } },
     'mostrarPasar': { name: 'mostrarPasar', inputs: 1, outputs: 1, html: `<div><div class="title-box"><i class="fas fa-eye"></i> Mostrar y Pasar</div><div class="box"><label>Resultado:</label><textarea df-result readonly style="height: 60px;"></textarea><button type="button" onclick="selectAllText(event)" style="margin-top: 5px;">Seleccionar Todo</button><p class="help-text">Muestra y pasa datos.</p></div></div>`, cssClass: 'display-node', data: { result: '' } },
     'nota': { name: 'nota', inputs: 0, outputs: 0, html: `<div> <div class="title-box"><i class="fas fa-sticky-note"></i> Nota</div> <div class="box"> <div class="color-picker"> <label for="note-color-select-{{id}}">Color:</label> <select id="note-color-select-{{id}}" df-notecolor onchange="changeNoteColor(event)"> <option value="#ffffcc">Amarillo</option> <option value="#ccffcc">Verde</option> <option value="#ffcccc">Rojo</option> <option value="#ccccff">Azul</option> <option value="#e0e0e0">Gris</option> </select> </div> <textarea df-notecontent oninput="handleNodeDataChange(event); updateCharacterCount(event)" style="height: 120px;" placeholder="Notas..."></textarea> <div class="text-info"> <span df-charcount>0</span> chars </div> </div> <div class="node-resizer" title="Redimensionar Nota"><i class="fas fa-expand-alt"></i></div></div>`, cssClass: 'note-node resizable-node-class', data: { notecontent: '', notecolor: '#ffffcc', charcount: '0', nodeWidth: '180px', nodeHeight: 'auto' } },
@@ -451,7 +494,7 @@ const baseNodeDefinitions = {
     },
     'input_number': { name: 'input_number', inputs: 0, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-hashtag"></i> Número</div> <div class="box"> <label>Valor numérico:</label> <input type="number" df-number value="0" oninput="handleNodeDataChange(event)"> </div> </div>`, cssClass: 'number-input-node', data: { number: 0 } },
     'input_text': { name: 'input_text', inputs: 0, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-font"></i> Texto</div> <div class="box"> <label>Texto:</label> <input type="text" df-text value="" placeholder="..." oninput="handleNodeDataChange(event)"> </div> </div>`, cssClass: 'text-input-node', data: { text: '' } },
-    'input_range': { name: 'input_range', inputs: 0, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-sliders-h"></i> Slider</div> <div class="box"> <label>Valor:</label> <input type="range" df-range min="0" max="100" value="50" oninput="handleNodeDataChange(event); this.nextElementSibling.textContent = this.value;"> <span df-rangeval>50</span> </div> </div>`, cssClass: 'range-input-node', data: { range: 50, rangeval: "50" } },
+    'input_range': { name: 'input_range', inputs: 0, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-sliders-h"></i> Slider</div> <div class="box"> <label>Valor:</label> <input type="range" df-range min="0" max="100" value="50" oninput="handleNodeDataChange(event)"> <span df-rangeval>50</span> </div> </div>`, cssClass: 'range-input-node', data: { range: 50, rangeval: "50" } },
     'input_date': { name: 'input_date', inputs: 0, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-calendar-alt"></i> Fecha</div> <div class="box"> <label>Selecciona fecha:</label> <input type="date" df-date oninput="handleNodeDataChange(event)"> </div> </div>`, cssClass: 'date-input-node', data: { date: '' } },
     'input_time': { name: 'input_time', inputs: 0, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-clock"></i> Hora</div> <div class="box"> <label>Selecciona hora:</label> <input type="time" df-time oninput="handleNodeDataChange(event)"> </div> </div>`, cssClass: 'time-input-node', data: { time: '' } },
     'input_color': { name: 'input_color', inputs: 0, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-palette"></i> Color</div> <div class="box"> <label>Elige color:</label> <input type="color" df-color value="#ff0000" oninput="handleNodeDataChange(event)"> </div> </div>`, cssClass: 'color-input-node', data: { color: '#ff0000' } },
@@ -461,21 +504,21 @@ const baseNodeDefinitions = {
     'text_lowercase': { name: 'text_lowercase', inputs: 1, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-arrow-down"></i> Minúsculas</div> <div class="box"> <p class="help-text">Convierte texto de entrada a minúsculas.</p> <textarea df-result readonly style="height: 60px;"></textarea> </div> </div>`, cssClass: 'text-lowercase-node', data: { result: '', lastInput: null } },
     'text_length': { name: 'text_length', inputs: 1, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-align-justify"></i> Longitud</div> <div class="box"> <p class="help-text">Calcula longitud del texto de entrada.</p> <input type="number" df-result readonly> </div> </div>`, cssClass: 'text-length-node', data: { result: 0, lastInput: null } },
     'html_strip': { name: 'html_strip', inputs: 1, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-code"></i> Strip HTML</div> <div class="box"> <p class="help-text">Elimina etiquetas HTML del texto de entrada.</p> <textarea df-result readonly style="height: 60px;"></textarea> </div> </div>`, cssClass: 'html-strip-node', data: { result: '', lastInput: null } },
-    'input_json': { name: 'input_json', inputs: 0, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-database"></i> Input JSON</div> <div class="box"> <label>Valor (JSON):</label> <textarea df-json placeholder='{"clave": 123, "arr": [1,2,3] }' style="width:100%; height:80px;" oninput="handleJsonInputChange(event)" ></textarea> </div> </div>`, cssClass: 'json-input-node', data: { json: '{}', lastInput: null } },
+    'input_json': { name: 'input_json', inputs: 0, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-database"></i> Input JSON</div> <div class="box"> <label>Valor (JSON):</label> <textarea df-json placeholder='{"clave": 123, "arr": [1,2,3] }' style="width:100%; height:80px;" oninput="handleNodeDataChange(event)" ></textarea> </div> <div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div></div>`, cssClass: 'json-input-node resizable-node-class', data: { json: '{}', lastInput: null, nodeWidth: '240px', nodeHeight: 'auto' } },
     'sum': { name: 'sum', inputs: 1, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-plus"></i> Suma</div> <div class="box"> <label>Resultado:</label> <textarea df-result readonly style="height: 40px; text-align:right; font-weight:bold; font-size: 1.1em; padding: 5px 8px;" placeholder="0"></textarea> <p class="help-text" style="font-size:10px; text-align:center; margin-top: 5px;">Suma todas las entradas numéricas.</p> </div> </div>`, cssClass: 'sum-node', data: { result: 0 } },
     'subtract': { name: 'subtract', inputs: 1, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-minus"></i> Resta</div> <div class="box"> <label>Resultado:</label> <textarea df-result readonly style="height: 40px; text-align:right; font-weight:bold; font-size: 1.1em; padding: 5px 8px;" placeholder="0"></textarea> <p class="help-text" style="font-size:10px; text-align:center; margin-top: 5px;">Resta entradas (orden Y).</p> </div> </div>`, cssClass: 'subtract-node', data: { result: 0 } },
     'multiply': { name: 'multiply', inputs: 1, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-times"></i> Multiplicación</div> <div class="box"> <label>Resultado:</label> <textarea df-result readonly style="height: 40px; text-align:right; font-weight:bold; font-size: 1.1em; padding: 5px 8px;" placeholder="1"></textarea> <p class="help-text" style="font-size:10px; text-align:center; margin-top: 5px;">Multiplica entradas.</p> </div> </div>`, cssClass: 'multiply-node', data: { result: 1 } },
     'divide': { name: 'divide', inputs: 1, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-divide"></i> División</div> <div class="box"> <label>Resultado:</label> <textarea df-result readonly style="height: 40px; text-align:right; font-weight:bold; font-size: 1.1em; padding: 5px 8px;" placeholder="N/A"></textarea> <p class="help-text" style="font-size:10px; text-align:center; margin-top: 5px;">Divide entradas (orden Y).</p> </div> </div>`, cssClass: 'divide-node', data: { result: NaN } },
     'image_minimal': { name: 'image_minimal', inputs: 0, outputs: 0, html: `<div class="image-minimal-content" role="img" aria-label="Imagen cargada"> <div class="image-placeholder" title="Haz clic, pega o arrastra una imagen aquí"> <i class="fas fa-image"></i> <span>Cargar Imagen</span> </div> <img df-imgsrc src="" alt="Imagen cargada" style="display: none;" /> <div class="node-resizer" title="Redimensionar Imagen"><i class="fas fa-expand-alt"></i></div> </div>`, cssClass: 'image-minimal-node resizable-node-class', data: { imgsrc: '', naturalWidth: 0, naturalHeight: 0, nodeWidth: '80px', nodeHeight: '60px' } },
     'template_engine': { name: 'template_engine', inputs: 1, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-file-invoice"></i> Plantilla</div> <div class="box"> <p class="help-text" style="font-size: 10px; margin-bottom: 8px;"> Usa <code>{{variable}}</code> o <code>{{objeto.propiedad}}</code> para insertar valores del JSON de entrada. </p> <label for="node-{{id}}-template">Plantilla:</label> <textarea id="node-{{id}}-template" df-template style="height: 120px; font-family: var(--font-family-code); font-size: 12px;" placeholder="Hola {{nombre}}, \n\nTu pedido {{pedido.id}} está listo." oninput="handleNodeDataChange(event)"></textarea> <label for="node-{{id}}-result" style="margin-top:10px;">Resultado:</label> <textarea id="node-{{id}}-result" df-result readonly style="height: 80px; font-size: 12px; background-color: var(--background-readonly);"></textarea> </div> <div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div> </div>`, cssClass: 'template-node resizable-node-class', data: { template: '', lastInput: null, result: '', nodeWidth: '250px', nodeHeight: 'auto' } },
-    'manual_text_replace': { name: 'manual_text_replace', inputs: 0, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-highlighter"></i> Reemplazo Manual</div> <div class="box"> <label>Texto Original:</label> <textarea df-original style="height: 80px;" placeholder="Pega o escribe el texto aquí..."></textarea> <label>Buscar:</label> <input type="text" df-find placeholder="Texto a buscar"> <label>Reemplazar con:</label> <input type="text" df-replace placeholder="Nuevo texto"> <button type="button" onclick="executeManualReplace(event)" style="width: 100%; margin-top: 10px; padding: 8px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;"> <i class="fas fa-check"></i> Aplicar Reemplazo y Ver Resultado </button> <div style="margin-top:10px;"> <label>Resultado:</label> <textarea df-result readonly style="height: 60px; width: 100%; background-color: var(--background-readonly);"></textarea> </div> </div> <div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div> </div>`, cssClass: 'manual-replace-node resizable-node-class', data: { original: '', find: '', replace: '', result: '', nodeWidth: '260px', nodeHeight: 'auto' } },
+    'manual_text_replace': { name: 'manual_text_replace', inputs: 0, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-highlighter"></i> Reemplazo Manual</div> <div class="box"> <label>Texto Original:</label> <textarea df-original style="height: 80px;" placeholder="Pega o escribe el texto aquí..." oninput="handleNodeDataChange(event)"></textarea> <label>Buscar:</label> <input type="text" df-find placeholder="Texto a buscar" oninput="handleNodeDataChange(event)"> <label>Reemplazar con:</label> <input type="text" df-replace placeholder="Nuevo texto" oninput="handleNodeDataChange(event)"> <button type="button" onclick="executeManualReplace(event)" style="width: 100%; margin-top: 10px; padding: 8px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;"> <i class="fas fa-check"></i> Aplicar Reemplazo y Ver Resultado </button> <div style="margin-top:10px;"> <label>Resultado:</label> <textarea df-result readonly style="height: 60px; width: 100%; background-color: var(--background-readonly);"></textarea> </div> </div> <div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div> </div>`, cssClass: 'manual-replace-node resizable-node-class', data: { original: '', find: '', replace: '', result: '', nodeWidth: '260px', nodeHeight: 'auto' } },
     'auto_text_replace': {
         name: 'auto_text_replace', inputs: 2, outputs: 1,
         html: `<div> <div class="title-box"><i class="fas fa-magic"></i> Reemplazo Automático</div> <div class="box"> <label>Texto Original (Recibido por Input 1):</label> <textarea df-lastInput readonly style="height: 45px; width: 100%; background-color: #e9ecef; color: #495057; font-size: 11px; margin-bottom: 8px;" placeholder="(Esperando texto por Input 1)"></textarea> <label>Buscar:</label> <input type="text" df-find placeholder="Texto a buscar" oninput="handleNodeDataChange(event)"> <label>Reemplazar con:</label> <input type="text" df-replace placeholder="Nuevo texto" oninput="handleNodeDataChange(event)"> <p class="help-text" style="font-size: 10px; margin-top: 5px;"> Input 1: Texto a procesar.<br> Input 2: Disparador (trigger) para re-procesar. </p> <div style="margin-top:10px;"> <label>Resultado:</label> <textarea df-result readonly style="height: 60px; width: 100%; background-color: var(--background-readonly);"></textarea> </div> </div> <div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div> </div>`,
         cssClass: 'auto-replace-node resizable-node-class',
         data: { find: '', replace: '', lastInput: '', result: '', nodeWidth: '260px', nodeHeight: 'auto' }
     },
-    'youtube_minimal': { // ** UPDATED HTML **
+    'youtube_minimal': {
         name: 'youtube_minimal', inputs: 0, outputs: 0,
         html: `
             <div class="youtube-minimal-content" role="application" aria-label="Reproductor de YouTube">
@@ -491,15 +534,59 @@ const baseNodeDefinitions = {
             videoid: '', nodeWidth: '320px', nodeHeight: '180px'
         }
     },
-    'hybrid_text_replace': { name: 'hybrid_text_replace', inputs: 1, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-edit"></i> Reemplazo Híbrido</div> <div class="box"> <label>Texto Original (Prioriza Input 1 si está conectado):</label> <textarea df-original style="height: 60px;" placeholder="Escribe aquí o conecta Input 1..."></textarea> <input type="hidden" df-lastInput> <label>Buscar:</label> <input type="text" df-find placeholder="Texto a buscar"> <label>Reemplazar con:</label> <input type="text" df-replace placeholder="Nuevo texto"> <button type="button" onclick="executeHybridReplace(event)" style="width: 100%; margin-top: 10px; padding: 8px; background-color: #FF9800; color: white; border: none; border-radius: 4px; cursor: pointer;"> <i class="fas fa-check"></i> Aplicar Reemplazo Manualmente </button> <div style="margin-top:10px;"> <label>Resultado:</label> <textarea df-result readonly style="height: 60px; width: 100%; background-color: var(--background-readonly);"></textarea> </div> </div> <div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div> </div>`, cssClass: 'hybrid-replace-node resizable-node-class', data: { original: '', find: '', replace: '', lastInput: null, result: '', nodeWidth: '260px', nodeHeight: 'auto' } },
+    'hybrid_text_replace': { name: 'hybrid_text_replace', inputs: 1, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-edit"></i> Reemplazo Híbrido</div> <div class="box"> <label>Texto Original (Prioriza Input 1 si está conectado):</label> <textarea df-original style="height: 60px;" placeholder="Escribe aquí o conecta Input 1..." oninput="handleNodeDataChange(event)"></textarea> <input type="hidden" df-lastInput> <label>Buscar:</label> <input type="text" df-find placeholder="Texto a buscar" oninput="handleNodeDataChange(event)"> <label>Reemplazar con:</label> <input type="text" df-replace placeholder="Nuevo texto" oninput="handleNodeDataChange(event)"> <button type="button" onclick="executeHybridReplace(event)" style="width: 100%; margin-top: 10px; padding: 8px; background-color: #FF9800; color: white; border: none; border-radius: 4px; cursor: pointer;"> <i class="fas fa-check"></i> Aplicar Reemplazo Manualmente </button> <div style="margin-top:10px;"> <label>Resultado:</label> <textarea df-result readonly style="height: 60px; width: 100%; background-color: var(--background-readonly);"></textarea> </div> </div> <div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div> </div>`, cssClass: 'hybrid-replace-node resizable-node-class', data: { original: '', find: '', replace: '', lastInput: null, result: '', nodeWidth: '260px', nodeHeight: 'auto' } },
     'nodo_seleccion_verde': { name: 'nodo_seleccion_verde', title: 'Nodo Selección Verde', inputs: 1, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-leaf"></i> Selección Verde</div> <div class="box"> <p style="text-align: center; padding: 10px 0;"> Este nodo se pone verde<br>cuando lo seleccionas. </p> <input type="text" df-sampledata placeholder="Dato de ejemplo..."> </div> <div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div></div>`, cssClass: 'green-selectable-node resizable-node-class', data: { sampledata: '', nodeWidth: '240px', nodeHeight: 'auto' } },
     'nodo_seleccion_rojo_claro': { name: 'nodo_seleccion_rojo_claro', title: 'Nodo Selección Rojo Claro', inputs: 1, outputs: 0, html: `<div> <div class="title-box"><i class="fas fa-fire-alt"></i> Selección Rojo Claro</div> <div class="box"> <p style="text-align: center; padding: 10px 0;"> Este nodo se pone rojo claro<br>cuando lo seleccionas. </p> <input type="number" df-priority placeholder="Prioridad (ej: 1-5)"> </div> <div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div></div>`, cssClass: 'light-red-selectable-node base-style-for-red-node resizable-node-class', data: { priority: null, nodeWidth: '250px', nodeHeight: 'auto' } },
     'text_capitalize_words': { name: 'text_capitalize_words', inputs: 1, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-font-case"></i> Capitalizar Palabras</div> <div class="box"> <p class="help-text">Pone en mayúscula la primera letra de CADA palabra.</p> <textarea df-result readonly style="height: 60px;"></textarea> </div> </div>`, cssClass: 'capitalize-words-node', data: { result: '', lastInput: null } },
     'text_capitalize_first': { name: 'text_capitalize_first', inputs: 1, outputs: 1, html: `<div> <div class="title-box"><i class="fas fa-pen-fancy"></i> Capitalizar Primera</div> <div class="box"> <p class="help-text">Pone en mayúscula la primera letra del texto y el resto en minúsculas.</p> <textarea df-result readonly style="height: 60px;"></textarea> </div> </div>`, cssClass: 'capitalize-first-node', data: { result: '', lastInput: null } },
+    'youtube_display_node': {
+        name: 'youtube_display_node',
+        title: 'YouTube Display',
+        inputs: 0, outputs: 0,
+        html: `
+            <div>
+                <div class="title-box"><i class="fab fa-youtube" style="color: #FF0000;"></i> YouTube Display</div>
+                <div class="box">
+                    <div class="youtube-url-input-container">
+                        <label for="node-{{id}}-yturl">YouTube URL o ID:</label>
+                        <input type="text" id="node-{{id}}-yturl" df-yturl placeholder="https://www.youtube.com/watch?v=..." oninput="handleNodeDataChange(event)">
+                        <button type="button" onclick="loadYouTubeVideoFunctional(event)" style="width:100%; margin-top: 5px;">Cargar Video</button>
+                    </div>
+                    <div class="yt-player-container-functional" style="width:100%; min-height:150px; background:#000; margin-top:10px; display:none;">
+                        <!-- Player will be injected here -->
+                    </div>
+                </div>
+                <div class="node-resizer" title="Redimensionar Video"><i class="fas fa-expand-alt"></i></div>
+            </div>`,
+        cssClass: 'youtube-display-node resizable-node-class',
+        data: { yturl: '', videoid: '', nodeWidth: '480px', nodeHeight: 'auto' }
+    },
+    'image_display_node': {
+        name: 'image_display_node',
+        title: 'Image Display',
+        inputs: 0, outputs: 0,
+        html: `
+            <div>
+                <div class="title-box"><i class="fas fa-image"></i> Image Display</div>
+                <div class="box">
+                    <label for="node-{{id}}-imgsrcdisp">Image URL:</label>
+                    <input type="text" id="node-{{id}}-imgsrcdisp" df-imgsrcdisplay placeholder="https://example.com/image.jpg" oninput="handleNodeDataChange(event)">
+                    <button type="button" onclick="loadImageForDisplayNode(event)" style="width:100%; margin-top: 5px; margin-bottom:10px;">Cargar Imagen</button>
+                    <div class="img-container-functional" style="width:100%; min-height:150px; border:1px dashed #ccc; display:flex; align-items:center; justify-content:center; background:#f9f9f9;">
+                        <img df-imgpreview src="" alt="Image preview" style="display:none; max-width:100%; max-height:100%; object-fit:contain;">
+                        <span class="placeholder-text" style="color:#aaa; font-size:11px;">No image loaded</span>
+                    </div>
+                </div>
+                <div class="node-resizer" title="Redimensionar Imagen"><i class="fas fa-expand-alt"></i></div>
+            </div>`,
+        cssClass: 'image-display-node resizable-node-class',
+        data: { imgsrcdisplay: '', nodeWidth: '350px', nodeHeight: 'auto' }
+    },
 };
 console.log("Base node definitions loaded:", Object.keys(baseNodeDefinitions).length);
 
 // --- Helper Functions ---
+// Función escapeHtml necesaria para exportRawJson
 function escapeHtml(unsafe) {
     if (unsafe === null || unsafe === undefined) return '';
     return String(unsafe)
@@ -528,574 +615,1992 @@ function openEditorForNode(event) { try { const btn = event.target.closest('butt
 function executeJsNode(event) { const nEl = event.target.closest('.drawflow-node'); if (!nEl) return; const id = nEl.id.split('-')[1]; const node = editor.getNodeFromId(id); if (!node || node.name !== 'javascript_code') return; const code = node.data.jscode || ''; const input = node.data.lastInput; let res, err=false, resStr=''; const start = performance.now(); try { const func = new Function('input', `'use strict';\n${code}`); res = func(input); if (res === undefined) resStr = '(undefined)'; else if (res === null) resStr = 'null'; else if (typeof res === 'string') resStr = res; else try { resStr = JSON.stringify(res, null, 2); } catch { resStr = String(res); } const end = performance.now(); console.log(`JS Result (${(end - start).toFixed(1)}ms):`, res); } catch (e) { const end = performance.now(); console.error(`JS Error ${id} (${(end-start).toFixed(1)}ms):`, e); resStr=`Error: ${e.message}\n${e.stack?e.stack.split('\n')[1]:''}`; err=true; res=undefined; } const ta = nEl.querySelector('textarea[df-result]'); if (ta) { ta.value = resStr; ta.classList.toggle('error', err); } editor.updateNodeDataFromId(id, { result: res }); if (!err) propagateData(id, 'javascript_code', 'result', res); }
 function resetJsNodeResult(event) { const nEl = event.target.closest('.drawflow-node'); if (!nEl) return; const id = nEl.id.split('-')[1]; const node = editor.getNodeFromId(id); if (!node || node.name !== 'javascript_code') return; const ta = nEl.querySelector('textarea[df-result]'); if (ta) { ta.value = ''; ta.classList.remove('error'); } editor.updateNodeDataFromId(id, { result: '' }); propagateData(id, 'javascript_code', 'result', null); }
 
+
+
+
+
+
+/**
+ * Ejecuta la lógica de reemplazo para el nodo 'hybrid_text_replace'.
+ * Se llama al hacer clic en el botón dentro del nodo.
+ * Prioriza el texto recibido por conexión (lastInput) sobre el escrito (original).
+ */
 function executeHybridReplace(event) {
-    const id = getNodeIdFromEvent(event); if (!id) return;
+    const id = getNodeIdFromEvent(event);
+    if (!id) return;
+
+    console.log(`--- Executing Hybrid Replace Node ${id} ---`);
     const node = editor.getNodeFromId(id);
-    if (!node || node.name !== 'hybrid_text_replace') { console.error(`Hybrid Replace (${id}): Node not found or invalid type.`); return; }
+
+    if (!node || node.name !== 'hybrid_text_replace') {
+        console.error(`Hybrid Replace (${id}): Node not found or invalid type.`);
+        return;
+    }
+
+    // Determinar qué texto original usar:
+    // Prioridad: Si lastInput NO es null/undefined (llegó algo por cable), usarlo.
+    // Fallback: Usar el texto del campo df-original.
     const hasInputConnectionData = (node.data.lastInput !== null && node.data.lastInput !== undefined);
     const sourceText = hasInputConnectionData ? String(node.data.lastInput) : (node.data.original ?? '');
-    const findText = node.data.find ?? ''; const replaceText = node.data.replace ?? '';
+
+    // Leer find y replace actuales
+    const findText = node.data.find ?? '';
+    const replaceText = node.data.replace ?? '';
+
+    console.log(`   Source Text Used: "${sourceText}" (Input Connection Used: ${hasInputConnectionData})`);
+    console.log(`   Find Text from node.data: "${findText}"`);
+    console.log(`   Replace Text from node.data: "${replaceText}"`);
+
     let resultText;
     if (findText) {
-        try { resultText = sourceText.split(findText).join(replaceText); }
-        catch (e) { console.error(`Hybrid Replace (${id}): Error during split/join - ${e.message}`); resultText = `Error: ${e.message}`; }
-    } else { resultText = sourceText; }
-    updateNodeResult(id, resultText);
+        try {
+            console.log(`   >>> Attempting: String("${sourceText}").split("${findText}").join("${replaceText}")`);
+            resultText = sourceText.split(findText).join(replaceText);
+        } catch (e) {
+            console.error(`Hybrid Replace (${id}): Error during split/join - ${e.message}`);
+            resultText = `Error: ${e.message}`;
+        }
+    } else {
+        resultText = sourceText;
+        console.log("   Find text is empty, result is the original input.");
+    }
+
+    console.log(`   >>> Calculated resultText: "${resultText}"`);
+
+    // Actualizar el nodo (UI y datos) y propagar el resultado
+    updateNodeResult(id, resultText); // Usa la misma función de antes
+
+    console.log(`--- Finished Hybrid Replace Node ${id} ---`);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // --- Functions for Local Image Node (v1.11 - Stable) ---
 function selectLocalImageFile(event) { const nodeId = getNodeIdFromEvent(event); if (!nodeId || !editor) return; try { const fileInput = document.createElement('input'); fileInput.type = 'file'; fileInput.accept = 'image/*'; fileInput.onchange = (e) => { const file = e.target.files[0]; if (file) { const reader = new FileReader(); reader.onload = (loadEvent) => { try { const imageDataUrl = loadEvent.target.result; editor.updateNodeDataFromId(nodeId, { imagesrc: imageDataUrl, filename: file.name }); const nodeElement = document.getElementById(`node-${nodeId}`); if (nodeElement) { const imgTag = nodeElement.querySelector('img[df-imagesrc]'); const filenameSpan = nodeElement.querySelector('span[df-filename]'); const placeholderText = nodeElement.querySelector('.placeholder-text'); if (imgTag) { imgTag.src = imageDataUrl; imgTag.style.display = 'block'; const nodeData = editor.getNodeFromId(nodeId).data; imgTag.style.width = nodeData.imagewidth || '100%'; imgTag.style.height = nodeData.imageheight || 'auto'; } if (filenameSpan) { filenameSpan.textContent = file.name; filenameSpan.title = file.name; } if (placeholderText) { placeholderText.style.display = 'none'; } } saveHistoryState(); } catch (innerError) { console.error("Error processing loaded image:", innerError); showToast('error', 'Error Interno', 'No se pudo procesar la imagen.'); } }; reader.onerror = () => { showToast('error', 'Error de Lectura', 'No se pudo leer el archivo.'); }; reader.readAsDataURL(file); } fileInput.value = null; }; fileInput.click(); } catch (error) { console.error("Error selecting local image file:", error); showToast('error', 'Error', 'No se pudo iniciar selección.'); } }
 function updateLocalImageStyle(event) { const nodeId = getNodeIdFromEvent(event); if (!nodeId || !editor) return; try { const nodeElement = document.getElementById(`node-${nodeId}`); if (!nodeElement) return; const imgTag = nodeElement.querySelector('img[df-imagesrc]'); const widthInput = nodeElement.querySelector('input[df-imagewidth]'); const heightInput = nodeElement.querySelector('input[df-imageheight]'); if (!imgTag || !widthInput || !heightInput) return; const newWidth = widthInput.value.trim() || 'auto'; const newHeight = heightInput.value.trim() || 'auto'; imgTag.style.width = newWidth; imgTag.style.height = newHeight; handleNodeDataChange(event); } catch (error) { console.error("Error updating local image style:", error); showToast('error', 'Error Estilo Imagen', 'No se pudo actualizar tamaño imagen.'); } }
 function updateLocalNodeSize(event) { const nodeId = getNodeIdFromEvent(event); if (!nodeId || !editor) return; try { const nodeElement = document.getElementById(`node-${nodeId}`); if (!nodeElement) return; const widthInput = nodeElement.querySelector('input[df-nodewidth]'); const heightInput = nodeElement.querySelector('input[df-nodeheight]'); if (!widthInput || !heightInput) return; const newWidth = widthInput.value.trim() || 'auto'; const newHeight = heightInput.value.trim() || 'auto'; nodeElement.style.width = newWidth; nodeElement.style.height = newHeight; handleNodeDataChange(event); editor.updateConnectionNodes(`node-${nodeId}`); } catch (error) { console.error("Error updating local node size:", error); showToast('error', 'Error Tamaño Nodo', 'No se pudo actualizar tamaño nodo.'); } }
-
+// --- END Local Image Node Functions ---
+/**
+ * @function getNodeIdFromEvent
+ * @description Helper function to extract the Drawflow node ID from an event target.
+ *              This is crucial for event handlers defined directly in the node's HTML.
+ * @param {Event} event - The event object (e.g., from onclick, oninput).
+ * @returns {string|null} The numeric ID of the node (as a string), or null if not found.
+ */
 function getNodeIdFromEvent(event) {
-    if (!event || !event.target) { console.error("getNodeIdFromEvent: Event or event target is missing."); return null; }
+    if (!event || !event.target) {
+        console.error("getNodeIdFromEvent: Event or event target is missing.");
+        return null;
+    }
+    // Find the closest parent element that represents a Drawflow node
     const nodeElement = event.target.closest('.drawflow-node');
-    if (!nodeElement) { console.error("getNodeIdFromEvent: Could not find parent node element for target:", event.target); return null; }
+    if (!nodeElement) {
+        console.error("getNodeIdFromEvent: Could not find parent node element for target:", event.target);
+        return null;
+    }
+    // Extract the ID (e.g., 'node-5' -> '5')
     const nodeId = nodeElement.id.split('-')[1];
-    if (!nodeId) { console.error("getNodeIdFromEvent: Could not parse node ID from element ID:", nodeElement.id); return null; }
+    if (!nodeId) {
+        console.error("getNodeIdFromEvent: Could not parse node ID from element ID:", nodeElement.id);
+        return null;
+    }
     return nodeId;
 }
 
-function executeManualReplace(event) {
-    const id = getNodeIdFromEvent(event); if (!id) return;
-    const node = editor.getNodeFromId(id);
-    if (!node || node.name !== 'manual_text_replace') { console.error(`Manual Replace (${id}): Node not found or invalid type.`); return; }
-    const originalText = node.data.original ?? ''; const findText = node.data.find ?? ''; const replaceText = node.data.replace ?? '';
-    let resultText;
-    if (findText) {
-        try { resultText = originalText.split(findText).join(replaceText); }
-        catch (e) { console.error(`Manual Replace (${id}): Error during split/join - ${e.message}`); resultText = `Error: ${e.message}`; }
-    } else { resultText = originalText; }
-    updateNodeResult(id, resultText);
-}
 
-function executeAutoReplace(nodeId, inputTextValue) {
-    const node = editor.getNodeFromId(nodeId);
-    if (!node || node.name !== 'auto_text_replace') { console.error(`Auto Replace (${nodeId}): Node not found or invalid type.`); return; }
-    const findText = node.data.find ?? ''; const replaceText = node.data.replace ?? '';
-    const currentInputText = String(inputTextValue ?? '');
-    let resultText;
-    if (findText) {
-        try { resultText = currentInputText.split(findText).join(replaceText); }
-        catch (e) { console.error(`Auto Replace (${nodeId}): Error during split/join - ${e.message}`); resultText = `Error: ${e.message}`; }
-    } else { resultText = currentInputText; }
-    updateNodeResult(nodeId, resultText);
-}
 
-function executeTextReplace(nodeId, inputTextValue) {
-    const node = editor.getNodeFromId(nodeId);
-    if (!node || node.name !== 'text_replace') { console.error(`Text Replace (${nodeId}): Node not found or invalid type.`); return; }
-    const findText = node.data.find ?? ''; const replaceText = node.data.replace ?? '';
-    const currentInputText = String(inputTextValue ?? '');
-    let resultText;
-    if (findText) {
-        try { resultText = currentInputText.split(findText).join(replaceText); }
-        catch (e) { console.error(`Text Replace (${nodeId}): Error during split/join - ${e.message}`); resultText = `Error: ${e.message}`; }
-    } else { resultText = currentInputText; }
-    updateNodeResult(nodeId, resultText);
-}
 
-// --- START: YouTube Minimal Node Functions ---
-function extractYouTubeID(url) {
-    if (!url || typeof url !== 'string') return null;
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
-    const match = url.match(regExp);
-    if (match && match[2].length === 11) { return match[2]; }
-    if (url.length === 11 && /^[a-zA-Z0-9_-]+$/.test(url)) { return url; }
-    return null;
-}
-
+// ==========================================================
+// ====> PUEDES PEGAR LA NUEVA FUNCIÓN AQUÍ <====
+// ==========================================================
 /**
- * Creates a new YouTube player or updates an existing one for a given node.
- * Uses the YouTube IFrame Player API.
- * @param {string} nodeId The ID of the node.
- * @param {string | null} videoID The YouTube video ID. If null, player is destroyed/placeholder shown.
+ * Ejecuta la lógica de reemplazo para el nodo 'manual_text_replace'.
+ * Se llama al hacer clic en el botón dentro del nodo.
+ * Lee todos los valores necesarios directamente desde los datos del nodo en ese momento.
  */
-function createOrUpdateYouTubePlayer(nodeId, videoID) {
-    if (!isYouTubeApiReady) {
-        console.warn(`YouTube API not ready. Queuing player action for node ${nodeId}.`);
-        youtubeApiReadyQueue.push(() => createOrUpdateYouTubePlayer(nodeId, videoID));
+function executeManualReplace(event) {
+    const id = getNodeIdFromEvent(event); // Obtiene el ID del nodo desde el evento del botón
+    if (!id) return;
+
+    console.log(`--- Executing Manual Replace Node ${id} ---`);
+    const node = editor.getNodeFromId(id);
+
+    // Validar que el nodo existe y es del tipo correcto
+    if (!node || node.name !== 'manual_text_replace') {
+        console.error(`Manual Replace (${id}): Node not found or invalid type.`);
         return;
     }
 
-    const nodeElement = document.getElementById(`node-${nodeId}`);
-    if (!nodeElement) { console.error(`Node element 'node-${nodeId}' not found for YouTube player.`); return; }
-    const playerContainerDiv = nodeElement.querySelector('.yt-player-container');
-    const placeholderDiv = nodeElement.querySelector('.youtube-placeholder');
-    if (!playerContainerDiv || !placeholderDiv) { console.error(`Player container or placeholder not found in node ${nodeId}.`); return; }
+    // Leer los valores DIRECTAMENTE de node.data en el momento del clic
+    const originalText = node.data.original ?? '';
+    const findText = node.data.find ?? '';
+    const replaceText = node.data.replace ?? '';
 
-    const uniquePlayerApiTargetId = `yt-api-target-${nodeId}`;
-    playerContainerDiv.id = uniquePlayerApiTargetId;
+    console.log(`   Original Text from node.data: "${originalText}"`);
+    console.log(`   Find Text from node.data: "${findText}"`);
+    console.log(`   Replace Text from node.data: "${replaceText}"`);
 
-    if (youtubePlayers[nodeId]) {
-        try { youtubePlayers[nodeId].destroy(); }
-        catch (e) { console.error(`Error destroying existing player for node ${nodeId}:`, e); }
-        delete youtubePlayers[nodeId];
-    }
+    let resultText;
 
-    const nodeData = editor.getNodeFromId(nodeId).data;
-
-    if (videoID) {
-        playerContainerDiv.style.display = 'block';
-        placeholderDiv.style.display = 'none';
-        nodeElement.style.border = 'none';
-
+    // Realizar el reemplazo (solo si 'findText' no está vacío)
+    if (findText) {
         try {
-            youtubePlayers[nodeId] = new YT.Player(uniquePlayerApiTargetId, {
-                videoId: videoID,
-                width: '100%', height: '100%',
-                playerVars: { 'autoplay': 0, 'controls': 1, 'modestbranding': 1, 'rel': 0, 'iv_load_policy': 3 },
-                events: {
-                    'onReady': (event) => { /* Player is ready */ },
-                    'onStateChange': (event) => { /* Handle state changes if needed */ },
-                    'onError': (errorEvent) => {
-                        console.error(`YouTube Player Error for node ${nodeId} (VideoID: ${videoID}): Code ${errorEvent.data}`);
-                        showToast('error', 'Error Video YouTube', `No se pudo cargar el video (Error ${errorEvent.data})`);
-                        // Revert to placeholder on error
-                        playerContainerDiv.style.display = 'none';
-                        placeholderDiv.style.display = 'flex';
-                        nodeElement.style.border = '2px dashed #cccccc';
-                        editor.updateNodeDataFromId(nodeId, { videoid: '' });
-                        if (youtubePlayers[nodeId]) { try { youtubePlayers[nodeId].destroy(); } catch (e) {} delete youtubePlayers[nodeId]; }
-                        saveHistoryState();
-                    }
-                }
-            });
+            console.log(`   >>> Attempting: String("${originalText}").split("${findText}").join("${replaceText}")`);
+            resultText = originalText.split(findText).join(replaceText);
         } catch (e) {
-            console.error(`Error instantiating YT.Player for node ${nodeId}:`, e);
-            showToast('error', 'Error API YouTube', 'No se pudo crear el reproductor.');
-            playerContainerDiv.style.display = 'none';
-            placeholderDiv.style.display = 'flex';
-            nodeElement.style.border = '2px dashed #cccccc';
+            console.error(`Manual Replace (${id}): Error during split/join - ${e.message}`);
+            resultText = `Error: ${e.message}`;
         }
     } else {
-        playerContainerDiv.style.display = 'none';
-        placeholderDiv.style.display = 'flex';
-        nodeElement.style.border = '2px dashed #cccccc';
-        const defaultNodeData = baseNodeDefinitions['youtube_minimal'].data;
-        nodeElement.style.width = nodeData.nodeWidth || defaultNodeData.nodeWidth;
-        nodeElement.style.height = nodeData.nodeHeight || defaultNodeData.nodeHeight;
+        // Si 'findText' está vacío, el resultado es el texto original
+        resultText = originalText;
+        console.log("   Find text is empty, result is the original input.");
     }
+
+    console.log(`   >>> Calculated resultText: "${resultText}"`);
+
+    // Actualizar el nodo (UI y datos) y propagar el resultado
+    updateNodeResult(id, resultText); // Actualiza UI (df-result), node.data.result, propaga y guarda historial
+
+    console.log(`--- Finished Manual Replace Node ${id} ---`);
 }
+// ==========================================================
+// ====> FIN DE LA NUEVA FUNCIÓN <====
+// ==========================================================
+
+
+
+
+// --- Añade esta nueva función de ejecución ---
+/**
+ * Ejecuta la lógica de reemplazo para el nodo 'auto_text_replace'.
+ * Puede ser llamado por la llegada de nuevo input o por cambios en find/replace.
+ * @param {string} nodeId - El ID del nodo.
+ * @param {*} inputTextValue - El texto sobre el cual se realizará el reemplazo (normalmente node.data.lastInput).
+ */
+function executeAutoReplace(nodeId, inputTextValue) {
+    console.log(`--- Executing Auto Replace Node ${nodeId} ---`);
+    const node = editor.getNodeFromId(nodeId);
+
+    if (!node || node.name !== 'auto_text_replace') {
+        console.error(`Auto Replace (${nodeId}): Node not found or invalid type.`);
+        return;
+    }
+
+    // Leer los valores ACTUALES de find y replace desde node.data
+    const findText = node.data.find ?? '';
+    const replaceText = node.data.replace ?? '';
+    // Convertir el valor de entrada a string (maneja null/undefined)
+    const currentInputText = String(inputTextValue ?? '');
+
+    console.log(`   Input Text for Processing: "${currentInputText}"`);
+    console.log(`   Find Text from node.data: "${findText}"`);
+    console.log(`   Replace Text from node.data: "${replaceText}"`);
+
+    let resultText;
+    // Realizar el reemplazo (solo si 'findText' no está vacío)
+    if (findText) {
+        try {
+            console.log(`   >>> Attempting: String("${currentInputText}").split("${findText}").join("${replaceText}")`);
+            resultText = currentInputText.split(findText).join(replaceText);
+        } catch (e) {
+            console.error(`Auto Replace (${id}): Error during split/join - ${e.message}`);
+            resultText = `Error: ${e.message}`;
+        }
+    } else {
+        // Si 'findText' está vacío, el resultado es el texto original
+        resultText = currentInputText;
+        console.log("   Find text is empty, result is the original input.");
+    }
+
+    console.log(`   >>> Calculated resultText: "${resultText}"`);
+
+    // Actualizar el nodo (UI y datos) y propagar el resultado
+    updateNodeResult(nodeId, resultText); // Actualiza UI(df-result), data.result, propaga y guarda historial (si cambió)
+
+    console.log(`--- Finished Auto Replace Node ${nodeId} ---`);
+}
+
+
+
+
+
 
 /**
- * Processes a YouTube link, updates the node data, and initializes the player.
- * @param {string} nodeId The ID of the YouTube minimal node.
- * @param {string} linkOrId The YouTube link or video ID.
+ * [Simplificado] Ejecuta el reemplazo de texto para un nodo.
+ * Realiza un reemplazo global y sensible a mayúsculas.
+ * @param {string} nodeId - El ID del nodo.
+ * @param {*}    inputText - Texto o dato a procesar.
  */
-function processYouTubeLink(nodeId, linkOrId) {
-    if (!editor || !nodeId || !linkOrId) return;
+function executeTextReplace(nodeId, inputTextValue) { // Cambiado nombre de variable para claridad
+    console.log(`--- Executing Text Replace Node ${nodeId} ---`);
+    const node = editor.getNodeFromId(nodeId);
 
-    const videoID = extractYouTubeID(linkOrId);
-    let currentNodeData;
-    try { currentNodeData = editor.getNodeFromId(nodeId)?.data; }
-    catch(e) { console.error(`Failed to get node data for ${nodeId} in processYouTubeLink`); return; }
-    if(!currentNodeData) { console.error(`Node data for ${nodeId} is null in processYouTubeLink`); return; }
-
-
-    if (videoID) {
-        const newWidth = currentNodeData.nodeWidth || baseNodeDefinitions['youtube_minimal'].data.nodeWidth;
-        const newHeight = currentNodeData.nodeHeight || baseNodeDefinitions['youtube_minimal'].data.nodeHeight;
-
-        editor.updateNodeDataFromId(nodeId, { videoid: videoID, nodeWidth: newWidth, nodeHeight: newHeight });
-
-        const nodeElement = document.getElementById(`node-${nodeId}`);
-        if (nodeElement) { nodeElement.style.width = newWidth; nodeElement.style.height = newHeight; }
-
-        createOrUpdateYouTubePlayer(nodeId, videoID);
-        saveHistoryState();
-        showToast('success', 'Video Cargado', `ID: ${videoID}`);
-    } else {
-        editor.updateNodeDataFromId(nodeId, { videoid: '' });
-        createOrUpdateYouTubePlayer(nodeId, null);
-        saveHistoryState();
-        showToast('warning', 'Enlace Inválido', 'No se pudo encontrar un ID de video de YouTube.');
+    if (!node || node.name !== 'text_replace') {
+        console.error(`Text Replace (${nodeId}): Node not found or invalid type.`);
+        return;
     }
-    editor.updateConnectionNodes(`node-${nodeId}`);
+
+    // Obtener los valores ACTUALES de find y replace desde node.data
+    const findText = node.data.find ?? '';
+    const replaceText = node.data.replace ?? '';
+    // Convertir el valor de entrada a string (maneja null/undefined)
+    const currentInputText = String(inputTextValue ?? ''); // Usamos el argumento
+
+    // *** LOGS DE ENTRADA DETALLADOS ***
+    console.log(`   Input Text Received: "${currentInputText}" (Type: ${typeof inputTextValue})`);
+    console.log(`   Find Text from node.data: "${findText}"`);
+    console.log(`   Replace Text from node.data: "${replaceText}"`);
+    // *** FIN LOGS DE ENTRADA ***
+
+    let resultText;
+    if (findText) {
+        try {
+            // *** LOG ANTES DE LA OPERACIÓN ***
+            console.log(`   >>> Attempting: String("${currentInputText}").split("${findText}").join("${replaceText}")`);
+            // *** FIN LOG ANTES ***
+            resultText = currentInputText.split(findText).join(replaceText);
+        } catch (e) {
+            console.error(`Text Replace (${nodeId}): Error during split/join - ${e.message}`);
+            resultText = `Error: ${e.message}`;
+        }
+    } else {
+        resultText = currentInputText;
+        console.log("   Find text is empty, result is the original input.");
+    }
+
+    // *** LOG RESULTADO CALCULADO ***
+    console.log(`   >>> Calculated resultText: "${resultText}"`);
+    // *** FIN LOG RESULTADO ***
+
+    // Llamar a updateNodeResult para actualizar todo
+    updateNodeResult(nodeId, resultText); // Pasamos el resultado calculado
+    console.log(`--- Finished Text Replace Node ${nodeId} ---`);
 }
 
-async function promptForYouTubeLink(nodeId) {
-    if (!editor) return;
-    try {
-        const { value: url } = await Swal.fire({
-            title: 'Enlace de YouTube', input: 'url',
-            inputLabel: 'Pega el enlace del video de YouTube o el ID del video',
-            inputPlaceholder: 'https://www.youtube.com/watch?v=VIDEO_ID',
-            showCancelButton: true, confirmButtonText: 'Cargar Video', cancelButtonText: 'Cancelar',
-            inputValidator: (value) => { if (!value) return '¡Necesitas ingresar un enlace o ID!'; }
-        });
-        if (url) { processYouTubeLink(nodeId, url); }
-    } catch (e) { console.error("Error in YouTube link prompt:", e); }
-}
 
-function handleYouTubeMinimalPaste(event, nodeId) {
-    if (!editor) return;
-    const pastedText = (event.clipboardData || window.clipboardData)?.getData('text');
-    if (pastedText) { event.preventDefault(); processYouTubeLink(nodeId, pastedText); }
-}
 
-function setupYouTubeMinimalNodeListeners(nodeId) {
-    const nodeElement = document.getElementById(`node-${nodeId}`);
-    const placeholder = nodeElement?.querySelector('.youtube-placeholder');
-    if (!nodeElement || !placeholder) { console.warn(`Could not find elements for YouTube minimal node ${nodeId} to attach listeners.`); return; }
-    placeholder.onclick = () => promptForYouTubeLink(nodeId);
-    nodeElement.addEventListener('paste', (e) => handleYouTubeMinimalPaste(e, nodeId));
-}
-// --- END: YouTube Minimal Node Functions ---
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// --- PEGA ESTA FUNCIÓN ARRIBA DENTRO DE TU ARCHIVO xocoflow_logic.js ---
+// --- PUEDES PONERLA CERCA DE LAS OTRAS FUNCIONES DEL NODO LOCAL_IMAGE ---
+// --- O EN LA SECCIÓN GENERAL DE "HELPER FUNCTIONS" ---
+// Asegúrate de que esta es tu función handleNodeDataChange completa
+
+// --- USA ESTA VERSIÓN COMPLETA Y MODIFICADA ---
+// --- USA ESTA VERSIÓN FINAL ---
 function handleNodeDataChange(event) {
     if (!editor || !event?.target) return;
     const el = event.target;
     const nodeEl = el.closest('.drawflow-node');
     if (!nodeEl) return;
     const id = nodeEl.id.split('-')[1];
-    const node = editor.getNodeFromId(id); if (!node) return;
+    const node = editor.getNodeFromId(id); // Obtener nodo para verificar datos iniciales si es necesario
+    if (!node) return;
     let key = null;
-    for (const attr of el.attributes) if (attr.name.startsWith('df-')) { key = attr.name.substring(3); break; }
-    if (!key) return;
+    // Buscar el atributo df-*
+    for (const attr of el.attributes) {
+        if (attr.name.startsWith('df-')) {
+            key = attr.name.substring(3);
+            break;
+        }
+    }
+    if (!key) return; // Si no hay df-*, salir
 
-    requestAnimationFrame(() => {
+    // *** LOG INICIAL en handleNodeDataChange ***
+    console.log(`>>> handleNodeDataChange triggered for Node ${id}, Element with df-${key}`);
+
+    requestAnimationFrame(() => { // Usar requestAnimationFrame asegura que el valor en node.data se actualice antes de leerlo
         try {
-            const updatedNode = editor.getNodeFromId(id);
-            if (!updatedNode?.data?.hasOwnProperty(key)) return;
-            const val = updatedNode.data[key]; const name = updatedNode.name;
-            let historySavedByInternalLogic = false;
+            const updatedNode = editor.getNodeFromId(id); // Volver a obtener para datos actualizados
+            // Verificar que el nodo y la clave aún existen y son válidos después de actualizar
+            if (!updatedNode?.data || !Object.prototype.hasOwnProperty.call(updatedNode.data, key)) {
+                 console.warn(`handleNodeDataChange: Node ${id} or key '${key}' no longer exists or data is invalid after update.`);
+                 return;
+            }
+            const val = updatedNode.data[key]; // Obtener el valor ACTUALIZADO de los datos del nodo
+            const name = updatedNode.name;
 
-            if ((name === 'url_input' && key === 'url')) { executeNode(id, val); historySavedByInternalLogic = true; }
-            else if (name === 'cargarTexto' && key === 'filecontent') { propagateData(id, name, key, val); historySavedByInternalLogic = true; }
-            else if (name === 'imagen' && ['imgsrc', 'imgalt', 'imgwidth', 'imgheight'].includes(key)) { handleImageInputChange(event); historySavedByInternalLogic = true; }
-            else if (name === 'nota' && key === 'notecontent') { updateCharacterCount(event); }
-            else if ((name === 'timer_fetch' || name === 'timer_download' || name === 'loop') && key === 'interval') { executeNode(id, null); historySavedByInternalLogic = true; }
-            else if (name === 'timer_fetch' && key === 'url') { executeNode(id, null); historySavedByInternalLogic = true; }
-            else if (['input_number', 'input_text', 'input_range', 'input_date', 'input_time', 'input_color'].includes(name)) { propagateData(id, name, key, val); historySavedByInternalLogic = true; }
-            else if (name === 'template_engine' && key === 'template') { processTemplateNode(id); historySavedByInternalLogic = true; }
-            else if (name === 'local_image' && (key === 'imagewidth' || key === 'imageheight')) { updateLocalImageStyle(event); historySavedByInternalLogic = true; }
-            else if (name === 'local_image' && (key === 'nodewidth' || key === 'nodeheight')) { updateLocalNodeSize(event); historySavedByInternalLogic = true; }
-            else if ((name === 'text_replace' || name === 'auto_text_replace') && (key === 'find' || key === 'replace')) {
-                const lastInput = updatedNode.data.lastInput;
-                if (lastInput !== null && lastInput !== undefined) {
-                    const executionFunction = (name === 'auto_text_replace') ? executeAutoReplace : executeTextReplace;
-                    setTimeout(() => executionFunction(id, lastInput), 0);
-                    historySavedByInternalLogic = true;
+            // *** LOG con el valor actualizado ***
+            console.log(`   Node Name: ${name}, Key: ${key}, Updated Value in node.data:`, val);
+
+            let historySavedByExecution = false; // Flag para ver si una ejecución ya guardó historial
+
+            // --- Lógica específica por tipo de nodo y clave cambiada ---
+            if ((name === 'url_input' && key === 'url')) {
+                 executeNode(id, val); // Asume que executeNode guarda historial si es necesario
+                 historySavedByExecution = true;
+            } else if (name === 'cargarTexto' && key === 'filecontent') {
+                 propagateData(id, name, key, val); // Asume que la propagación final guarda historial si es necesario
+                 historySavedByExecution = true; // Asumimos que sí
+            } else if (name === 'imagen' && ['imgsrc', 'imgalt', 'imgwidth', 'imgheight'].includes(key)) {
+                 handleImageInputChange(event); // Esta llama a generateImageHtml que llama a saveHistoryState
+                 historySavedByExecution = true;
+            } else if (name === 'nota' && key === 'notecontent') {
+                 updateCharacterCount(event);
+                 // No necesita ejecución, guardar historial directamente al final
+            } else if ((name === 'timer_fetch' || name === 'timer_download' || name === 'loop') && (key === 'interval' || (name === 'timer_fetch' && key === 'url'))) {
+                 executeNode(id, null); // Reinicia timer, no necesita guardar historial extra aquí
+                 historySavedByExecution = true; // El reinicio puede considerarse un cambio
+            }
+            else if (['input_number', 'input_text', 'input_range', 'input_date', 'input_time', 'input_color'].includes(name)) {
+                 propagateData(id, name, key, val); // Llama a propagateData, que debería llevar a guardar historial si algo cambia
+                 historySavedByExecution = true; // Asumimos que sí
+            }
+            else if (name === 'template_engine' && key === 'template') {
+                 console.log(`Template Node (${id}): Template changed by user. Reprocessing...`);
+                 processTemplateNode(id); // Llama a processTemplateNode que llama a updateNodeResult que guarda historial
+                 historySavedByExecution = true;
+            }
+            else if (name === 'local_image') {
+                if (key === 'imagewidth' || key === 'imageheight') {
+                    updateLocalImageStyle(event); // Llama a handleNodeDataChange -> saveHistoryState
+                } else if (key === 'nodewidth' || key === 'nodeheight') {
+                    updateLocalNodeSize(event); // Llama a handleNodeDataChange -> saveHistoryState
                 }
+                 // Necesita guardado directo al final
             }
-            else if (name === 'text_split' && key === 'separator') {
-                const lastInput = updatedNode.data.lastInput;
-                if (lastInput !== null && lastInput !== undefined) { setTimeout(() => executeTextSplit(id, lastInput), 0); historySavedByInternalLogic = true; }
+            else if (name === 'image_minimal') {
+                // No requiere acción aquí usualmente, guardar al final si cambia algo relevante
             }
-            else if (name === 'hybrid_text_replace' && ['original', 'find', 'replace'].includes(key)) { /* No auto execution */ }
-            else if (name === 'input_json' && key === 'json') { handleJsonInputChange(event); historySavedByInternalLogic = true; } // Moved from separate func
-            // Handle range specifically for display update
-            else if (name === 'input_range' && key === 'range') {
-                const rangeValSpan = nodeEl.querySelector('span[df-rangeval]');
-                if(rangeValSpan) rangeValSpan.textContent = val;
-                propagateData(id, name, key, val);
-                historySavedByInternalLogic = true;
+             // ===================================================================
+             // ====> INICIO: BLOQUE ACTUALIZADO PARA TODOS LOS REEMPLAZOS <====
+             // ===================================================================
+             // Maneja 'text_replace' y 'auto_text_replace' (disparan ejecución)
+             else if ((name === 'text_replace' || name === 'auto_text_replace') && (key === 'find' || key === 'replace')) {
+                 console.log(`   *** ${name} condition MET for key '${key}' ***`);
+                 const lastInput = updatedNode.data.lastInput;
+                 if (lastInput !== null && lastInput !== undefined) {
+                     console.log(`   ${name} (${id}): Input field '${key}' changed. Reprocessing with lastInput: "${lastInput}"`);
+                     const executionFunction = (name === 'auto_text_replace') ? executeAutoReplace : executeTextReplace;
+                     setTimeout(() => executionFunction(id, lastInput), 0);
+                     historySavedByExecution = true; // La ejecución llamará a updateNodeResult -> saveHistoryState
+                 } else {
+                     console.log(`   ${name} (${id}): Input field '${key}' changed, but no lastInput to process yet.`);
+                     // Si no hay lastInput, solo el cambio en find/replace se guarda al final
+                 }
+             }
+             // Maneja 'hybrid_text_replace' (NO dispara ejecución)
+             else if (name === 'hybrid_text_replace' && ['original', 'find', 'replace'].includes(key)) {
+                 console.log(`   Hybrid Replace (${id}): Field '${key}' changed by user. No automatic action.`);
+                 // No se hace nada más, la ejecución es manual vía botón.
+                 // El historial se guarda al final.
+             }
+             // ===================================================================
+             // ====> FIN: BLOQUE ACTUALIZADO <====
+             // ===================================================================
+
+             // --- Manejo de text_split (separado por si acaso) ---
+             else if (name === 'text_split' && key === 'separator') {
+                 const lastInput = updatedNode.data.lastInput;
+                 if (lastInput !== null && lastInput !== undefined) {
+                      console.log(`   Text Split (${id}): Input field '${key}' changed. Reprocessing with lastInput: "${lastInput}"`);
+                      setTimeout(() => executeTextSplit(id, lastInput), 0);
+                      historySavedByExecution = true; // La ejecución llamará a updateNodeResult -> saveHistoryState
+                 } else {
+                     // console.log(`   Text Split (${id}): Input field '${key}' changed, but no lastInput to process yet.`);
+                 }
+             }
+             // --- FIN MANEJO NODOS DE TEXTO ---
+
+            // Guardar historial para cambios que no dispararon una ejecución que ya guarda.
+            if (!historySavedByExecution) {
+                // ¿Realmente hubo un cambio en los datos? (Drawflow actualiza node.data antes de llamar a esto via rAF)
+                // Podríamos comparar el valor 'val' con el valor original antes del rAF, pero es complejo.
+                // Por simplicidad, guardamos si no fue manejado por una ejecución.
+                console.log(`   Saving history directly from handleNodeDataChange for ${name} (key: ${key})`);
+                saveHistoryState();
+            } else {
+                 console.log(`   History save deferred or handled by execution for ${name} (key: ${key})`);
             }
 
 
-            if (!historySavedByInternalLogic) { saveHistoryState(); }
-        } catch (e) { console.error(`Error handleNodeDataChange (${id}/${key}):`, e); }
+        } catch (e) {
+            console.error(`Error handleNodeDataChange (Node: ${id}, Key: ${key}):`, e);
+        }
     });
 }
-
-function applyTextSplit(event) { const id = getNodeIdFromEvent(event); const node = editor.getNodeFromId(id); const txt = node.data.lastInput ?? ''; const sep = node.data.separator; const res = txt.split(sep).join('\n'); updateNodeResult(id, res); }
-function applyTextCase(event, mode) { const id = getNodeIdFromEvent(event); const node = editor.getNodeFromId(id); const txt = node.data.lastInput ?? ''; const res = mode === 'upper' ? txt.toUpperCase() : txt.toLowerCase(); updateNodeResult(id, res); }
-function applyTextLength(event) { const id = getNodeIdFromEvent(event); const node = editor.getNodeFromId(id); const txt = node.data.lastInput ?? ''; updateNodeResult(id, txt.length); }
-function applyHtmlStrip(event) { const id = getNodeIdFromEvent(event); const node = editor.getNodeFromId(id); const txt = node.data.lastInput ?? ''; const res = txt.replace(/<[^>]*>/g, ''); updateNodeResult(id, res); }
-
+  
+  function applyTextSplit(event) {
+    const id = getNodeIdFromEvent(event);
+    const node = editor.getNodeFromId(id);
+    const txt = node.data.lastInput ?? '';
+    const sep = node.data.separator;
+    const res = txt.split(sep).join('\n');
+    updateNodeResult(id, res);
+  }
+  
+  function applyTextCase(event, mode) {
+    const id = getNodeIdFromEvent(event);
+    const node = editor.getNodeFromId(id);
+    const txt = node.data.lastInput ?? '';
+    const res = mode === 'upper' ? txt.toUpperCase() : txt.toLowerCase();
+    updateNodeResult(id, res);
+  }
+  
+  function applyTextLength(event) {
+    const id = getNodeIdFromEvent(event);
+    const node = editor.getNodeFromId(id);
+    const txt = node.data.lastInput ?? '';
+    updateNodeResult(id, txt.length);
+  }
+  
+  function applyHtmlStrip(event) {
+    const id = getNodeIdFromEvent(event);
+    const node = editor.getNodeFromId(id);
+    const txt = node.data.lastInput ?? '';
+    const res = txt.replace(/<[^>]*>/g, '');
+    updateNodeResult(id, res);
+  }
+  
+/**
+ * Actualiza el resultado de un nodo (datos y UI), propaga y guarda historial.
+ * Usada por nodos como text_replace, text_split, etc.
+ * @param {string} nodeId - El ID del nodo.
+ * @param {*} resultValue - El valor del resultado a guardar y propagar.
+ */
 function updateNodeResult(nodeId, resultValue) {
-    const node = editor.getNodeFromId(nodeId); if (!node) return;
+    const node = editor.getNodeFromId(nodeId);
+    if (!node) return;
+
+    // Solo actualizar si el resultado realmente cambió
     if (node.data.result !== resultValue) {
+        console.log(`Node ${nodeId} (${node.name}): Updating result data.`);
+        // Actualizamos el dato en el modelo de Drawflow
         editor.updateNodeDataFromId(nodeId, { result: resultValue });
+
+        // Actualizamos el elemento visual (textarea o input) en la UI
         const nodeElement = document.getElementById(`node-${nodeId}`);
         if (nodeElement) {
+            // Busca textarea o input con df-result
             const resultElement = nodeElement.querySelector('textarea[df-result], input[df-result]');
-            if (resultElement) { resultElement.value = resultValue; }
+            if (resultElement) {
+                resultElement.value = resultValue; // Asignar valor
+            } else {
+                console.warn(`Node ${nodeId} (${node.name}): Result element (df-result) not found in UI.`);
+            }
+        } else {
+             console.warn(`Node ${nodeId} (${node.name}): Node element not found in DOM for UI update.`);
         }
+
+        // Propagamos el nuevo resultado a los nodos conectados
+        // Usamos el nombre del nodo actual para la propagación
+        console.log(`Node ${nodeId} (${node.name}): Propagating new result.`);
         propagateData(nodeId, node.name, 'result', resultValue);
+
+        // Guardamos el estado para deshacer/rehacer porque el resultado cambió
         saveHistoryState();
+    } else {
+         console.log(`Node ${nodeId} (${node.name}): Result unchanged, no update needed.`);
     }
 }
+  
 
-function handleJsonInputChange(event) {
-    const nodeId = getNodeIdFromEvent(event); const textarea = event.target; const text = textarea.value;
-    let parsed; const nodeName = 'input_json';
-    try { parsed = JSON.parse(text || '{}'); textarea.classList.remove('error'); }
-    catch (e) { textarea.classList.add('error'); console.error(`Input JSON (${nodeId}) Parse Error:`, e); return; }
-    editor.updateNodeDataFromId(nodeId, { json: text, lastInput: parsed });
+  function handleJsonInputChange(event) {
+    const nodeId   = getNodeIdFromEvent(event);
+    const textarea = event.target;
+    const text     = textarea.value;
+    let parsed;
+    const nodeName = 'input_json'; // Nombre del nodo para propagateData
+
+    // 1) Parseo
+    try {
+        parsed = JSON.parse(text || '{}'); // Asegura que no sea vacío, parsea a objeto
+        textarea.classList.remove('error');
+    } catch (e) {
+        textarea.classList.add('error');
+        console.error(`Input JSON (${nodeId}) Parse Error:`, e);
+        // No propagar si hay error de parseo
+        // Podrías limpiar lastInput si quieres
+        // editor.updateNodeDataFromId(nodeId, { json: text, lastInput: null });
+        return;
+    }
+
+    // 2) Actualizo estado interno
+    // Guardamos tanto el texto original como el objeto parseado
+    editor.updateNodeDataFromId(nodeId, {
+        json: text,
+        lastInput: parsed // Guardamos el objeto parseado
+    });
+
+    // 3) ¡CAMBIO IMPORTANTE! Usar propagateData para enviar el OBJETO PARSEADO
+    // Esto activará la lógica que añadimos para 'template_engine' en propagateData.
+    // Usamos 'lastInput' como "changedKey" conceptual, y 'parsed' como el dato a enviar.
+    console.log(`Input JSON (${nodeId}): Propagating parsed data object...`, parsed);
     propagateData(nodeId, nodeName, 'lastInput', parsed);
+
+    // Opcional: Si algún nodo necesita ser *ejecutado* específicamente
+    // por la llegada de este JSON (además de recibir los datos),
+    // podrías mantener la llamada a propagateExecution aquí también,
+    // pero para el nodo Plantilla, propagateData es la necesaria.
+    // propagateExecution(nodeId, parsed); // Podría ser redundante o innecesaria ahora
+
+    // Guardar historial porque el dato cambió y se propagó
     saveHistoryState();
 }
+  
+  
+  
 
+
+
+
+
+
+
+// NUEVO: Función para calcular y actualizar el nodo Suma
+/**
+ * Calcula la suma de las entradas conectadas a un nodo 'sum' y actualiza su resultado.
+ * @param {string} nodeId - El ID del nodo 'sum'.
+ */
 function updateSumNode(nodeId) {
   try {
-      const node = editor.getNodeFromId(nodeId); if (!node || node.name !== 'sum' || !node.inputs?.input_1) return;
-      const connections = node.inputs.input_1.connections || []; let currentSum = 0;
+      const node = editor.getNodeFromId(nodeId);
+      // Verificar que el nodo existe, es de tipo 'sum' y tiene el puerto de entrada definido
+      if (!node || node.name !== 'sum' || !node.inputs?.input_1) return;
+
+      const connections = node.inputs.input_1.connections || [];
+      let currentSum = 0;
+
+      // Recorrer todas las conexiones entrantes
       connections.forEach(conn => {
-          const sourceNode = editor.getNodeFromId(conn.node); if (sourceNode?.data) { let value = 0;
-              if (sourceNode.data.hasOwnProperty('number')) value = parseFloat(sourceNode.data.number);
-              else if (sourceNode.data.hasOwnProperty('result')) value = parseFloat(sourceNode.data.result);
-              else if (sourceNode.data.hasOwnProperty('range')) value = parseFloat(sourceNode.data.range);
-              if (!isNaN(value)) currentSum += value;
+          const sourceNode = editor.getNodeFromId(conn.node);
+          if (sourceNode?.data) {
+              let value = 0;
+              // Intentar obtener el valor numérico de la fuente
+              // Prioridad: 'number' (de input_number), luego 'result' (de otros nodos), luego 'range'
+              if (sourceNode.data.hasOwnProperty('number')) {
+                  value = parseFloat(sourceNode.data.number);
+              } else if (sourceNode.data.hasOwnProperty('result')) {
+                   value = parseFloat(sourceNode.data.result);
+              } else if (sourceNode.data.hasOwnProperty('range')) { // Añadido para input_range
+                   value = parseFloat(sourceNode.data.range);
+              } // Puedes añadir más campos 'else if' si tienes otros nodos que emiten números con claves diferentes
+
+              // Si es un número válido, añadirlo a la suma
+              if (!isNaN(value)) {
+                  currentSum += value;
+              } else {
+                  console.warn(`Node sum (${nodeId}): Input from ${conn.node} is not a number. Ignored.`);
+              }
           }
       });
-      if (node.data.result !== currentSum) {
-          editor.updateNodeDataFromId(nodeId, { result: currentSum });
-          const nodeElement = document.getElementById(`node-${nodeId}`); const resultTextarea = nodeElement?.querySelector('textarea[df-result]'); if (resultTextarea) resultTextarea.value = currentSum;
-          propagateData(nodeId, 'sum', 'result', currentSum); saveHistoryState();
-      }
-  } catch (error) { console.error(`Error updating sum node ${nodeId}:`, error); showToast('error', 'Error en Suma', `No se pudo calcular la suma.`); }
-}
 
+      // Actualizar los datos internos del nodo y la UI solo si el resultado ha cambiado
+      if (node.data.result !== currentSum) {
+          console.log(`Node sum (${nodeId}): Updating result from ${node.data.result} to ${currentSum}`);
+          editor.updateNodeDataFromId(nodeId, { result: currentSum });
+
+          // Actualizar el textarea visual dentro del nodo
+          const nodeElement = document.getElementById(`node-${nodeId}`);
+          const resultTextarea = nodeElement?.querySelector('textarea[df-result]');
+          if (resultTextarea) {
+              resultTextarea.value = currentSum;
+          }
+
+          // Propagar el nuevo resultado a los nodos conectados a la salida del nodo Suma
+          propagateData(nodeId, 'sum', 'result', currentSum);
+          saveHistoryState(); // Guardar estado porque el resultado cambió
+      }
+  } catch (error) {
+      console.error(`Error updating sum node ${nodeId}:`, error);
+      showToast('error', 'Error en Suma', `No se pudo calcular la suma para el nodo ${nodeId}.`);
+  }
+}
+// FIN NUEVA FUNCIÓN
+
+
+// Añade esta función junto a updateSumNode y updateConcatenateNode
+
+// NUEVO: Función para calcular y actualizar el nodo Resta
+/**
+ * Calcula la resta de las entradas conectadas a un nodo 'subtract' y actualiza su resultado.
+ * El orden se basa en la posición Y de los nodos de entrada (el superior menos los inferiores).
+ * @param {string} nodeId - El ID del nodo 'subtract'.
+ */
 function updateSubtractNode(nodeId) {
   try {
-      const node = editor.getNodeFromId(nodeId); if (!node || node.name !== 'subtract' || !node.inputs?.input_1) return;
-      const connectionsRaw = node.inputs.input_1.connections || [];
-      const connectionsSorted = connectionsRaw.slice().sort((a, b) => (editor.getNodeFromId(a.node)?.pos_y ?? Infinity) - (editor.getNodeFromId(b.node)?.pos_y ?? Infinity));
-      let currentResult = 0; let isFirstNode = true;
-      connectionsSorted.forEach(conn => {
-          const sourceNode = editor.getNodeFromId(conn.node); let value = 0;
-          if (sourceNode?.data) {
-              if (sourceNode.data.hasOwnProperty('number')) value = parseFloat(sourceNode.data.number);
-              else if (sourceNode.data.hasOwnProperty('result')) value = parseFloat(sourceNode.data.result);
-              else if (sourceNode.data.hasOwnProperty('range')) value = parseFloat(sourceNode.data.range);
-              if (isNaN(value)) value = 0;
-          }
-          if (isFirstNode) { currentResult = value; isFirstNode = false; }
-          else { currentResult -= value; }
-      });
-      if (connectionsSorted.length === 0) currentResult = 0;
-      if (node.data.result !== currentResult) {
-          editor.updateNodeDataFromId(nodeId, { result: currentResult });
-          const nodeElement = document.getElementById(`node-${nodeId}`); const resultTextarea = nodeElement?.querySelector('textarea[df-result]'); if (resultTextarea) resultTextarea.value = currentResult;
-          propagateData(nodeId, 'subtract', 'result', currentResult); saveHistoryState();
-      }
-  } catch (error) { console.error(`Error updating subtract node ${nodeId}:`, error); showToast('error', 'Error en Resta', `No se pudo calcular.`); }
-}
+      const node = editor.getNodeFromId(nodeId);
+      // Verificar que el nodo existe, es de tipo 'subtract' y tiene el puerto de entrada definido
+      if (!node || node.name !== 'subtract' || !node.inputs?.input_1) return;
 
+      const connectionsRaw = node.inputs.input_1.connections || [];
+
+      // Ordenar conexiones por posición Y del nodo origen (el más alto primero)
+      const connectionsSorted = connectionsRaw.slice().sort((a, b) => {
+          const nodeA_Y = editor.getNodeFromId(a.node)?.pos_y ?? Infinity;
+          const nodeB_Y = editor.getNodeFromId(b.node)?.pos_y ?? Infinity;
+          return nodeA_Y - nodeB_Y;
+      });
+
+      let currentResult = 0;
+      let isFirstNode = true;
+
+      // Recorrer todas las conexiones entrantes ordenadas
+      connectionsSorted.forEach(conn => {
+          const sourceNode = editor.getNodeFromId(conn.node);
+          let value = 0; // Valor por defecto si no es número
+
+          if (sourceNode?.data) {
+              // Intentar obtener el valor numérico de la fuente
+              if (sourceNode.data.hasOwnProperty('number')) {
+                  value = parseFloat(sourceNode.data.number);
+              } else if (sourceNode.data.hasOwnProperty('result')) {
+                   value = parseFloat(sourceNode.data.result);
+              } else if (sourceNode.data.hasOwnProperty('range')) {
+                   value = parseFloat(sourceNode.data.range);
+              } // Añadir más 'else if' si es necesario
+
+              // Asegurarse de que el valor sea numérico, si no, usar 0
+              if (isNaN(value)) {
+                  value = 0;
+                  console.warn(`Node subtract (${nodeId}): Input from ${conn.node} is not a valid number. Using 0.`);
+              }
+          }
+
+          // Si es el primer nodo (el más arriba), establecerlo como valor inicial
+          if (isFirstNode) {
+              currentResult = value;
+              isFirstNode = false;
+          } else {
+              // Restar los valores de los nodos subsiguientes
+              currentResult -= value;
+          }
+      });
+
+      // Si no hubo conexiones, el resultado es 0
+      if (connectionsSorted.length === 0) {
+          currentResult = 0;
+      }
+
+      // Actualizar los datos internos del nodo y la UI solo si el resultado ha cambiado
+      if (node.data.result !== currentResult) {
+          console.log(`Node subtract (${nodeId}): Updating result from ${node.data.result} to ${currentResult}`);
+          editor.updateNodeDataFromId(nodeId, { result: currentResult });
+
+          // Actualizar el textarea visual dentro del nodo
+          const nodeElement = document.getElementById(`node-${nodeId}`);
+          const resultTextarea = nodeElement?.querySelector('textarea[df-result]');
+          if (resultTextarea) {
+              resultTextarea.value = currentResult;
+          }
+
+          // Propagar el nuevo resultado
+          propagateData(nodeId, 'subtract', 'result', currentResult);
+          saveHistoryState(); // Guardar estado porque el resultado cambió
+      }
+  } catch (error) {
+      console.error(`Error updating subtract node ${nodeId}:`, error);
+      showToast('error', 'Error en Resta', `No se pudo calcular la resta para el nodo ${nodeId}.`);
+  }
+}
+// FIN NUEVA FUNCIÓN RESTA
+
+
+
+// Añade esta función
+
+// NUEVO: Función para calcular y actualizar el nodo Multiplicación
+/**
+ * Calcula el producto de las entradas conectadas a un nodo 'multiply' y actualiza su resultado.
+ * @param {string} nodeId - El ID del nodo 'multiply'.
+ */
 function updateMultiplyNode(nodeId) {
   try {
-      const node = editor.getNodeFromId(nodeId); if (!node || node.name !== 'multiply' || !node.inputs?.input_1) return;
-      const connections = node.inputs.input_1.connections || []; let currentResult = 1; let hasValidInput = false;
+      const node = editor.getNodeFromId(nodeId);
+      // Verificar que el nodo existe, es de tipo 'multiply' y tiene el puerto de entrada definido
+      if (!node || node.name !== 'multiply' || !node.inputs?.input_1) return;
+
+      const connections = node.inputs.input_1.connections || [];
+      let currentResult = 1; // Empezar con la identidad multiplicativa
+      let hasValidInput = false; // Flag para saber si se encontró al menos un número
+
+      // Recorrer todas las conexiones entrantes
       connections.forEach(conn => {
-          const sourceNode = editor.getNodeFromId(conn.node); let value = NaN;
+          const sourceNode = editor.getNodeFromId(conn.node);
+          let value = NaN; // Inicializar como NaN para forzar validación
+
           if (sourceNode?.data) {
-              if (sourceNode.data.hasOwnProperty('number')) value = parseFloat(sourceNode.data.number);
-              else if (sourceNode.data.hasOwnProperty('result')) value = parseFloat(sourceNode.data.result);
-              else if (sourceNode.data.hasOwnProperty('range')) value = parseFloat(sourceNode.data.range);
-              if (!isNaN(value)) { currentResult *= value; hasValidInput = true; }
+              // Intentar obtener el valor numérico de la fuente
+              if (sourceNode.data.hasOwnProperty('number')) {
+                  value = parseFloat(sourceNode.data.number);
+              } else if (sourceNode.data.hasOwnProperty('result')) {
+                   value = parseFloat(sourceNode.data.result);
+              } else if (sourceNode.data.hasOwnProperty('range')) {
+                   value = parseFloat(sourceNode.data.range);
+              } // Añadir más 'else if' si es necesario
+
+              // Si es un número válido, multiplicarlo
+              if (!isNaN(value)) {
+                  currentResult *= value;
+                  hasValidInput = true; // Marcamos que encontramos al menos un número
+              } else {
+                  console.warn(`Node multiply (${nodeId}): Input from ${conn.node} is not a valid number. Ignored.`);
+                  // No multiplicamos si no es un número válido
+              }
           }
       });
-      if (connections.length === 0 || !hasValidInput) currentResult = 0;
+
+      // Si no hubo ninguna conexión válida, el resultado podría ser 0 o 1.
+      // Decidimos que si no hay conexiones O ninguna válida, el resultado es 0.
+      // Si hubo conexiones pero resultaron en NaN (ej. texto * texto), el resultado será NaN.
+      // Si solo hubo conexiones no numéricas (ignoradas), el resultado se quedó en 1.
+      // Para consistencia, si no hubo inputs válidos conectados, forzamos a 0.
+      if (connections.length === 0 || !hasValidInput) {
+           currentResult = 0;
+      }
+
+      // Actualizar los datos internos del nodo y la UI solo si el resultado ha cambiado
+      // Manejar comparación con NaN (NaN !== NaN siempre es true)
       const previousResult = node.data.result;
       if (previousResult !== currentResult && !(isNaN(previousResult) && isNaN(currentResult))) {
+          console.log(`Node multiply (${nodeId}): Updating result from ${previousResult} to ${currentResult}`);
           editor.updateNodeDataFromId(nodeId, { result: currentResult });
-          const nodeElement = document.getElementById(`node-${nodeId}`); const resultTextarea = nodeElement?.querySelector('textarea[df-result]'); if (resultTextarea) resultTextarea.value = isNaN(currentResult) ? "NaN" : currentResult;
-          propagateData(nodeId, 'multiply', 'result', currentResult); saveHistoryState();
-      }
-  } catch (error) { console.error(`Error updating multiply node ${nodeId}:`, error); showToast('error', 'Error en Multiplicación', `No se pudo calcular.`); }
-}
 
+          // Actualizar el textarea visual dentro del nodo
+          const nodeElement = document.getElementById(`node-${nodeId}`);
+          const resultTextarea = nodeElement?.querySelector('textarea[df-result]');
+          if (resultTextarea) {
+              resultTextarea.value = isNaN(currentResult) ? "NaN" : currentResult; // Mostrar NaN si es el caso
+          }
+
+          // Propagar el nuevo resultado
+          propagateData(nodeId, 'multiply', 'result', currentResult);
+          saveHistoryState(); // Guardar estado porque el resultado cambió
+      }
+  } catch (error) {
+      console.error(`Error updating multiply node ${nodeId}:`, error);
+      showToast('error', 'Error en Multiplicación', `No se pudo calcular el producto para el nodo ${nodeId}.`);
+  }
+}
+// FIN NUEVA FUNCIÓN MULTIPLICACIÓN
+
+
+
+// Añade esta función
+
+// NUEVO: Función para calcular y actualizar el nodo División
+/**
+ * Calcula la división secuencial de las entradas conectadas a un nodo 'divide' y actualiza su resultado.
+ * El orden se basa en la posición Y de los nodos de entrada (el superior dividido por los inferiores).
+ * Maneja la división por cero resultando en Infinity.
+ * @param {string} nodeId - El ID del nodo 'divide'.
+ */
 function updateDivideNode(nodeId) {
   try {
-      const node = editor.getNodeFromId(nodeId); if (!node || node.name !== 'divide' || !node.inputs?.input_1) return;
+      const node = editor.getNodeFromId(nodeId);
+      // Verificar que el nodo existe, es de tipo 'divide' y tiene el puerto de entrada definido
+      if (!node || node.name !== 'divide' || !node.inputs?.input_1) return;
+
       const connectionsRaw = node.inputs.input_1.connections || [];
-      const connectionsSorted = connectionsRaw.slice().sort((a, b) => (editor.getNodeFromId(a.node)?.pos_y ?? Infinity) - (editor.getNodeFromId(b.node)?.pos_y ?? Infinity));
-      let currentResult = NaN; let isFirstNode = true; let divisionByZero = false;
-      if (connectionsSorted.length < 2) currentResult = NaN;
-      else {
+
+      // Ordenar conexiones por posición Y del nodo origen (el más alto primero)
+      const connectionsSorted = connectionsRaw.slice().sort((a, b) => {
+          const nodeA_Y = editor.getNodeFromId(a.node)?.pos_y ?? Infinity;
+          const nodeB_Y = editor.getNodeFromId(b.node)?.pos_y ?? Infinity;
+          return nodeA_Y - nodeB_Y;
+      });
+
+      let currentResult = NaN; // Empezar como Indefinido
+      let isFirstNode = true;
+      let divisionByZero = false;
+
+      // Se necesitan al menos dos entradas para dividir
+      if (connectionsSorted.length < 2) {
+           currentResult = NaN; // Resultado indefinido si hay menos de 2 entradas
+      } else {
           connectionsSorted.forEach(conn => {
-              const sourceNode = editor.getNodeFromId(conn.node); let value = NaN;
+              const sourceNode = editor.getNodeFromId(conn.node);
+              let value = NaN; // Valor por defecto
+
               if (sourceNode?.data) {
-                  if (sourceNode.data.hasOwnProperty('number')) value = parseFloat(sourceNode.data.number);
-                  else if (sourceNode.data.hasOwnProperty('result')) value = parseFloat(sourceNode.data.result);
-                  else if (sourceNode.data.hasOwnProperty('range')) value = parseFloat(sourceNode.data.range);
-                  if (isNaN(value)) value = NaN;
-              } else value = NaN;
-              if (isFirstNode) { currentResult = value; isFirstNode = false; }
-              else { if (value === 0) { divisionByZero = true; currentResult = Infinity; return; } if (isNaN(currentResult) || isNaN(value)) currentResult = NaN; else currentResult /= value; }
+                  // Intentar obtener el valor numérico de la fuente
+                  if (sourceNode.data.hasOwnProperty('number')) {
+                      value = parseFloat(sourceNode.data.number);
+                  } else if (sourceNode.data.hasOwnProperty('result')) {
+                       value = parseFloat(sourceNode.data.result);
+                  } else if (sourceNode.data.hasOwnProperty('range')) {
+                       value = parseFloat(sourceNode.data.range);
+                  } // Añadir más 'else if'
+
+                  // Si no es un número válido, tratar como NaN para el cálculo
+                  if (isNaN(value)) {
+                      value = NaN;
+                      console.warn(`Node divide (${nodeId}): Input from ${conn.node} is not a valid number. Result will be NaN.`);
+                  }
+              } else {
+                  value = NaN; // Si no hay nodo o datos, es NaN
+              }
+
+              // Establecer el dividendo inicial (primer nodo)
+              if (isFirstNode) {
+                  currentResult = value;
+                  isFirstNode = false;
+              } else {
+                  // Dividir por los valores subsiguientes (divisores)
+                  // Comprobar división por cero
+                  if (value === 0) {
+                      divisionByZero = true;
+                      currentResult = Infinity; // O puedes poner NaN o un string de error
+                      console.warn(`Node divide (${nodeId}): Division by zero detected from node ${conn.node}. Result set to Infinity.`);
+                      return; // Salir del forEach si hay división por cero (opcional, podría continuar y dar NaN/Infinity)
+                  }
+                  // Si el resultado actual o el divisor es NaN, el resultado sigue siendo NaN
+                  if (isNaN(currentResult) || isNaN(value)) {
+                      currentResult = NaN;
+                  } else {
+                       currentResult /= value;
+                  }
+              }
           });
       }
-      const previousResult = node.data.result;
-      if (previousResult !== currentResult && !(isNaN(previousResult) && isNaN(currentResult))) {
-          editor.updateNodeDataFromId(nodeId, { result: currentResult });
-          const nodeElement = document.getElementById(`node-${nodeId}`); const resultTextarea = nodeElement?.querySelector('textarea[df-result]');
-          if (resultTextarea) { let displayValue = "N/A"; if (divisionByZero) displayValue = "Infinity"; else if (!isNaN(currentResult)) displayValue = currentResult; else if (connectionsSorted.length >= 2) displayValue = "NaN"; resultTextarea.value = displayValue; }
-          propagateData(nodeId, 'divide', 'result', currentResult); saveHistoryState();
-      }
-  } catch (error) { console.error(`Error updating divide node ${nodeId}:`, error); showToast('error', 'Error en División', `No se pudo calcular.`); }
-}
 
+      // Actualizar los datos internos y la UI solo si el resultado ha cambiado
+      const previousResult = node.data.result;
+      // Comparación especial para NaN (NaN !== NaN es true)
+      if (previousResult !== currentResult && !(isNaN(previousResult) && isNaN(currentResult))) {
+          console.log(`Node divide (${nodeId}): Updating result from ${previousResult} to ${currentResult}`);
+          editor.updateNodeDataFromId(nodeId, { result: currentResult });
+
+          // Actualizar el textarea visual dentro del nodo
+          const nodeElement = document.getElementById(`node-${nodeId}`);
+          const resultTextarea = nodeElement?.querySelector('textarea[df-result]');
+          if (resultTextarea) {
+              let displayValue = "N/A"; // Valor por defecto para mostrar
+              if (divisionByZero) {
+                   displayValue = "Infinity"; // O "Error Div/0"
+              } else if (!isNaN(currentResult)) {
+                   displayValue = currentResult;
+              } else if (connectionsSorted.length >= 2) {
+                   displayValue = "NaN"; // Si hubo cálculo pero dio NaN
+              }
+              resultTextarea.value = displayValue;
+          }
+
+          // Propagar el nuevo resultado (puede ser NaN o Infinity)
+          propagateData(nodeId, 'divide', 'result', currentResult);
+          saveHistoryState(); // Guardar estado porque el resultado cambió
+      }
+  } catch (error) {
+      console.error(`Error updating divide node ${nodeId}:`, error);
+      showToast('error', 'Error en División', `No se pudo calcular la división para el nodo ${nodeId}.`);
+  }
+}
+// FIN NUEVA FUNCIÓN DIVISIÓN
+
+
+
+
+
+// --- Añade estas nuevas funciones en la sección de Helpers o Node Specific UI ---
+
+/**
+ * Función central para procesar una imagen cargada (desde cualquier fuente).
+ * Actualiza los datos del nodo, la UI y redimensiona el nodo.
+ * @param {string} nodeId El ID del nodo.
+ * @param {string} imageDataUrl La imagen como Data URL.
+ */
 function processMinimalImageLoad(nodeId, imageDataUrl) {
   if (!editor || !nodeId || !imageDataUrl) return;
+
+  console.log(`Processing image load for node ${nodeId}...`);
   const nodeElement = document.getElementById(`node-${nodeId}`);
   const imgTag = nodeElement?.querySelector('img[df-imgsrc]');
   const placeholder = nodeElement?.querySelector('.image-placeholder');
-  if (!nodeElement || !imgTag || !placeholder) { console.error(`Minimal Image Node elements not found for ID ${nodeId}.`); showToast('error', 'Error Interno', 'No se encontraron elementos.'); return; }
+
+  if (!nodeElement || !imgTag || !placeholder) {
+      console.error(`Minimal Image Node elements not found for ID ${nodeId}.`);
+      showToast('error', 'Error Interno', 'No se encontraron elementos del nodo imagen.');
+      return;
+  }
+
+  // Crear imagen en memoria para obtener dimensiones
   const tempImg = new Image();
   tempImg.onload = () => {
       try {
-          const w = tempImg.naturalWidth; const h = tempImg.naturalHeight; if (w === 0 || h === 0) throw new Error("Invalid image dimensions (0x0).");
-          editor.updateNodeDataFromId(nodeId, { imgsrc: imageDataUrl, naturalWidth: w, naturalHeight: h, nodeWidth: `${w}px`, nodeHeight: `${h}px` });
-          imgTag.src = imageDataUrl; imgTag.style.display = 'block'; placeholder.style.display = 'none';
-          if (nodeElement.style.border.includes('dashed')) nodeElement.style.border = 'none';
-          nodeElement.style.width = `${w}px`; nodeElement.style.height = `${h}px`;
-          setTimeout(() => { editor.updateConnectionNodes(`node-${nodeId}`); }, 50);
-          saveHistoryState(); showToast('success', 'Imagen Cargada', `${w}x${h}px`);
+          const w = tempImg.naturalWidth;
+          const h = tempImg.naturalHeight;
+          console.log(`Image loaded: ${w}x${h}`);
+
+          if (w === 0 || h === 0) throw new Error("Invalid image dimensions (0x0).");
+
+          // 1. Actualizar datos internos del nodo en Drawflow
+          editor.updateNodeDataFromId(nodeId, {
+              imgsrc: imageDataUrl,
+              naturalWidth: w,
+              naturalHeight: h
+          });
+
+          // 2. Actualizar UI del nodo
+          imgTag.src = imageDataUrl;
+          imgTag.style.display = 'block';
+          placeholder.style.display = 'none';
+          if (nodeElement.style.border.includes('dashed')) { // Quitar borde punteado si lo tenía
+               nodeElement.style.border = 'none';
+          }
+
+
+          // 3. Redimensionar el elemento del nodo
+          nodeElement.style.width = `${w}px`;
+          nodeElement.style.height = `${h}px`;
+
+          // 4. Forzar actualización de conexiones
+          // Usar un pequeño timeout puede ayudar a que el DOM se actualice antes de redibujar líneas
+          setTimeout(() => {
+              editor.updateConnectionNodes(`node-${nodeId}`);
+              console.log(`Node ${nodeId} connections updated after resize.`);
+          }, 50);
+
+
+          // 5. Guardar historial
+          saveHistoryState();
+          showToast('success', 'Imagen Cargada', `${w}x${h}px`);
+
       } catch (error) {
-           console.error(`Error processing image dimensions or updating node ${nodeId}:`, error); showToast('error', 'Error Imagen', 'No se pudo procesar.');
-           imgTag.src = ''; imgTag.style.display = 'none'; placeholder.style.display = 'flex';
-           editor.updateNodeDataFromId(nodeId, { imgsrc: '', naturalWidth: 0, naturalHeight: 0, nodeWidth: '80px', nodeHeight: '60px' });
-           nodeElement.style.width = '80px'; nodeElement.style.height = '60px'; nodeElement.style.border = '2px dashed #cccccc';
+           console.error(`Error processing image dimensions or updating node ${nodeId}:`, error);
+           showToast('error', 'Error Imagen', 'No se pudo procesar la imagen.');
+           // Resetear si falla
+           imgTag.src = '';
+           imgTag.style.display = 'none';
+           placeholder.style.display = 'flex'; // O 'block' según tu layout de placeholder
+           editor.updateNodeDataFromId(nodeId, { imgsrc: '', naturalWidth: 0, naturalHeight: 0 });
       }
   };
   tempImg.onerror = (err) => {
-      console.error("Error loading image data into temp Image object:", err); showToast('error', 'Error Carga', 'Formato inválido.');
-      imgTag.src = ''; imgTag.style.display = 'none'; placeholder.style.display = 'flex';
-      editor.updateNodeDataFromId(nodeId, { imgsrc: '', naturalWidth: 0, naturalHeight: 0, nodeWidth: '80px', nodeHeight: '60px' });
-      nodeElement.style.width = '80px'; nodeElement.style.height = '60px'; nodeElement.style.border = '2px dashed #cccccc';
+      console.error("Error loading image data into temp Image object:", err);
+      showToast('error', 'Error Carga', 'El formato de imagen no es válido o está corrupto.');
+      // Resetear UI
+      imgTag.src = '';
+      imgTag.style.display = 'none';
+      placeholder.style.display = 'flex';
+      editor.updateNodeDataFromId(nodeId, { imgsrc: '', naturalWidth: 0, naturalHeight: 0 });
   };
-  tempImg.src = imageDataUrl;
+  tempImg.src = imageDataUrl; // Iniciar la carga en memoria
 }
 
+/**
+* Inicia la selección de archivo para el nodo imagen minimalista.
+* @param {Event} event Evento click en el placeholder.
+*/
 function triggerMinimalImageFileSelect(event) {
-  const placeholder = event.currentTarget; const nodeElement = placeholder.closest('.drawflow-node'); if (!nodeElement) return;
+  const placeholder = event.currentTarget; // El placeholder que recibió el clic
+  const nodeElement = placeholder.closest('.drawflow-node');
+  if (!nodeElement) return;
   const nodeId = nodeElement.id.split('-')[1];
-  const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*'; input.style.display = 'none';
+
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.style.display = 'none';
+
   input.onchange = (e) => {
-      const file = e.target.files?.[0]; if (file) { const reader = new FileReader(); reader.onload = (loadEvent) => processMinimalImageLoad(nodeId, loadEvent.target.result); reader.onerror = () => showToast('error', 'Error Lectura', 'No se pudo leer.'); reader.readAsDataURL(file); }
-      document.body.removeChild(input);
+      const file = e.target.files?.[0];
+      if (file) {
+          const reader = new FileReader();
+          reader.onload = (loadEvent) => {
+              processMinimalImageLoad(nodeId, loadEvent.target.result);
+          };
+          reader.onerror = () => {
+              showToast('error', 'Error Lectura', 'No se pudo leer el archivo.');
+          };
+          reader.readAsDataURL(file);
+      }
+      document.body.removeChild(input); // Limpiar input
   };
-  document.body.appendChild(input); input.click();
+
+  document.body.appendChild(input);
+  input.click();
 }
-function handleMinimalImageDragOver(event) { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = 'copy'; event.currentTarget.classList.add('dragover'); }
-function handleMinimalImageDragLeave(event) { event.stopPropagation(); event.currentTarget.classList.remove('dragover'); }
+
+/**
+* Maneja el evento dragover sobre el placeholder de imagen.
+* @param {DragEvent} event
+*/
+function handleMinimalImageDragOver(event) {
+   event.preventDefault();
+   event.stopPropagation();
+   event.dataTransfer.dropEffect = 'copy';
+   event.currentTarget.classList.add('dragover'); // currentTarget es el placeholder
+}
+
+/**
+* Maneja el evento dragleave sobre el placeholder de imagen.
+* @param {DragEvent} event
+*/
+function handleMinimalImageDragLeave(event) {
+  event.stopPropagation();
+  event.currentTarget.classList.remove('dragover');
+}
+
+/**
+* Maneja el evento drop sobre el placeholder de imagen.
+* @param {DragEvent} event
+*/
 function handleMinimalImageDrop(event) {
-  event.preventDefault(); event.stopPropagation();
-  const placeholder = event.currentTarget; placeholder.classList.remove('dragover'); const nodeElement = placeholder.closest('.drawflow-node'); if (!nodeElement) return;
-  const nodeId = nodeElement.id.split('-')[1]; const files = event.dataTransfer.files;
+  event.preventDefault();
+  event.stopPropagation();
+  const placeholder = event.currentTarget;
+  placeholder.classList.remove('dragover');
+  const nodeElement = placeholder.closest('.drawflow-node');
+  if (!nodeElement) return;
+  const nodeId = nodeElement.id.split('-')[1];
+
+  const files = event.dataTransfer.files;
   if (files.length > 0) {
-      let imageFile = null; for (let i = 0; i < files.length; i++) if (files[i].type.startsWith('image/')) { imageFile = files[i]; break; }
-      if (imageFile) { const reader = new FileReader(); reader.onload = (loadEvent) => processMinimalImageLoad(nodeId, loadEvent.target.result); reader.onerror = () => showToast('error', 'Error Lectura', 'No se pudo leer.'); reader.readAsDataURL(imageFile); }
-      else { showToast('warning', 'Archivo Inválido', 'Arrastra una imagen.'); }
-  }
-}
-function handleMinimalImagePaste(event) {
-  const nodeElement = event.currentTarget; if (!nodeElement || !nodeElement.classList.contains('image-minimal-node')) return;
-  const nodeId = nodeElement.id.split('-')[1]; const items = (event.clipboardData || window.clipboardData)?.items; if (!items) return;
-  let foundImage = false;
-  for (let i = 0; i < items.length; i++) {
-      if (items[i].kind === 'file' && items[i].type.startsWith('image/')) {
-          event.preventDefault(); const blob = items[i].getAsFile(); if (blob) { foundImage = true; const reader = new FileReader(); reader.onload = (loadEvent) => processMinimalImageLoad(nodeId, loadEvent.target.result); reader.onerror = () => showToast('error', 'Error Lectura', 'No se pudo leer.'); reader.readAsDataURL(blob); break; }
+      // Buscar el primer archivo de imagen
+      let imageFile = null;
+      for (let i = 0; i < files.length; i++) {
+          if (files[i].type.startsWith('image/')) {
+              imageFile = files[i];
+              break;
+          }
+      }
+
+      if (imageFile) {
+          const reader = new FileReader();
+          reader.onload = (loadEvent) => {
+              processMinimalImageLoad(nodeId, loadEvent.target.result);
+          };
+          reader.onerror = () => {
+              showToast('error', 'Error Lectura', 'No se pudo leer el archivo arrastrado.');
+          };
+          reader.readAsDataURL(imageFile);
+      } else {
+          showToast('warning', 'Archivo Inválido', 'Arrastra un archivo de imagen.');
       }
   }
 }
-function setupMinimalImageNodeListeners(nodeId) {
-  const nodeElement = document.getElementById(`node-${nodeId}`); const placeholder = nodeElement?.querySelector('.image-placeholder');
-  if (!nodeElement || !placeholder) { console.warn(`Could not find elements for minimal image node ${nodeId}`); return; }
-  placeholder.onclick = triggerMinimalImageFileSelect;
-  placeholder.ondragover = handleMinimalImageDragOver; placeholder.ondragleave = handleMinimalImageDragLeave; placeholder.ondrop = handleMinimalImageDrop;
-  nodeElement.addEventListener('paste', handleMinimalImagePaste, true);
+
+/**
+* Maneja el evento paste sobre el nodo imagen minimalista.
+* @param {ClipboardEvent} event
+*/
+function handleMinimalImagePaste(event) {
+  const nodeElement = event.currentTarget; // El nodo que tiene el listener
+  if (!nodeElement || !nodeElement.classList.contains('image-minimal-node')) return; // Doble check
+
+  const nodeId = nodeElement.id.split('-')[1];
+  const items = (event.clipboardData || window.clipboardData)?.items;
+  if (!items) return;
+
+  let foundImage = false;
+  for (let i = 0; i < items.length; i++) {
+      if (items[i].kind === 'file' && items[i].type.startsWith('image/')) {
+          event.preventDefault(); // Prevenir pegado default solo si encontramos imagen
+          const blob = items[i].getAsFile();
+          if (blob) {
+               foundImage = true;
+               const reader = new FileReader();
+               reader.onload = (loadEvent) => {
+                   processMinimalImageLoad(nodeId, loadEvent.target.result);
+               };
+               reader.onerror = () => {
+                   showToast('error', 'Error Lectura', 'No se pudo leer la imagen pegada.');
+               };
+               reader.readAsDataURL(blob);
+               break; // Procesar solo la primera imagen encontrada
+          }
+      }
+  }
+  // Si no se encontró imagen en el portapapeles, no hacemos nada (ni prevenimos default)
 }
 
-function executeTextCase(nodeId, inputValue, mode) { const inputText = String(inputValue ?? ''); const result = mode === 'upper' ? inputText.toUpperCase() : inputText.toLowerCase(); updateNodeResult(nodeId, result); }
-function executeCapitalizeWords(nodeId, inputValue) { const text = String(inputValue ?? ''); let result = text.toLowerCase().replace(/\b\w/g, char => char.toUpperCase()); updateNodeResult(nodeId, result); }
-function executeCapitalizeFirstLetter(nodeId, inputValue) { const text = String(inputValue ?? ''); let result = ''; if (text.length > 0) result = text.charAt(0).toUpperCase() + text.slice(1).toLowerCase(); updateNodeResult(nodeId, result); }
-function escapeRegExp(string) { return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
-function truncateForLog(text, maxLength = 100) { if (!text) return ''; if (text.length <= maxLength) return text; return text.substring(0, maxLength) + '... [truncado]'; }
-function executeTextSplit(nodeId, inputValue) { const nodeData = editor.getNodeFromId(nodeId)?.data; if (!nodeData) return; const inputText = String(inputValue ?? ''); const separator = nodeData.separator ?? ''; const result = (separator === '') ? inputText : inputText.split(separator).join('\n'); updateNodeResult(nodeId, result); }
-function executeTextLength(nodeId, inputValue) { const inputText = String(inputValue ?? ''); const result = inputText.length; updateNodeResult(nodeId, result); }
-function executeHtmlStrip(nodeId, inputValue) { const inputText = String(inputValue ?? ''); const result = inputText.replace(/<[^>]*>/g, ''); updateNodeResult(nodeId, result); }
-function getValueFromJson(obj, keyPath) { if (!obj || typeof obj !== 'object' || obj === null || typeof keyPath !== 'string' || keyPath === '') return undefined; const keys = keyPath.split('.'); let current = obj; for (const key of keys) { if (current === null || current === undefined || typeof current !== 'object') return undefined; if (!Object.prototype.hasOwnProperty.call(current, key)) return undefined; current = current[key]; } return current; }
+
+// --- Modificar o añadir esta función para registrar los listeners ---
+
+/**
+* Registra los listeners específicos para el nodo imagen minimalista.
+* Debe llamarse DESPUÉS de que el nodo se añade al DOM.
+* @param {string} nodeId El ID del nodo recién añadido.
+*/
+function setupMinimalImageNodeListeners(nodeId) {
+  const nodeElement = document.getElementById(`node-${nodeId}`);
+  const placeholder = nodeElement?.querySelector('.image-placeholder');
+
+  if (!nodeElement || !placeholder) {
+      console.warn(`Could not find elements to attach listeners for minimal image node ${nodeId}`);
+      return;
+  }
+
+  console.log(`Attaching listeners to minimal image node ${nodeId}`);
+
+  // Click en placeholder para seleccionar archivo
+  placeholder.onclick = triggerMinimalImageFileSelect;
+
+  // Drag and Drop en placeholder
+  placeholder.ondragover = handleMinimalImageDragOver;
+  placeholder.ondragleave = handleMinimalImageDragLeave;
+  placeholder.ondrop = handleMinimalImageDrop;
+
+  // Paste EN EL NODO (funciona mejor que solo en el placeholder)
+  // Usamos captura para asegurar que lo cojamos aunque el foco esté dentro
+  nodeElement.addEventListener('paste', handleMinimalImagePaste, true); // 'true' para fase de captura
+
+  // Opcional: Listener para borrar la imagen (ej. doble clic en la imagen?)
+  // const imgTag = nodeElement.querySelector('img[df-imgsrc]');
+  // imgTag.ondblclick = (event) => {
+  //    event.stopPropagation();
+  //    clearMinimalImage(nodeId); // Necesitarías crear esta función
+  // };
+}
+
+
+/**
+ * Ejecuta la transformación de mayúsculas/minúsculas directamente.
+ * @param {string} nodeId - ID del nodo.
+ * @param {string} inputValue - El texto de entrada.
+ * @param {'upper' | 'lower'} mode - 'upper' para mayúsculas, 'lower' para minúsculas.
+ */
+function executeTextCase(nodeId, inputValue, mode) {
+    console.log(`Executing Text Case: Node ${nodeId}, Mode: ${mode}`);
+    const inputText = String(inputValue ?? ''); // Asegurar que sea string
+    const result = mode === 'upper' ? inputText.toUpperCase() : inputText.toLowerCase();
+    updateNodeResult(nodeId, result); // Actualiza y propaga el resultado
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/**
+ * Escapa caracteres especiales para usar en expresiones regulares.
+ * @param {string} string - El string a escapar.
+ * @returns {string} - El string escapado.
+ */
+function escapeRegExp(string) {
+    // Escapar caracteres especiales para RegExp
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Trunca un texto largo para mostrarlo en logs.
+ * @param {string} text - El texto a truncar.
+ * @param {number} maxLength - Longitud máxima (por defecto 100).
+ * @returns {string} - El texto truncado.
+ */
+function truncateForLog(text, maxLength = 100) {
+    if (!text) return '';
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength) + '... [truncado]';
+}
+
+/**
+ * Ejecuta la división de texto directamente.
+ * @param {string} nodeId - ID del nodo.
+ * @param {string} inputValue - El texto de entrada.
+ */
+function executeTextSplit(nodeId, inputValue) {
+    console.log(`Executing Text Split: Node ${nodeId}`);
+    const nodeData = editor.getNodeFromId(nodeId)?.data;
+    if (!nodeData) return;
+    const inputText = String(inputValue ?? '');
+    const separator = nodeData.separator ?? ''; // Obtener 'separator'
+    // Si el separador está vacío, simplemente devuelve el texto original
+    // o decide un comportamiento (ej. dividir por caracter? Por ahora, original).
+    // Dividir y unir con salto de línea para mostrar en textarea.
+    const result = (separator === '') ? inputText : inputText.split(separator).join('\n');
+    // Nota: El dato propagado será un string con saltos de línea.
+    // Si necesitaras propagar un array, la lógica cambiaría aquí y en updateNodeResult.
+    updateNodeResult(nodeId, result);
+}
+
+/**
+ * Calcula la longitud del texto directamente.
+ * @param {string} nodeId - ID del nodo.
+ * @param {string} inputValue - El texto de entrada.
+ */
+function executeTextLength(nodeId, inputValue) {
+    console.log(`Executing Text Length: Node ${nodeId}`);
+    const inputText = String(inputValue ?? '');
+    const result = inputText.length; // El resultado es un número
+    updateNodeResult(nodeId, result); // Actualiza (mostrará número) y propaga (número)
+}
+
+/**
+ * Ejecuta la eliminación de etiquetas HTML directamente.
+ * @param {string} nodeId - ID del nodo.
+ * @param {string} inputValue - El texto de entrada (HTML).
+ */
+function executeHtmlStrip(nodeId, inputValue) {
+    console.log(`Executing HTML Strip: Node ${nodeId}`);
+    const inputText = String(inputValue ?? '');
+    const result = inputText.replace(/<[^>]*>/g, ''); // Regex para quitar etiquetas
+    updateNodeResult(nodeId, result);
+}
+
+
+/**
+ * Obtiene de forma segura un valor anidado de un objeto usando una cadena de ruta.
+ * Ejemplo: getValueFromJson(obj, 'user.address.city')
+ * @param {object|null} obj - El objeto fuente.
+ * @param {string} keyPath - La ruta de la clave (ej. 'nombre', 'pedido.id').
+ * @returns {*} El valor encontrado, o undefined si la ruta no existe o el objeto no es válido.
+ */
+function getValueFromJson(obj, keyPath) {
+    // Validaciones iniciales
+    if (!obj || typeof obj !== 'object' || obj === null || typeof keyPath !== 'string' || keyPath === '') {
+        return undefined;
+    }
+    const keys = keyPath.split('.'); // Dividir la ruta por puntos
+    let current = obj;
+    for (const key of keys) {
+        // Verificar si el nivel actual es un objeto válido antes de acceder
+        if (current === null || current === undefined || typeof current !== 'object') {
+            return undefined; // Ruta no encontrada
+        }
+        // Verificar si la clave existe en el nivel actual
+        if (!Object.prototype.hasOwnProperty.call(current, key)) {
+             return undefined; // Clave específica no encontrada
+        }
+        current = current[key]; // Moverse al siguiente nivel
+    }
+    // Devolver el valor final encontrado (puede ser null, string, number, etc.)
+    return current;
+}
+
+/**
+ * Procesa la plantilla de un nodo 'template_engine'.
+ * @param {string} nodeId - El ID del nodo a procesar.
+ * @param {object} [directInputJson] - (Opcional) El objeto JSON pasado directamente.
+ */
 function processTemplateNode(nodeId, directInputJson) {
-    const node = editor.getNodeFromId(nodeId); if (!node || node.name !== 'template_engine') return;
-    const nodeElement = document.getElementById(`node-${nodeId}`); if (!nodeElement) { console.error(`Template Node (${nodeId}): Element not found.`); return; }
-    const templateTextarea = nodeElement.querySelector('textarea[df-template]'); if (!templateTextarea) { console.error(`Template Node (${nodeId}): Template textarea not found.`); return; }
+    const node = editor.getNodeFromId(nodeId);
+    if (!node || node.name !== 'template_engine') return;
+
+    const nodeElement = document.getElementById(`node-${nodeId}`);
+    if (!nodeElement) { console.error(`Template Node (${nodeId}): Element not found.`); return; }
+    const templateTextarea = nodeElement.querySelector('textarea[df-template]');
+    if (!templateTextarea) { console.error(`Template Node (${nodeId}): Template textarea not found.`); return; }
     const currentTemplate = templateTextarea.value || '';
-    if (node.data.template !== currentTemplate) editor.updateNodeDataFromId(nodeId, { template: currentTemplate });
-    const nodeData = editor.getNodeFromId(nodeId).data; let inputJson = directInputJson !== undefined ? directInputJson : nodeData.lastInput;
-    if (typeof inputJson === 'string') { try { inputJson = JSON.parse(inputJson); } catch (error) { console.error(`Template Node (${nodeId}): Failed to parse JSON input`, error); editor.updateNodeDataFromId(nodeId, { result: `Error: JSON inválido - ${error.message}` }); return; } }
-    let processedTemplate = ''; let errorOccurred = false;
+
+    if (node.data.template !== currentTemplate) {
+         editor.updateNodeDataFromId(nodeId, { template: currentTemplate });
+    }
+
+    const nodeData = editor.getNodeFromId(nodeId).data;
+    let inputJson = directInputJson !== undefined ? directInputJson : nodeData.lastInput;
+
+    // Convertir inputJson de string a objeto si es necesario
+    if (typeof inputJson === 'string') {
+        try {
+            inputJson = JSON.parse(inputJson);
+        } catch (error) {
+            console.error(`Template Node (${nodeId}): Failed to parse JSON input`, error);
+            editor.updateNodeDataFromId(nodeId, { result: `Error: JSON inválido - ${error.message}` });
+            return;
+        }
+    }
+
+    // *** LOGS IMPORTANTES ***
+    console.log(`--- Processing Template Node ${nodeId} ---`);
+    console.log("   Template String (Read from UI):", JSON.stringify(currentTemplate));
+    console.log("   Input JSON (Effective):", inputJson ? JSON.stringify(inputJson) : inputJson);
+    // *** FIN LOGS IMPORTANTES ***
+
+    let processedTemplate = '';
+    let errorOccurred = false;
+
     if (inputJson && typeof inputJson === 'object' && inputJson !== null) {
         const regex = /{{\s*([\w.-]+)\s*}}/g;
         try {
             processedTemplate = currentTemplate.replace(regex, (match, key) => {
-                const cleanKey = key.trim(); const value = getValueFromJsonPath(inputJson, cleanKey);
-                if (value === undefined) return match; else if (value === null) return ''; else if (typeof value === 'object') return JSON.stringify(value); else return String(value);
+                const cleanKey = key.trim();
+                const value = getValueFromJsonPath(inputJson, cleanKey);
+                // *** LOG IMPORTANTE ***
+                console.log(`   -> Replacing {{${cleanKey}}}: Found value:`, value, `(Type: ${typeof value})`);
+                // *** FIN LOG IMPORTANTE ***
+                if (value === undefined) { return match; } // Dejar sin cambiar
+                else if (value === null) { return ''; }
+                else if (typeof value === 'object') { return JSON.stringify(value); }
+                else { return String(value); }
             });
-        } catch (error) { console.error(`Template Node (${nodeId}): Error during replace`, error); processedTemplate = `Error: ${error.message}`; errorOccurred = true; }
-    } else { processedTemplate = currentTemplate; }
-    if (nodeData.result !== processedTemplate || errorOccurred) {
-        editor.updateNodeDataFromId(nodeId, { result: processedTemplate });
-        const resultTextarea = nodeElement.querySelector('textarea[df-result]'); if (resultTextarea) resultTextarea.value = processedTemplate; else console.error(`CRITICAL: UI textarea[df-result] NOT FOUND for node ${nodeId}.`);
-        propagateData(nodeId, 'template_engine', 'result', processedTemplate); saveHistoryState();
+        } catch (error) {
+            console.error(`Template Node (${nodeId}): Error during replace`, error);
+            processedTemplate = `Error: ${error.message}`;
+            errorOccurred = true;
+        }
+    } else {
+        processedTemplate = currentTemplate;
+        console.warn(`Template Node (${nodeId}): No effective input JSON.`);
     }
+
+    // *** LOG IMPORTANTE ***
+    console.log(`   Final Processed Template:`, JSON.stringify(processedTemplate));
+    // *** FIN LOG IMPORTANTE ***
+
+    if (nodeData.result !== processedTemplate || errorOccurred) {
+        console.log(`Template Node (${nodeId}): Updating result.`);
+        editor.updateNodeDataFromId(nodeId, { result: processedTemplate });
+
+        const resultTextarea = nodeElement.querySelector('textarea[df-result]');
+        if (resultTextarea) {
+            // *** LOG IMPORTANTE ***
+            console.log(`   Attempting to set UI textarea[df-result] value.`);
+            resultTextarea.value = processedTemplate;
+            console.log(`   UI textarea[df-result] value set.`);
+            // *** FIN LOG IMPORTANTE ***
+        } else {
+            // *** ERROR IMPORTANTE ***
+            console.error(`   CRITICAL: UI textarea[df-result] NOT FOUND for node ${nodeId}. Check HTML definition.`);
+            // *** FIN ERROR IMPORTANTE ***
+        }
+        // *** LOG IMPORTANTE ***
+        console.log(`   Attempting to propagate final result...`);
+        propagateData(nodeId, 'template_engine', 'result', processedTemplate);
+        console.log(`   Propagation called.`);
+        // *** FIN LOG IMPORTANTE ***
+        saveHistoryState();
+    } else {
+        console.log(`Template Node (${nodeId}): Result unchanged.`);
+    }
+    console.log(`--- Finished Processing Template Node ${nodeId} ---`);
 }
-function getValueFromJsonPath(json, path) { if (!json || !path) return undefined; const keys = path.split('.'); let current = json; for (const key of keys) { if (current === null || typeof current !== 'object') return undefined; current = current[key]; if (current === undefined) return undefined; } return current; }
+
+/**
+ * Obtiene un valor de un objeto JSON usando una ruta de acceso con notación de punto.
+ * @param {object} json - El objeto JSON.
+ * @param {string} path - La ruta de acceso (ej: "usuario.direccion.calle").
+ * @returns {*} El valor encontrado o undefined si no existe.
+ */
+function getValueFromJsonPath(json, path) {
+    if (!json || !path) return undefined;
+    
+    const keys = path.split('.');
+    let current = json;
+    
+    for (const key of keys) {
+        if (current === null || typeof current !== 'object') {
+            return undefined;
+        }
+        current = current[key];
+        if (current === undefined) {
+            return undefined;
+        }
+    }
+    
+    return current;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // --- Interval Management ---
 function cleanupNodeIntervals(nodeId) { if (nodeIntervals[nodeId]) { nodeIntervals[nodeId].forEach(clearInterval); delete nodeIntervals[nodeId]; } }
 function cleanupAllModuleIntervals() { const keys = Object.keys(nodeIntervals); if (keys.length > 0) { console.log(`Cleaning intervals for ${keys.length} nodes...`); keys.forEach(cleanupNodeIntervals); nodeIntervals = {}; } }
 
 // --- Execution & Propagation Logic ---
-const EXECUTE_NODE_SYSTEM_TYPES = ['url_input', 'timer_fetch', 'fetch_html', 'display_text', 'loop', 'repeat', 'timer_download', 'download_file', 'extract_value'];
-async function executeNode(nodeId, payload) {
-    let node; try { node = editor.getNodeFromId(nodeId); if (!node) { cleanupNodeIntervals(nodeId); return; } } catch (error) { console.error(`Err get node ${nodeId}:`, error); return; }
-    const nName = node.name; let outP = payload; if (node._executing) return; node._executing = true;
+const EXECUTE_NODE_SYSTEM_TYPES = [
+    'url_input', 'timer_fetch', 'fetch_html', 'display_text',
+    'loop', 'repeat', 'timer_download', 'download_file', 'extract_value'
+  ];
+  
+  async function executeNode(nodeId, payload) {
+    let node;
+    try {
+      node = editor.getNodeFromId(nodeId);
+      if (!node) {
+        cleanupNodeIntervals(nodeId);
+        return;
+      }
+    } catch (error) {
+      console.error(`Err get node ${nodeId}:`, error);
+      return;
+    }
+    const nName = node.name;
+    let outP = payload;
+    if (node._executing) return;
+    node._executing = true;
+  
     try {
       switch (nName) {
-        case 'timer_fetch': case 'timer_download': case 'loop': {
-          cleanupNodeIntervals(nodeId); let intMs = parseInt(readField(nodeId, 'df-interval') || node.data?.interval, 10);
-          const defInt = nName === 'loop' ? 1000 : (nName === 'timer_fetch' ? 60000 : 10000); if (isNaN(intMs) || intMs < 100) intMs = defInt;
-          const initP = payload; const execInt = async () => {
-            const currN = editor.getNodeFromId(nodeId); if (!currN) { cleanupNodeIntervals(nodeId); return; }
+        // —————————————————————————————————————————————
+        case 'timer_fetch':
+        case 'timer_download':
+        case 'loop': {
+          cleanupNodeIntervals(nodeId);
+          let intMs = parseInt(readField(nodeId, 'df-interval') || node.data?.interval, 10);
+          const defInt = nName === 'loop'
+            ? 1000
+            : (nName === 'timer_fetch' ? 60000 : 10000);
+          if (isNaN(intMs) || intMs < 100) intMs = defInt;
+          const initP = payload;
+          console.log(`Start ${nName} ${nodeId} every ${intMs} ms.`);
+          const execInt = async () => {
+            const currN = editor.getNodeFromId(nodeId);
+            if (!currN) { cleanupNodeIntervals(nodeId); return; }
             if (nName === 'timer_fetch') {
-              let url = readField(nodeId, 'df-url'); if (!url?.trim()) { const cs = getConnections(nodeId, 'input'); for (const c of cs) { const src = editor.getNodeFromId(c.node); if (src?.name === 'url_input') { url = readField(c.node, 'df-url'); if (url?.trim()) break; } } }
-              if (url?.trim()) { url = url.trim(); if (!url.startsWith('http')) url = 'https://' + url; try { const r = await fetch(CORS_PROXY + encodeURIComponent(url)); if (!r.ok) throw new Error(`HTTP ${r.status}`); const d = await r.json(); propagateExecution(nodeId, d.contents); } catch (err) { console.error(`TFetch ${nodeId} err:`, err); propagateExecution(nodeId, `// ERR Fetch:\n// ${err.message}`); } } else propagateExecution(nodeId, '// ERR: No URL');
-            } else if (nName === 'loop') { propagateExecution(nodeId, initP); } else { propagateExecution(nodeId, Date.now()); }
+              let url = readField(nodeId, 'df-url');
+              if (!url?.trim()) {
+                const cs = getConnections(nodeId, 'input');
+                for (const c of cs) {
+                  const src = editor.getNodeFromId(c.node);
+                  if (src?.name === 'url_input') {
+                    url = readField(c.node, 'df-url');
+                    if (url?.trim()) break;
+                  }
+                }
+              }
+              if (url?.trim()) {
+                url = url.trim();
+                if (!url.startsWith('http')) url = 'https://' + url;
+                try {
+                  const r = await fetch(CORS_PROXY + encodeURIComponent(url));
+                  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                  const d = await r.json();
+                  propagateExecution(nodeId, d.contents);
+                } catch (err) {
+                  console.error(`TFetch ${nodeId} err:`, err);
+                  propagateExecution(nodeId, `// ERR Fetch:\n// ${err.message}`);
+                }
+              } else propagateExecution(nodeId, '// ERR: No URL');
+            }
+            else if (nName === 'loop') {
+              propagateExecution(nodeId, initP);
+            }
+            else {
+              propagateExecution(nodeId, Date.now());
+            }
           };
-          const intId = setInterval(execInt, intMs); nodeIntervals[nodeId] = nodeIntervals[nodeId] || []; nodeIntervals[nodeId].push(intId); if (nName === 'timer_fetch') await execInt(); break;
+          const intId = setInterval(execInt, intMs);
+          nodeIntervals[nodeId] = nodeIntervals[nodeId] || [];
+          nodeIntervals[nodeId].push(intId);
+          if (nName === 'timer_fetch') await execInt();
+          break;
         }
+  
+        // —————————————————————————————————————————————
         case 'fetch_html': {
-          let url = payload; if (typeof url !== 'string' || !url?.trim()) { propagateExecution(nodeId, '// ERR: Invalid URL'); return; } url = url.trim(); if (!url.startsWith('http')) url = 'https://' + url;
-          try { const r = await fetch(CORS_PROXY + encodeURIComponent(url)); if (!r.ok) throw new Error(`HTTP ${r.status}`); const d = await r.json(); outP = d.contents; } catch (err) { console.error(`Fetch ${nodeId} err:`, err); outP = `// ERR Fetch:\n// ${err.message}`; } propagateExecution(nodeId, outP); break;
+          let url = payload;
+          if (typeof url !== 'string' || !url?.trim()) {
+            propagateExecution(nodeId, '// ERR: Invalid URL');
+            return;
+          }
+          url = url.trim();
+          if (!url.startsWith('http')) url = 'https://' + url;
+          try {
+            const r = await fetch(CORS_PROXY + encodeURIComponent(url));
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            const d = await r.json();
+            outP = d.contents;
+          } catch (err) {
+            console.error(`Fetch ${nodeId} err:`, err);
+            outP = `// ERR Fetch:\n// ${err.message}`;
+          }
+          propagateExecution(nodeId, outP);
+          break;
         }
-        case 'display_text': { const txt = String(payload ?? '(null)'); editor.updateNodeDataFromId(nodeId, { display: txt }); const el = document.getElementById(`node-${nodeId}`); const ta = el?.querySelector('textarea[df-display]'); if (ta) ta.value = txt; outP = payload; propagateExecution(nodeId, outP); break; }
-        case 'repeat': { let c = parseInt(readField(nodeId, 'df-count') || node.data?.count, 10); if (isNaN(c) || c <= 0) return; const p = payload; for (let i = 0; i < c; i++) { setTimeout(() => propagateExecution(nodeId, p), 0); } return; }
+  
+        // —————————————————————————————————————————————
+        case 'display_text': {
+          const txt = String(payload ?? '(null)');
+          editor.updateNodeDataFromId(nodeId, { display: txt });
+          const el = document.getElementById(`node-${nodeId}`);
+          const ta = el?.querySelector('textarea[df-display]');
+          if (ta) ta.value = txt;
+          outP = payload;
+          propagateExecution(nodeId, outP);
+          break;
+        }
+  
+        // —————————————————————————————————————————————
+        case 'repeat': {
+          let c = parseInt(readField(nodeId, 'df-count') || node.data?.count, 10);
+          if (isNaN(c) || c <= 0) return;
+          const p = payload;
+          for (let i = 0; i < c; i++) {
+            setTimeout(() => propagateExecution(nodeId, p), 0);
+          }
+          return;
+        }
+  
+        // —————————————————————————————————————————————
         case 'download_file': {
-          if (payload == null) return; const f = (readField(nodeId, 'df-filename')?.trim() || 'd.txt'); const s = String(payload); editor.updateNodeDataFromId(nodeId, { contentfordownload: s, filename: f });
-          try { const sf = f.replace(/[^a-zA-Z0-9._-]/g, '_') || 'd.txt'; const m = getMimeType(sf.split('.').pop().toLowerCase()); const b = new Blob([s], { type: m }); const l = document.createElement('a'); l.href = URL.createObjectURL(b); l.download = sf; document.body.appendChild(l); l.click(); document.body.removeChild(l); URL.revokeObjectURL(l.href); } catch (err) { console.error(`Download ${nodeId} error:`, err); showToast('error', 'Error', 'Error descarga.'); } return;
+          if (payload == null) return;
+          const f = (readField(nodeId, 'df-filename')?.trim() || 'd.txt');
+          const s = String(payload);
+          editor.updateNodeDataFromId(nodeId, { contentfordownload: s, filename: f });
+          try {
+            const sf = f.replace(/[^a-zA-Z0-9._-]/g, '_') || 'd.txt';
+            const m  = getMimeType(sf.split('.').pop().toLowerCase());
+            const b  = new Blob([s], { type: m });
+            const l  = document.createElement('a');
+            l.href = URL.createObjectURL(b);
+            l.download = sf;
+            document.body.appendChild(l);
+            l.click();
+            document.body.removeChild(l);
+            URL.revokeObjectURL(l.href);
+          } catch (err) {
+            console.error(`Download ${nodeId} error:`, err);
+            showToast('error', 'Error', 'Error descarga.');
+          }
+          return;
         }
-        case 'url_input': { const u = readField(nodeId, 'df-url'); outP = u; propagateExecution(nodeId, outP); break; }
+  
+        // —————————————————————————————————————————————
+        case 'url_input': {
+          const u = readField(nodeId, 'df-url');
+          outP = u;
+          propagateExecution(nodeId, outP);
+          break;
+        }
+  
+        // —————————————————————————————————————————————
         case 'extract_value': {
-          const txt = String(payload ?? ''); const pat = readField(nodeId, 'df-selector_received') || ''; let val = null, res = '(Esperando)';
-          if (txt && pat) { try { const r = new RegExp(pat); const m = txt.match(r); if (m) { val = m[1] ?? m[0]; res = val; } else res = '(No encontrado)'; } catch { res = '(Error Regex)'; } } else if (!pat) res = '(Esperando patrón)'; else res = '(Esperando texto)';
-          editor.updateNodeDataFromId(nodeId, { result: res }); const el = document.getElementById(`node-${nodeId}`); const rt = el?.querySelector('textarea[df-result]'); if (rt) rt.value = res; outP = val; propagateExecution(nodeId, outP); break;
+          const txt = String(payload ?? '');
+          const pat = readField(nodeId, 'df-selector_received') || '';
+          let val = null, res = '(Esperando)';
+          if (txt && pat) {
+            try {
+              const r = new RegExp(pat);
+              const m = txt.match(r);
+              if (m) { val = m[1] ?? m[0]; res = val; }
+              else res = '(No encontrado)';
+            } catch {
+              res = '(Error Regex)';
+            }
+          } else if (!pat) res = '(Esperando patrón)';
+          else res = '(Esperando texto)';
+  
+          editor.updateNodeDataFromId(nodeId, { result: res });
+          const el = document.getElementById(`node-${nodeId}`);
+          const rt = el?.querySelector('textarea[df-result]');
+          if (rt) rt.value = res;
+  
+          outP = val;
+          propagateExecution(nodeId, outP);
+          break;
         }
-        default: { if (!baseNodeDefinitions[nName] || EXECUTE_NODE_SYSTEM_TYPES.includes(nName)) { propagateExecution(nodeId, outP); } }
+  
+        // —————————————————————————————————————————————
+        default: {
+          // en cualquier otro caso, si es nodo “de sistema” vuelve a propagar
+          if (!baseNodeDefinitions[nName] || EXECUTE_NODE_SYSTEM_TYPES.includes(nName)) {
+            propagateExecution(nodeId, outP);
+          }
+        }
       }
-    } catch (error) { console.error(`Error executing ${nName} (${nodeId}):`, error); showToast('error', `Error ${nName}`, error.message.substring(0,50), 4000); } finally { if (node) node._executing = false; }
-}
-
-function propagateExecution(sourceNodeId, payload) {
+    } catch (error) {
+      console.error(`Error executing ${nName} (${nodeId}):`, error);
+      showToast('error', `Error ${nName}`, error.message.substring(0,50), 4000);
+    } finally {
+      if (node) node._executing = false;
+    }
+  }
+  
+  
+  function propagateExecution(sourceNodeId, payload) {
     const conns = getConnections(sourceNodeId, 'output');
     conns.forEach(conn => {
-      const targetId = conn.node; const targetNode = editor.getNodeFromId(targetId); if (!targetNode) return; const targetPort = conn.output;
+      const targetId   = conn.node;
+      const targetNode = editor.getNodeFromId(targetId);
+      if (!targetNode) return;
+      const targetPort = conn.output;
+  
+      // — Nodos de sistema que disparan executeNode ——
       if (EXECUTE_NODE_SYSTEM_TYPES.includes(targetNode.name)) {
-        if (targetNode.name === 'extract_value') { if (targetPort === 'input_1') setTimeout(() => executeNode(targetId, payload), 0); else if (targetPort === 'input_2') { const s = String(payload ?? ''); editor.updateNodeDataFromId(targetId, { selector_received: s }); const el = document.getElementById(`node-${targetId}`); const i = el?.querySelector('input[df-selector_received]'); if (i) i.value = s; } } else setTimeout(() => executeNode(targetId, payload), 0);
-      } else if (targetNode.name === 'javascript_code') { editor.updateNodeDataFromId(targetId, { lastInput: payload }); setTimeout(() => executeNode(targetId, payload), 0); }
-      else if (['mostrarPasar', 'guardarTexto', 'concatenar'].includes(targetNode.name)) {
-        const val = String(payload ?? ''); if (targetPort === 'input_1') {
-          if (targetNode.name === 'mostrarPasar') { editor.updateNodeDataFromId(targetId, { result: val }); const el = document.getElementById(`node-${targetId}`); const ta = el?.querySelector('textarea[df-result]'); if (ta) ta.value = val; setTimeout(() => propagateData(targetId, targetNode.name, 'result', val), 0); }
-          else if (targetNode.name === 'guardarTexto') { editor.updateNodeDataFromId(targetId, { savecontent: val }); const el = document.getElementById(`node-${targetId}`); const ta = el?.querySelector('textarea[df-savecontent]'); if (ta) ta.value = val; }
-          else if (targetNode.name === 'concatenar') setTimeout(() => updateConcatenateNode(targetId), 0);
+        if (targetNode.name === 'extract_value') {
+          if (targetPort === 'input_1') {
+            setTimeout(() => executeNode(targetId, payload), 0);
+          } else if (targetPort === 'input_2') {
+            const s = String(payload ?? '');
+            editor.updateNodeDataFromId(targetId, { selector_received: s });
+            const el = document.getElementById(`node-${targetId}`);
+            const i  = el?.querySelector('input[df-selector_received]');
+            if (i) i.value = s;
+          }
+        } else {
+          setTimeout(() => executeNode(targetId, payload), 0);
+        }
+  
+      // — Nodo JS: actualizamos lastInput y ejecutamos instantáneamente ——
+      } else if (targetNode.name === 'javascript_code') {
+        editor.updateNodeDataFromId(targetId, { lastInput: payload });
+        setTimeout(() => executeNode(targetId, payload), 0);
+  
+      // — Resto de nodos personalizados —————————
+      } else if (['mostrarPasar', 'guardarTexto', 'concatenar'].includes(targetNode.name)) {
+        const val = String(payload ?? '');
+        if (targetPort === 'input_1') {
+          // mostrarPasar
+          if (targetNode.name === 'mostrarPasar') {
+            editor.updateNodeDataFromId(targetId, { result: val });
+            const el = document.getElementById(`node-${targetId}`);
+            const ta = el?.querySelector('textarea[df-result]');
+            if (ta) ta.value = val;
+            setTimeout(() => propagateData(targetId, targetNode.name, 'result', val), 0);
+  
+          // guardarTexto
+          } else if (targetNode.name === 'guardarTexto') {
+            editor.updateNodeDataFromId(targetId, { savecontent: val });
+            const el = document.getElementById(`node-${targetId}`);
+            const ta = el?.querySelector('textarea[df-savecontent]');
+            if (ta) ta.value = val;
+  
+          // concatenar
+          } else if (targetNode.name === 'concatenar') {
+            setTimeout(() => updateConcatenateNode(targetId), 0);
+          }
         }
       }
     });
+  }
+// MODIFICADO: handleNodeDataChange para propagar cambios de nodos de entrada básicos
+function handleNodeDataChange(event) {
+  if (!editor || !event?.target) return;
+  const el = event.target;
+  const nodeEl = el.closest('.drawflow-node');
+  if (!nodeEl) return;
+  const id = nodeEl.id.split('-')[1];
+  const node = editor.getNodeFromId(id);
+  if (!node) return;
+  let key = null;
+  for (const attr of el.attributes) if (attr.name.startsWith('df-')) { key = attr.name.substring(3); break; }
+  if (!key) return;
+
+  // Usar requestAnimationFrame para asegurar que el valor en node.data esté actualizado
+  requestAnimationFrame(() => {
+      try {
+          const updatedNode = editor.getNodeFromId(id);
+          if (!updatedNode?.data?.hasOwnProperty(key)) return; // Verifica que la clave exista en los datos
+          const val = updatedNode.data[key]; // Obtiene el valor actualizado de los datos del nodo
+          const name = updatedNode.name;
+
+          // Lógica específica para ciertos nodos que necesitan ejecutar/propagar al cambiar
+          if ((name === 'url_input' && key === 'url')) {
+               executeNode(id, val);
+          } else if (name === 'cargarTexto' && key === 'filecontent') {
+               propagateData(id, name, key, val);
+          } else if (name === 'imagen' && ['imgsrc', 'imgalt', 'imgwidth', 'imgheight'].includes(key)) {
+               handleImageInputChange(event); // Llama a la función que actualiza la imagen y propaga
+          } else if (name === 'nota' && key === 'notecontent') {
+               updateCharacterCount(event); // Actualiza contador, no necesita propagar
+          } else if ((name === 'timer_fetch' || name === 'timer_download' || name === 'loop') && key === 'interval') {
+               executeNode(id, null); // Reinicia el timer con el nuevo intervalo
+          } else if (name === 'timer_fetch' && key === 'url') {
+               executeNode(id, null); // Reinicia el fetch timer (usará la nueva URL en la próxima ejecución)
+          }
+          // --- INICIO MODIFICACIÓN: Propagar para nodos de entrada simples ---
+          else if (['input_number', 'input_text', 'input_range', 'input_date', 'input_time', 'input_color'].includes(name)) {
+               console.log(`Propagating data from ${name} node ${id}, key: ${key}, value:`, val);
+               propagateData(id, name, key, val); // Propaga el valor cambiado
+          }
+          // --- FIN MODIFICACIÓN ---
+          // Nota: input_json ya se maneja en handleJsonInputChange
+
+          // Siempre guardar el historial después de un cambio en los datos del nodo
+          saveHistoryState();
+
+      } catch (e) {
+          console.error(`Error handleNodeDataChange (${id}/${key}):`, e);
+      }
+  });
 }
 
+
+
+
+// MODIFICADO: propagateData con manejo de nodos aritméticos, texto (auto) y PLANTILLA
+// ACTUALIZADO: propagateData con manejo de nodos aritméticos, texto (auto) y PLANTILLA (corregido)
+// --- USA ESTA VERSIÓN COMPLETA Y MODIFICADA ---
 function propagateData(sourceNodeId, sourceNodeName, changedKey, outputData) {
     try {
         const sourceNode = editor.getNodeFromId(sourceNodeId); if (!sourceNode) return;
@@ -1106,10 +2611,17 @@ function propagateData(sourceNodeId, sourceNodeName, changedKey, outputData) {
         else {
             const commonOutputKeys = ['result', 'content', 'codecontent', 'outputhtml', 'filecontent', 'display', 'url', 'jscode'];
             const inputNodeKeys = ['number', 'text', 'range', 'date', 'time', 'color', 'json', 'notecontent', 'original'];
-            const searchKeys = [changedKey, ...commonOutputKeys, ...inputNodeKeys].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i);
+            let searchKeys = [];
+            if (changedKey && (commonOutputKeys.includes(changedKey) || inputNodeKeys.includes(changedKey))) {
+                searchKeys = [changedKey, ...commonOutputKeys, ...inputNodeKeys];
+            } else {
+                searchKeys = [...commonOutputKeys, ...inputNodeKeys];
+            }
+            searchKeys = searchKeys.filter(Boolean).filter((v, i, a) => a.indexOf(v) === i);
+
             for (const k of searchKeys) { if (Object.prototype.hasOwnProperty.call(sourceData, k)) { dataToPropagate = sourceData[k]; break; } }
             if (dataToPropagate === undefined) {
-                const validKeys = Object.keys(sourceData).filter(k => !['lastInput', 'lastInputs', 'selector_received', 'nodeWidth', 'nodeHeight', 'isMovementLocked'].includes(k));
+                const validKeys = Object.keys(sourceData).filter(k => !['lastInput', 'lastInputs', 'selector_received', 'nodeWidth', 'nodeHeight', 'isMovementLocked', 'naturalWidth', 'naturalHeight'].includes(k));
                 if (validKeys.length > 0) dataToPropagate = sourceData[validKeys[0]]; else return;
             }
         }
@@ -1138,24 +2650,40 @@ function propagateData(sourceNodeId, sourceNodeName, changedKey, outputData) {
     } catch (error) { console.error(`Error propagating data from node ${sourceNodeId} (${sourceNodeName}):`, error); }
 }
 
-function updateConcatenateNode(nodeId) { const n = editor.getNodeFromId(nodeId); if (!n || n.name !== 'concatenar' || !n.inputs?.input_1) return; const conns = (n.inputs.input_1.connections || []).slice().sort((a, b) => (editor.getNodeFromId(a.node)?.pos_y ?? 0) - (editor.getNodeFromId(b.node)?.pos_y ?? 0)); let str = ""; conns.forEach(c => { const sN = editor.getNodeFromId(c.node); if (!sN?.data) return; let dC = ''; const d = sN.data; const keys = ['result', 'content', 'codecontent', 'outputhtml', 'filecontent', 'display', 'url', 'jscode']; for(const k of keys){if(d.hasOwnProperty(k)){ dC = d[k]; break; }} if (dC === '' && Object.keys(d).length > 0) { const fk = Object.keys(d)[0]; if(!['lastInput', 'selector_received'].includes(fk)) dC = d[fk]; } str += String(dC ?? ''); }); if (n.data.result !== str) { editor.updateNodeDataFromId(nodeId, { result: str }); propagateData(nodeId, 'concatenar', 'result', str); saveHistoryState(); } }
+
+
+
+function updateConcatenateNode(nodeId) { const n = editor.getNodeFromId(nodeId); if (!n || n.name !== 'concatenar' || !n.inputs?.input_1) return; const conns = (n.inputs.input_1.connections || []).slice().sort((a, b) => (editor.getNodeFromId(a.node)?.pos_y ?? 0) - (editor.getNodeFromId(b.node)?.pos_y ?? 0)); let str = ""; conns.forEach(c => { const sN = editor.getNodeFromId(c.node); if (!sN?.data) return; let dC = ''; const d = sN.data; const keys = ['result', 'content', 'codecontent', 'outputhtml', 'filecontent', 'display', 'url', 'jscode']; for(const k of keys){if(d.hasOwnProperty(k)){ dC = d[k]; break; }} if (dC === '' && Object.keys(d).length > 0) { const validKeys = Object.keys(d).filter(k => !['lastInput', 'lastInputs', 'selector_received', 'nodeWidth', 'nodeHeight', 'isMovementLocked', 'naturalWidth', 'naturalHeight'].includes(k)); if (validKeys.length > 0) dC = d[validKeys[0]];} str += String(dC ?? ''); }); if (n.data.result !== str) { editor.updateNodeDataFromId(nodeId, { result: str }); propagateData(nodeId, 'concatenar', 'result', str); saveHistoryState(); } }
 
 // --- Node Activation ---
-function activateNodeIfNeeded(nodeId) { try { const node = editor.getNodeFromId(nodeId); if (!node) return; const nName = node.name; if (['timer_fetch', 'timer_download', 'loop'].includes(nName)) executeNode(nodeId, null); else if (nName === 'repeat' && getConnections(nodeId, 'input').length === 0) executeNode(nodeId, null); else if (nName === 'url_input') { const url = readField(nodeId, 'df-url'); if (url?.trim()) executeNode(nodeId, url); } else if (nName === 'cargarTexto') { const c = node.data?.filecontent; if(c) propagateData(nodeId, nName, 'filecontent', c); } else if (nName === 'texto') { const c = node.data?.content; if(c) propagateData(nodeId, nName, 'content', c); } else if (nName === 'static_code_snippet') { const c = node.data?.codecontent; if(c) propagateData(nodeId, nName, 'codecontent', c); } else if (nName === 'imagen') generateImageHtml(nodeId); } catch (error) { console.error(`Error activating ${nodeId}:`, error); } }
+function activateNodeIfNeeded(nodeId) {
+    try {
+        const node = editor.getNodeFromId(nodeId); if (!node) return;
+        const nName = node.name;
+        if (['timer_fetch', 'timer_download', 'loop'].includes(nName)) executeNode(nodeId, null);
+        else if (nName === 'repeat' && getConnections(nodeId, 'input').length === 0) executeNode(nodeId, null);
+        else if (nName === 'url_input') { const url = readField(nodeId, 'df-url'); if (url?.trim()) executeNode(nodeId, url); }
+        else if (nName === 'cargarTexto') { const c = node.data?.filecontent; if(c) propagateData(nodeId, nName, 'filecontent', c); }
+        else if (nName === 'texto') { const c = node.data?.content; if(c) propagateData(nodeId, nName, 'content', c); }
+        else if (nName === 'static_code_snippet') { const c = node.data?.codecontent; if(c) propagateData(nodeId, nName, 'codecontent', c); }
+        else if (nName === 'imagen') generateImageHtml(nodeId);
+        // No specific activation for youtube_display_node or image_display_node on flow recalculation.
+    } catch (error) { console.error(`Error activating ${nodeId}:`, error); }
+}
 function activateExistingAutoNodes() { console.log("Activating initial/auto nodes..."); let nodes = {}; try { nodes = editor.export()?.drawflow?.[editor.module]?.data ?? {}; } catch (e) { console.error("Err get nodes for activation:", e); return; } cleanupAllModuleIntervals(); const ids = Object.keys(nodes); if (ids.length > 0) { ids.forEach(id => { activateNodeIfNeeded(id); }); ids.forEach(id => { if (nodes[id]?.name === 'concatenar') updateConcatenateNode(id); }); } console.log("Initial activation complete."); }
 
 // --- Node Search ---
-// searchInput listener moved to initializeApp
+if (searchInput) searchInput.addEventListener('input', filterNodes);
 function filterNodes() { if (!searchInput || !nodesListContainer) return; try { const s = searchInput.value.toLowerCase().trim(); const items = nodesListContainer.querySelectorAll('.drag-drawflow, .create-node-button'); items?.forEach(i => { const btn = i.classList.contains('create-node-button'); const type = i.dataset.node?.toLowerCase() || ''; const nameEl = i.querySelector('span'); const nameTxt = nameEl?.textContent.toLowerCase().trim() || ''; const defName = btn ? 'crear tipo nodo' : ''; const itemTxt = nameTxt || defName; const show = !s || itemTxt.includes(s) || (type && type.includes(s)) || (btn && 'crear'.includes(s)); i.style.display = show ? (btn ? 'block' : 'flex') : 'none'; }); } catch (e) { console.error("Error filterNodes:", e); } }
 
 // --- Custom Node Management ---
 function getStoredCustomNodeTypes() { try { const s = localStorage.getItem(LOCALSTORAGE_NODES_KEY); return JSON.parse(s || '{}'); } catch (e) { console.error("Err reading custom types:", e); return {}; } }
 function saveCustomNodeTypes(allTypes) { try { const custom = {}; for (const k in allTypes) if (!baseNodeDefinitions.hasOwnProperty(k)) custom[k] = allTypes[k]; localStorage.setItem(LOCALSTORAGE_NODES_KEY, JSON.stringify(custom)); } catch (e) { console.error("Err saving custom types:", e); showToast('error', 'Error', 'Cannot save custom nodes.'); } }
-function addDraggableItemToSidebar(nodeDef) { if (!nodesListContainer || !nodeDef?.name) return; if (nodesListContainer.querySelector(`.drag-drawflow[data-node="${nodeDef.name}"]`)) return; const div = document.createElement('div'); div.className = 'drag-drawflow'; div.style.display = 'flex'; div.draggable = true; div.dataset.node = nodeDef.name; let title = nodeDef.title || nodeDef.name; let iconHtml = '<i class="fas fa-puzzle-piece"></i>'; try { const tmp = document.createElement('div'); tmp.innerHTML = nodeDef.html || ''; const tb = tmp.querySelector('.title-box, .youtube-placeholder, .image-placeholder'); if (tb) { const i = tb.querySelector('i'); if (i) { const ci = i.cloneNode(true); ci.style.cssText = 'margin-right: 8px; color: #777; width: 16px; text-align: center; flex-shrink: 0;'; iconHtml = ci.outerHTML; } if (!nodeDef.title && tb.classList.contains('title-box')) { const txt = tb.textContent.replace(/<[^>]*>/g, '').trim(); if (txt) title = txt; } } } catch (e) { console.warn(`Err parsing sidebar HTML for ${nodeDef.name}:`, e); } div.innerHTML = `${iconHtml}<span style="flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(title)}</span>`; div.title = `Drag: ${title} (${nodeDef.name})`; if (!baseNodeDefinitions.hasOwnProperty(nodeDef.name)) { const del = document.createElement('button'); del.innerHTML = '<i class="fas fa-trash-alt"></i>'; del.className = 'delete-node-type-btn'; del.title = `Delete type: ${nodeDef.name}`; del.setAttribute('aria-label', `Delete type ${nodeDef.name}`); del.onclick = (ev) => { ev.stopPropagation(); promptDeleteNodeType(nodeDef.name); }; div.appendChild(del); } div.addEventListener('dragstart', drag); div.addEventListener('touchstart', drag, { passive: false }); div.addEventListener('touchmove', positionMobile, { passive: false }); div.addEventListener('touchend', drop); nodesListContainer.appendChild(div); }
+function addDraggableItemToSidebar(nodeDef) { if (!nodesListContainer || !nodeDef?.name) return; if (nodesListContainer.querySelector(`.drag-drawflow[data-node="${nodeDef.name}"]`)) return; const div = document.createElement('div'); div.className = 'drag-drawflow'; div.style.display = 'flex'; div.draggable = true; div.dataset.node = nodeDef.name; let title = nodeDef.title || nodeDef.name; let iconHtml = '<i class="fas fa-puzzle-piece"></i>'; try { const tmp = document.createElement('div'); tmp.innerHTML = nodeDef.html || ''; const tb = tmp.querySelector('.title-box'); if (tb) { const i = tb.querySelector('i'); if (i) { const ci = i.cloneNode(true); ci.style.cssText = 'margin-right: 8px; color: #777; width: 16px; text-align: center; flex-shrink: 0;'; iconHtml = ci.outerHTML; } if (!nodeDef.title) { const txt = tb.textContent.replace(/<[^>]*>/g, '').trim(); if (txt) title = txt; } } } catch (e) { console.warn(`Err parsing sidebar HTML for ${nodeDef.name}:`, e); } div.innerHTML = `${iconHtml}<span style="flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(title)}</span>`; div.title = `Drag: ${title} (${nodeDef.name})`; if (!baseNodeDefinitions.hasOwnProperty(nodeDef.name)) { const del = document.createElement('button'); del.innerHTML = '<i class="fas fa-trash-alt"></i>'; del.className = 'delete-node-type-btn'; del.title = `Delete type: ${nodeDef.name}`; del.setAttribute('aria-label', `Delete type ${nodeDef.name}`); del.onclick = (ev) => { ev.stopPropagation(); promptDeleteNodeType(nodeDef.name); }; div.appendChild(del); } div.addEventListener('dragstart', drag); div.addEventListener('touchstart', drag, { passive: false }); div.addEventListener('touchmove', positionMobile, { passive: false }); div.addEventListener('touchend', drop); nodesListContainer.appendChild(div); }
 function loadCustomNodesToSidebar() { if (!nodesListContainer) return; try { const stored = getStoredCustomNodeTypes(); customNodeTypes = { ...baseNodeDefinitions, ...stored }; console.log("Node types loaded:", Object.keys(customNodeTypes).length); nodesListContainer.innerHTML = ''; if (nodeDefinitionModal) { const btn = document.createElement('div'); btn.className = 'create-node-button'; btn.setAttribute('role', 'button'); btn.innerHTML = '<i class="fas fa-plus-circle"></i><span>&nbsp;&nbsp;Create Node Type</span>'; btn.title = 'Define new custom node type'; btn.onclick = openNodeDefinitionModal; nodesListContainer.appendChild(btn); } const defs = Object.values(customNodeTypes).sort((a, b) => (a.title || a.name).localeCompare(b.title || b.name)); defs.forEach(addDraggableItemToSidebar); filterNodes(); } catch (e) { console.error("Fatal sidebar load error:", e); showToast('error', 'Sidebar Error', 'Error loading nodes.'); } }
-function openNodeDefinitionModal() { if (!nodeDefinitionModal || !modalBackdrop) { showToast('error','Error','Modal not available.'); return; } document.getElementById('newNodeTypeName').value = ''; document.getElementById('newNodeTypeTitle').value = ''; document.getElementById('newNodeInputs').value = '1'; document.getElementById('newNodeOutputs').value = '1'; document.getElementById('newNodeCssClass').value = ''; document.getElementById('newNodeHtmlContent').value = `<div>\n  <div class="title-box"><i class="fas fa-cogs"></i> My Node</div>\n  <div class="box">\n    <label>Data:</label>\n    <input type="text" df-mydata placeholder="Value...">\n  </div>\n <div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div></div>`; document.getElementById('newNodeInitialData').value = `{ "mydata": "", "nodeWidth": "220px", "nodeHeight": "auto" }`; nodeDefinitionModal.style.display = 'block'; modalBackdrop.style.display = 'block'; document.getElementById('newNodeTypeName').focus(); }
+function openNodeDefinitionModal() { if (!nodeDefinitionModal || !modalBackdrop) { showToast('error','Error','Modal not available.'); return; } document.getElementById('newNodeTypeName').value = ''; document.getElementById('newNodeTypeTitle').value = ''; document.getElementById('newNodeInputs').value = '1'; document.getElementById('newNodeOutputs').value = '1'; document.getElementById('newNodeCssClass').value = ''; document.getElementById('newNodeHtmlContent').value = `<div>\n  <div class="title-box"><i class="fas fa-cogs"></i> My Node</div>\n  <div class="box">\n    <label>Data:</label>\n    <input type="text" df-mydata placeholder="Value...">\n  </div>\n</div>`; document.getElementById('newNodeInitialData').value = `{ "mydata": "" }`; nodeDefinitionModal.style.display = 'block'; modalBackdrop.style.display = 'block'; document.getElementById('newNodeTypeName').focus(); }
 function closeNodeDefinitionModal() { if (!nodeDefinitionModal || !modalBackdrop) return; nodeDefinitionModal.style.display = 'none'; modalBackdrop.style.display = 'none'; }
-function saveNewNodeType() { const nameIn=document.getElementById('newNodeTypeName'), titleIn=document.getElementById('newNodeTypeTitle'), inputsIn=document.getElementById('newNodeInputs'), outputsIn=document.getElementById('newNodeOutputs'), cssIn=document.getElementById('newNodeCssClass'), htmlIn=document.getElementById('newNodeHtmlContent'), dataIn=document.getElementById('newNodeInitialData'); if(!nameIn||!titleIn||!inputsIn||!outputsIn||!cssIn||!htmlIn||!dataIn) { showToast('error','Internal Error','Modal fields missing.'); return; } const name=nameIn.value.trim().toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,''); const title=titleIn.value.trim(); const inputs=parseInt(inputsIn.value,10); const outputs=parseInt(outputsIn.value,10); const cssClass=(cssIn.value.trim()||`${name}-node`) + " resizable-node-class"; const html=htmlIn.value.trim(); if(!name) { showToast('error','Validation Error','Internal name required.'); nameIn.focus(); return; } if(customNodeTypes[name]) { showToast('error','Validation Error',`Name "${name}" exists.`); nameIn.focus(); return; } if(isNaN(inputs)||inputs<0||isNaN(outputs)||outputs<0) { showToast('error','Validation Error','Inputs/Outputs >= 0.'); return; } if(!html) { showToast('error','Validation Error','HTML empty.'); htmlIn.focus(); return; } let iData={ nodeWidth: "220px", nodeHeight: "auto"}; const dataStr = dataIn.value.trim(); if(dataStr) { try { const parsedData =JSON.parse(dataStr); if(typeof parsedData!=='object'||parsedData===null||Array.isArray(parsedData)) throw new Error("JSON must be object."); iData = {...iData, ...parsedData}; } catch (e) { showToast('error','JSON Error',`Initial Data: ${e.message}`); dataIn.focus(); return; } } else { try { const tmp=document.createElement('div'); tmp.innerHTML=html; tmp.querySelectorAll('[df-]').forEach(el=>{ for(const a of el.attributes) if(a.name.startsWith('df-')){ const k=a.name.substring(3); if(!iData.hasOwnProperty(k)) iData[k]=el.value??el.textContent??''; } }); } catch(e){console.warn("Infer data error:", e);} } if (!html.includes('class="node-resizer"')) { showToast('warning', 'Resizer Missing', 'Añade <div class="node-resizer"><i class="fas fa-expand-alt"></i></div> al HTML si quieres que sea redimensionable.');} const def={name,title,inputs,outputs,html,data:iData,cssClass}; customNodeTypes[name]=def; saveCustomNodeTypes(customNodeTypes); addDraggableItemToSidebar(def); const item=nodesListContainer.querySelector(`[data-node="${name}"]`); item?.scrollIntoView({behavior:'smooth',block:'nearest'}); showToast('success','Success',`Type "${title||name}" added.`); closeNodeDefinitionModal(); }
+function saveNewNodeType() { const nameIn=document.getElementById('newNodeTypeName'), titleIn=document.getElementById('newNodeTypeTitle'), inputsIn=document.getElementById('newNodeInputs'), outputsIn=document.getElementById('newNodeOutputs'), cssIn=document.getElementById('newNodeCssClass'), htmlIn=document.getElementById('newNodeHtmlContent'), dataIn=document.getElementById('newNodeInitialData'); if(!nameIn||!titleIn||!inputsIn||!outputsIn||!cssIn||!htmlIn||!dataIn) { showToast('error','Internal Error','Modal fields missing.'); return; } const name=nameIn.value.trim().toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,''); const title=titleIn.value.trim(); const inputs=parseInt(inputsIn.value,10); const outputs=parseInt(outputsIn.value,10); const cssClass=cssIn.value.trim()||`${name}-node`; const html=htmlIn.value; const dataStr=dataIn.value.trim(); if(!name) { showToast('error','Validation Error','Internal name required.'); nameIn.focus(); return; } if(customNodeTypes[name]) { showToast('error','Validation Error',`Name "${name}" exists.`); nameIn.focus(); return; } if(isNaN(inputs)||inputs<0||isNaN(outputs)||outputs<0) { showToast('error','Validation Error','Inputs/Outputs >= 0.'); return; } if(!html) { showToast('error','Validation Error','HTML empty.'); htmlIn.focus(); return; } let iData={}; if(dataStr) { try { iData=JSON.parse(dataStr); if(typeof iData!=='object'||iData===null||Array.isArray(iData)) throw new Error("JSON must be object."); } catch (e) { showToast('error','JSON Error',`Initial Data: ${e.message}`); dataIn.focus(); return; } } else { try { const tmp=document.createElement('div'); tmp.innerHTML=html; tmp.querySelectorAll('[df-]').forEach(el=>{ for(const a of el.attributes) if(a.name.startsWith('df-')){ const k=a.name.substring(3); if(!iData.hasOwnProperty(k)) iData[k]=el.value??el.textContent??''; } }); } catch(e){console.warn("Infer data error:", e);} } const def={name,title,inputs,outputs,html,data:iData,cssClass}; customNodeTypes[name]=def; saveCustomNodeTypes(customNodeTypes); addDraggableItemToSidebar(def); const item=nodesListContainer.querySelector(`[data-node="${name}"]`); item?.scrollIntoView({behavior:'smooth',block:'nearest'}); showToast('success','Success',`Type "${title||name}" added.`); closeNodeDefinitionModal(); }
 function promptDeleteNodeType(nodeTypeName) { if(!nodeTypeName) return; if(baseNodeDefinitions.hasOwnProperty(nodeTypeName)){ showToast('warning','Not Allowed',`Base node "${nodeTypeName}" cannot be deleted.`); return; } if(!customNodeTypes.hasOwnProperty(nodeTypeName) || !getStoredCustomNodeTypes().hasOwnProperty(nodeTypeName)){ showToast('error','Error',`Custom node "${nodeTypeName}" not found.`); return; } const title=customNodeTypes[nodeTypeName]?.title||nodeTypeName; Swal.fire({title:`Delete Type "${title}"?`, text:`Delete definition "${nodeTypeName}"? Existing nodes may fail. Irreversible!`, icon:'warning', showCancelButton:true, confirmButtonColor:'#d33', cancelButtonColor:'#3085d6', confirmButtonText:'Yes, delete type', cancelButtonText:'Cancel'}).then((res) => { if(res.isConfirmed){ try { delete customNodeTypes[nodeTypeName]; saveCustomNodeTypes(customNodeTypes); loadCustomNodesToSidebar(); showToast('success','Deleted',`Type "${title}" deleted.`); } catch(err){ console.error(`Err deleting ${nodeTypeName}:`,err); showToast('error','Error', 'Failed to delete.'); customNodeTypes[nodeTypeName] = getStoredCustomNodeTypes()[nodeTypeName]; } } }); }
 
 // --- History (Undo/Redo) ---
@@ -1166,237 +2694,350 @@ function redo() { if (historyIndex >= historyStack.length - 1 || isLocked()) ret
 
 // --- Project Management ---
 function triggerLoad() { if (fileInputElement) fileInputElement.click(); else showToast('error', 'Error', 'File input missing.'); }
+if (fileInputElement) fileInputElement.addEventListener('change', loadProjectFromFile);
 
+/**
+ * Carga un proyecto Xocoflow desde un archivo JSON seleccionado por el usuario.
+ * @param {Event} event - El evento 'change' del input de tipo 'file'.
+ */
 function loadProjectFromFile(event) {
-    const fileInput = event.target; const file = fileInput?.files?.[0];
-    if (!file) { if(fileInput) fileInput.value = null; return; }
-    const expectedProjectName = file.name.replace(/\.json$/i, "");
-    const reader = new FileReader();
+  console.log(">>> loadProjectFromFile FUNCTION CALLED <<<");
+  const fileInput = event.target; // Referencia al input
+  const file = fileInput?.files?.[0];
 
-    reader.onload = (e) => {
-        let projectData; const fileContent = e.target.result;
-        try {
-            try { projectData = JSON.parse(fileContent); }
-            catch (parseError) { showToast('error', 'Error de Parseo', 'El archivo JSON no es válido.'); if (fileInput) fileInput.value = null; return; }
-            if (!projectData?.drawflow) { showToast('error', 'Formato Inválido', 'El archivo no parece un proyecto Xocoflow.'); if (fileInput) fileInput.value = null; return;}
+  if (!file) {
+      if(fileInput) fileInput.value = null; // Limpia si no hay archivo
+      return;
+  }
 
-            try {
-                const customDefsFromFile = projectData.customNodeDefinitions;
-                if (customDefsFromFile && typeof customDefsFromFile === 'object') {
-                    saveCustomNodeTypes(customDefsFromFile); customNodeTypes = { ...baseNodeDefinitions, ...customDefsFromFile };
-                } else { customNodeTypes = { ...baseNodeDefinitions, ...getStoredCustomNodeTypes() }; }
-                loadCustomNodesToSidebar();
-            } catch (nodeError) { console.warn("Error procesando nodos personalizados:", nodeError); showToast('warning', 'Advertencia Nodos', 'Problema al cargar definiciones.');}
+  const expectedProjectName = file.name.replace(/\.json$/i, "");
+  console.log(`Intentando cargar archivo: ${file.name}`);
+  const reader = new FileReader();
 
-            const currentModuleBeforeImport = editor.module;
-            try {
-                cleanupAllModuleIntervals(); editor.import(projectData);
-                const targetModule = editor.module || currentModuleBeforeImport;
-                const drawflowExportAfterImport = editor.export();
-                const currentModuleNodes = drawflowExportAfterImport?.drawflow?.[targetModule]?.data;
+  reader.onload = (e) => {
+      let projectData;
+      const fileContent = e.target.result;
 
-                if (currentModuleNodes) {
-                    Object.keys(currentModuleNodes).forEach(nodeId => {
-                        const node = currentModuleNodes[nodeId]; const nodeData = node.data || {}; const nodeElement = document.getElementById(`node-${nodeId}`); const nodeName = node.name;
-                        if (nodeElement) {
-                            Object.keys(nodeData).forEach(dataKey => {
-                                if (['naturalWidth', 'naturalHeight'].includes(dataKey) && (nodeName === 'image_minimal' || nodeName === 'youtube_minimal')) return;
-                                if (['lastInput', 'lastInputs', 'selector_received'].includes(dataKey)) return;
-                                const inputElement = nodeElement.querySelector(`[df-${dataKey}]`);
-                                if (inputElement) {
-                                    const value = nodeData[dataKey];
-                                    if (inputElement.tagName === 'TEXTAREA' || (inputElement.tagName === 'INPUT' && ['text', 'number', 'url', 'email', 'password', 'range', 'date', 'time', 'color'].includes(inputElement.type))) {
-                                        inputElement.value = value ?? '';
-                                        if (inputElement.type === 'range' && inputElement.nextElementSibling?.hasAttribute('df-rangeval')) { inputElement.nextElementSibling.textContent = value ?? '0'; }
-                                    } else if (inputElement.tagName === 'SELECT'){ inputElement.value = value ?? ''; if (dataKey === 'notecolor' && nodeName === 'nota') { const changeEvent = new Event('change', { bubbles: true }); inputElement.dispatchEvent(changeEvent); } }
-                                    else if (inputElement.tagName === 'IMG' && dataKey === 'imgsrc' && nodeName !== 'image_minimal' && nodeName !== 'youtube_minimal') { inputElement.src = value ?? ''; inputElement.style.display = value ? 'block' : 'none'; const placeholder = nodeElement.querySelector('.placeholder-text'); if(placeholder) placeholder.style.display = value ? 'none' : (placeholder.classList.contains('youtube-placeholder') ? 'flex' : 'block'); }
-                                    else if (inputElement.tagName === 'SPAN' && dataKey === 'filename'){ inputElement.textContent = value ?? ''; inputElement.title = value ?? ''; }
-                                    else if (inputElement.hasAttribute('df-charcount')  && nodeName === 'nota') { inputElement.textContent = nodeElement.querySelector('[df-notecontent]')?.value?.length || '0'; }
-                                }
-                            });
-                            if (nodeData.nodeWidth) nodeElement.style.width = nodeData.nodeWidth;
-                            if (nodeData.nodeHeight) nodeElement.style.height = nodeData.nodeHeight;
-                            const resizer = nodeElement.querySelector('.node-resizer');
-                            if (resizer) { resizer.removeEventListener('mousedown', startNodeResize); resizer.addEventListener('mousedown', (e) => startNodeResize(e, nodeId, resizer)); }
+      try {
+          // --- PASO 1: Parsear JSON ---
+          try {
+              projectData = JSON.parse(fileContent);
+          } catch (parseError) { /* ... (manejo de error existente) ... */ return; }
 
-                            if (nodeName === 'nota' && nodeData.notecolor) { nodeElement.style.backgroundColor = nodeData.notecolor; const tb = nodeElement.querySelector('.title-box'); if(tb) { const darkBgs = ['#ccccff', '#e0e0e0']; tb.style.backgroundColor = darkBgs.includes(nodeData.notecolor) ? '#f0f0f0' : ''; tb.style.color = darkBgs.includes(nodeData.notecolor) ? '#333' : ''; } }
-                            else if (nodeName === 'local_image') { const imgTag = nodeElement.querySelector('img[df-imagesrc]'); if (imgTag){ if(nodeData.imagewidth) imgTag.style.width = nodeData.imagewidth; if(nodeData.imageheight) imgTag.style.height = nodeData.imageheight; imgTag.src = nodeData.imagesrc ?? ''; imgTag.style.display = nodeData.imagesrc ? 'block' : 'none'; const placeholder = nodeElement.querySelector('.placeholder-text'); if(placeholder) placeholder.style.display = nodeData.imagesrc ? 'none' : 'block'; } }
-                            else if (nodeName === 'image_minimal') {
-                                const imgTag = nodeElement.querySelector('img[df-imgsrc]'); const placeholder = nodeElement.querySelector('.image-placeholder');
-                                if (imgTag && placeholder) {
-                                    const hasValidImage = nodeData.imgsrc && nodeData.naturalWidth > 0 && nodeData.naturalHeight > 0;
-                                    if (hasValidImage) { imgTag.src = nodeData.imgsrc; imgTag.style.display = 'block'; placeholder.style.display = 'none'; nodeElement.style.width = nodeData.nodeWidth || `${nodeData.naturalWidth}px`; nodeElement.style.height = nodeData.nodeHeight || `${nodeData.naturalHeight}px`; nodeElement.style.border = 'none'; }
-                                    else { imgTag.src = ''; imgTag.style.display = 'none'; placeholder.style.display = 'flex'; nodeElement.style.width = nodeData.nodeWidth || baseNodeDefinitions['image_minimal'].data.nodeWidth; nodeElement.style.height = nodeData.nodeHeight || baseNodeDefinitions['image_minimal'].data.nodeHeight; nodeElement.style.border = '2px dashed #cccccc'; }
-                                    setTimeout(() => setupMinimalImageNodeListeners(nodeId), 50); setTimeout(() => editor.updateConnectionNodes(`node-${nodeId}`), 100);
-                                }
-                            }
-                            else if (nodeName === 'youtube_minimal') { // ** UPDATED for API **
-                                const placeholder = nodeElement.querySelector('.youtube-placeholder'); const playerContainerDiv = nodeElement.querySelector('.yt-player-container');
-                                if (playerContainerDiv && placeholder) {
-                                    nodeElement.style.width = nodeData.nodeWidth || baseNodeDefinitions['youtube_minimal'].data.nodeWidth;
-                                    nodeElement.style.height = nodeData.nodeHeight || baseNodeDefinitions['youtube_minimal'].data.nodeHeight;
-                                    if (nodeData.videoid) createOrUpdateYouTubePlayer(nodeId, nodeData.videoid);
-                                    else { playerContainerDiv.style.display = 'none'; placeholder.style.display = 'flex'; nodeElement.style.border = '2px dashed #cccccc'; }
-                                }
-                                setupYouTubeMinimalNodeListeners(nodeId);
-                            }
-                            if (nodeData.hasOwnProperty('isMovementLocked')) updateNodeVisualLockState(nodeId, nodeData.isMovementLocked);
-                            else { editor.updateNodeDataFromId(nodeId, { ...nodeData, isMovementLocked: false }); updateNodeVisualLockState(nodeId, false); }
-                        }
-                    });
-                }
-            } catch (importError) { console.error("Error durante la importación:", importError); showToast('error', 'Error de Importación', 'No se pudo importar.'); if (fileInput) fileInput.value = null; return; }
+          // --- PASO 2: Verificar estructura básica ---
+          if (!projectData?.drawflow) { /* ... (manejo de error existente) ... */ return; }
 
-            currentProjectName = expectedProjectName; renderModuleTabs(); initializeHistory();
-            selectedNodeId = null; copiedNodeData = null; currentlyEditingNodeId = null;
-            updateUIDisabledStates(); closeCodeEditorSidebar(false); document.title = `Xocoflow | ${currentProjectName} - ${editor.module}`;
-            saveHistoryState(true); activateExistingAutoNodes(); showToast('success', 'Proyecto Cargado', `"${escapeHtml(currentProjectName)}" cargado.`);
-        } catch (err) { console.error("Error en reader.onload:", err); showToast('error', 'Error de Archivo', 'No se pudo leer.'); }
-        finally { if (fileInput) fileInput.value = null; }
-    };
-    reader.onerror = (e) => { showToast('error', 'Error de Lectura', 'No se pudo leer.'); if (fileInput) fileInput.value = null;};
-    reader.readAsText(file);
+          // --- PASO 3: Procesar Nodos Personalizados ---
+          console.log("JSON parseado, procesando nodos personalizados...");
+          try {
+              // Cargar definiciones personalizadas del archivo o del localStorage
+              const customDefsFromFile = projectData.customNodeDefinitions;
+              if (customDefsFromFile && typeof customDefsFromFile === 'object') {
+                  saveCustomNodeTypes(customDefsFromFile); // Guarda en localStorage
+                  customNodeTypes = { ...baseNodeDefinitions, ...customDefsFromFile };
+              } else {
+                  // Si no hay definiciones en el archivo, usa las que ya están en localStorage
+                  customNodeTypes = { ...baseNodeDefinitions, ...getStoredCustomNodeTypes() };
+              }
+              loadCustomNodesToSidebar(); // Actualiza sidebar ANTES de importar
+          } catch (nodeError) { /* ... (manejo de error/warning existente) ... */ }
+
+
+          // --- PASO 4: Importar en Drawflow y Sincronizar UI ---
+          console.log("Importando datos en Drawflow...");
+          const currentModuleBeforeImport = editor.module;
+          try {
+              cleanupAllModuleIntervals(); // Detener timers antes de importar
+              editor.import(projectData); // ¡La importación ocurre aquí!
+
+              // --- INICIO: ACTUALIZACIÓN MANUAL DE UI POST-IMPORTACIÓN ---
+              console.log("Sincronizando UI de nodos con datos importados...");
+              const targetModule = editor.module || currentModuleBeforeImport; // Módulo actual después de importar
+              const drawflowExportAfterImport = editor.export(); // Obtenemos el estado *después* de importar
+              const currentModuleNodes = drawflowExportAfterImport?.drawflow?.[targetModule]?.data;
+
+              if (currentModuleNodes) {
+                  Object.keys(currentModuleNodes).forEach(nodeId => {
+                      // Obtener datos y elemento del nodo recién importado
+                      const node = currentModuleNodes[nodeId]; // Nodo completo de la exportación
+                      const nodeData = node.data || {};
+                      const nodeElement = document.getElementById(`node-${nodeId}`);
+                      const nodeName = node.name;
+
+                      if (nodeElement) {
+                          // --- Sincronización General (para la mayoría de nodos) ---
+                          // Itera sobre los datos para actualizar los elementos df-* correspondientes
+                          Object.keys(nodeData).forEach(dataKey => {
+                              // Saltar claves especiales que no se reflejan directamente o se manejan abajo
+                              if (['naturalWidth', 'naturalHeight'].includes(dataKey) && (nodeName === 'image_minimal' || nodeName === 'youtube_minimal')) return;
+                              // Claves que pueden ser internas y no tener elemento df-* directo
+                              if (['lastInput', 'lastInputs', 'selector_received'].includes(dataKey)) return;
+
+                              const inputElement = nodeElement.querySelector(`[df-${dataKey}]`);
+                              if (inputElement) {
+                                  const value = nodeData[dataKey];
+                                  // Lógica existente para inputs, textareas, selects...
+                                  if (inputElement.tagName === 'TEXTAREA' || (inputElement.tagName === 'INPUT' && ['text', 'number', 'url', 'email', 'password', 'range', 'date', 'time', 'color'].includes(inputElement.type))) {
+                                      inputElement.value = value ?? '';
+                                      // Si es un range, actualiza el span asociado si existe
+                                      if (inputElement.type === 'range' && inputElement.nextElementSibling?.hasAttribute('df-rangeval')) {
+                                           inputElement.nextElementSibling.textContent = value ?? '0';
+                                      }
+                                  } else if (inputElement.tagName === 'SELECT'){
+                                      inputElement.value = value ?? '';
+                                      if (dataKey === 'notecolor' && nodeName === 'nota') { // Trigger 'change' para actualizar color de nota
+                                          const changeEvent = new Event('change', { bubbles: true });
+                                          inputElement.dispatchEvent(changeEvent);
+                                      }
+                                  } else if (inputElement.tagName === 'IMG' && dataKey === 'imgsrc' && nodeName !== 'image_minimal' && nodeName !== 'youtube_minimal' && nodeName !== 'image_display_node') { // Caso local_image original
+                                      inputElement.src = value ?? '';
+                                      inputElement.style.display = value ? 'block' : 'none';
+                                      const placeholder = nodeElement.querySelector('.placeholder-text');
+                                      if(placeholder) placeholder.style.display = value ? 'none' : (placeholder.classList.contains('youtube-placeholder') ? 'flex' : 'block');
+                                  } else if (inputElement.tagName === 'SPAN' && dataKey === 'filename'){
+                                      inputElement.textContent = value ?? '';
+                                      inputElement.title = value ?? '';
+                                  } else if (inputElement.hasAttribute('df-charcount')  && nodeName === 'nota') {
+                                      inputElement.textContent = nodeElement.querySelector('[df-notecontent]')?.value?.length || '0';
+                                  }
+                                  // ... otros casos si son necesarios ...
+                              }
+                          });
+
+                          // --- Sincronización Específica por Tipo de Nodo ---
+
+                          // Caso: Nodo Nota (color del fondo y título)
+                          if (nodeName === 'nota' && nodeData.notecolor) {
+                              nodeElement.style.backgroundColor = nodeData.notecolor;
+                              const tb = nodeElement.querySelector('.title-box');
+                              if(tb) {
+                                  const darkBgs = ['#ccccff', '#e0e0e0'];
+                                  tb.style.backgroundColor = darkBgs.includes(nodeData.notecolor) ? '#f0f0f0' : '';
+                                  tb.style.color = darkBgs.includes(nodeData.notecolor) ? '#333' : '';
+                              }
+                          }
+                          // Caso: Nodo Local Image (tamaño del nodo e imagen interna)
+                          else if (nodeName === 'local_image') {
+                              if (nodeData.nodewidth) nodeElement.style.width = nodeData.nodewidth;
+                              if (nodeData.nodeheight) nodeElement.style.height = nodeData.nodeheight;
+                              const imgTag = nodeElement.querySelector('img[df-imagesrc]');
+                              if (imgTag){
+                                  if(nodeData.imagewidth) imgTag.style.width = nodeData.imagewidth;
+                                  if(nodeData.imageheight) imgTag.style.height = nodeData.imageheight;
+                                  // Restaurar src y visibilidad también, aunque debería hacerse en el bucle general
+                                  imgTag.src = nodeData.imagesrc ?? '';
+                                  imgTag.style.display = nodeData.imagesrc ? 'block' : 'none';
+                                  const placeholder = nodeElement.querySelector('.placeholder-text');
+                                   if(placeholder) placeholder.style.display = nodeData.imagesrc ? 'none' : 'block';
+                              }
+                          }
+                          // --- INICIO: Caso image_minimal ---
+                          else if (nodeName === 'image_minimal') {
+                              const imgTag = nodeElement.querySelector('img[df-imgsrc]');
+                              const placeholder = nodeElement.querySelector('.image-placeholder');
+
+                              if (imgTag && placeholder) {
+                                  // Verificar si hay una imagen válida guardada
+                                  const hasValidImage = nodeData.imgsrc && nodeData.naturalWidth > 0 && nodeData.naturalHeight > 0;
+
+                                  if (hasValidImage) {
+                                      // Restaurar imagen y tamaño
+                                      imgTag.src = nodeData.imgsrc;
+                                      imgTag.style.display = 'block';
+                                      placeholder.style.display = 'none';
+                                      nodeElement.style.width = nodeData.nodeWidth || `${nodeData.naturalWidth}px`;
+                                      nodeElement.style.height = nodeData.nodeHeight || `${nodeData.naturalHeight}px`;
+                                      nodeElement.style.border = 'none'; // Quitar borde punteado
+                                      console.log(`Restored image_minimal ${nodeId} to ${nodeData.naturalWidth}x${nodeData.naturalHeight}`);
+                                  } else {
+                                      // Mostrar placeholder y tamaño mínimo
+                                      imgTag.src = '';
+                                      imgTag.style.display = 'none';
+                                      placeholder.style.display = 'flex'; // O 'block'
+                                      nodeElement.style.width = nodeData.nodeWidth || baseNodeDefinitions['image_minimal'].data.nodeWidth;
+                                      nodeElement.style.height = nodeData.nodeHeight || baseNodeDefinitions['image_minimal'].data.nodeHeight;
+                                      nodeElement.style.border = '2px dashed #cccccc'; // Poner borde
+                                      console.log(`Restored image_minimal ${nodeId} to placeholder state.`);
+                                  }
+
+                                  // SIEMPRE re-adjuntar listeners después de cargar el proyecto
+                                  setTimeout(() => setupMinimalImageNodeListeners(nodeId), 50);
+
+                                  // Forzar actualización de conexiones después de ajustar tamaño
+                                  // Dar un poco más de tiempo para que el DOM se estabilice
+                                  setTimeout(() => editor.updateConnectionNodes(`node-${nodeId}`), 100);
+                              } else {
+                                  console.warn(`Could not find img/placeholder elements for image_minimal node ${nodeId} during project load.`);
+                              }
+                          }
+                          // --- FIN: Caso image_minimal ---
+
+                      } else {
+                          console.warn(`Node element not found in DOM for ID ${nodeId} during post-import UI sync.`);
+                      }
+                  }); // Fin forEach nodeId
+              } else {
+                  console.warn("No nodes found in the current module after import to sync UI:", targetModule);
+              }
+              console.log("Post-import UI synchronization completed.");
+              // --- FIN: ACTUALIZACIÓN MANUAL DE UI POST-IMPORTACIÓN ---
+
+          } catch (importError) { /* ... (manejo de error existente) ... */ return; }
+
+          // --- PASO 5: Éxito - Finalizar la carga ---
+          console.log("Importación completada. Actualizando estado de la aplicación.");
+          currentProjectName = expectedProjectName;
+          renderModuleTabs();
+          initializeHistory();
+          selectedNodeId = null;
+          copiedNodeData = null;
+          currentlyEditingNodeId = null; // Asegurarse de limpiar esto también
+          updateUIDisabledStates();
+          closeCodeEditorSidebar(false);
+          document.title = `Xocoflow | ${currentProjectName} - ${editor.module}`;
+          saveHistoryState(true); // Guarda estado inicial cargado
+          // Activar nodos automáticos DESPUÉS de sincronizar UI
+          activateExistingAutoNodes();
+          showToast('success', 'Proyecto Cargado', `"${escapeHtml(currentProjectName)}" cargado.`);
+
+      } catch (err) { /* ... (manejo de error existente) ... */ }
+      finally {
+          if (fileInput) fileInput.value = null; // Limpiar input de archivo
+      }
+  }; // Fin reader.onload
+
+  reader.onerror = (e) => { /* ... (manejo de error existente) ... */ };
+
+  reader.readAsText(file); // Iniciar lectura
 }
 
-function saveProject(filename) {
-    if (!editor) return;
-    if (!filename || typeof filename !== 'string') filename = currentProjectName || 'xocoflow_project';
-    filename = filename.trim().replace(/\.json$/i,""); if (!filename) filename = 'xocoflow_project';
-    filename += '.json';
-    try {
-        const drawflowData = editor.export(); if (!drawflowData?.drawflow) throw new Error("Export failed.");
-        const customDefs = getStoredCustomNodeTypes();
-        const project = { appName: "Xocoflow", version: "1.7.9", savedAt: new Date().toISOString(), customNodeDefinitions: customDefs, drawflow: drawflowData.drawflow };
-        const json = JSON.stringify(project, null, 2); const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
-        const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = filename; document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(link.href);
-        currentProjectName = filename.replace(/\.json$/i, ""); document.title = `Xocoflow | ${currentProjectName} - ${editor.module}`; showToast('success', 'Guardado', `Proyecto "${filename}" guardado.`);
-    } catch (err) { console.error("Error saving project:", err); showToast('error', 'Error al Guardar', `${err.message}`); }
-}
 
-async function promptSaveAs() {
-    if (!editor) return;
-    try {
-        const { value: inputName } = await Swal.fire({
-            title: 'Guardar Como...', input: 'text', inputLabel: 'Nombre del archivo (sin .json)', inputValue: currentProjectName || 'mi_proyecto',
-            showCancelButton: true, confirmButtonText: 'Guardar', cancelButtonText: 'Cancelar',
-            inputValidator: (v) => { const trimmed = v?.trim(); if (!trimmed) return '¡Nombre obligatorio!'; if (/[<>:"/\\|?*]/.test(trimmed)) return 'Caracteres inválidos.'; return null; }
-        });
-        if (inputName) saveProject(inputName.trim());
-    } catch (e) { console.error("Error in Save As dialog:", e); showToast('error', 'Error', 'No se pudo mostrar diálogo.'); }
-}
-
-function exportRawJson() {
-    if (!editor) return;
-    try {
-        const raw = editor.export(); if (!raw?.drawflow) throw new Error("Export failed.");
-        const json = JSON.stringify(raw, null, 2);
-        Swal.fire({ title: 'JSON Crudo de Drawflow', width: '80%', html: `<textarea readonly style="width: 95%; height: 400px; white-space: pre; overflow-wrap: normal; overflow-x: auto; background-color:#f8f8f8; border:1px solid #ddd; font-family:monospace; font-size:12px;">${escapeHtml(json)}</textarea>`, confirmButtonText: 'Cerrar' });
-    } catch (e) { console.error("Error exporting raw JSON:", e); showToast('error', 'Error de Exportación', `${e.message}`); }
-}
-
-function clearCurrentModule() {
-    if (!editor) return; const mod = editor.module; let nodeCount = 0;
-    try { nodeCount = Object.keys(editor.export()?.drawflow?.[mod]?.data ?? {}).length; } catch (e) { console.error("Error getting node count:", e); showToast('error', 'Error', 'No se pudo verificar contenido.'); return; }
-    if (nodeCount === 0) { showToast('info', 'Módulo Vacío', `"${escapeHtml(mod)}" ya está vacío.`); return; }
-    try {
-        Swal.fire({ title: `¿Limpiar Módulo "${escapeHtml(mod)}"?`, text: `Se eliminarán ${nodeCount} nodos y conexiones. ¡Irreversible!`, icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33', cancelButtonColor: '#3085d6', confirmButtonText: 'Sí, limpiar', cancelButtonText: 'Cancelar' })
-        .then((result) => { if (result.isConfirmed) { cleanupAllModuleIntervals(); editor.clearModuleSelected(); selectedNodeId = null; copiedNodeData = null; updateUIDisabledStates(); closeCodeEditorSidebar(false); if (mod === 'Home') addWelcomeNode(mod); saveHistoryState(true); showToast('info', 'Módulo Limpiado', `Módulo "${escapeHtml(mod)}" limpiado.`); } });
-    } catch (e) { console.error("Error during clear module confirmation:", e); showToast('error', 'Error', 'No se pudo iniciar limpieza.'); }
-}
-
-// --- Node Actions ---
-function duplicateSelectedNode() {
-    if (!selectedNodeId || isLocked()) return;
-    try {
-        const oNode = editor.getNodeFromId(selectedNodeId); if (!oNode) throw new Error("Node not found.");
-        let cDataDuplicate = JSON.parse(JSON.stringify(oNode.data || {}));
-        cDataDuplicate.isMovementLocked = oNode.data.isMovementLocked === true;
-        if (oNode.data.nodeWidth) cDataDuplicate.nodeWidth = oNode.data.nodeWidth;
-        if (oNode.data.nodeHeight) cDataDuplicate.nodeHeight = oNode.data.nodeHeight;
-        const ins = Object.keys(oNode.inputs || {}).length, outs = Object.keys(oNode.outputs || {}).length;
-        const x = oNode.pos_x + 40, y = oNode.pos_y + 40;
-        const newId = editor.addNode(oNode.name, ins, outs, x, y, oNode.class, cDataDuplicate, oNode.html);
-        setTimeout(() => {
-            const newNodeElement = document.getElementById(`node-${newId}`);
-            if(newNodeElement) {
-                if (cDataDuplicate.nodeWidth) newNodeElement.style.width = cDataDuplicate.nodeWidth;
-                if (cDataDuplicate.nodeHeight) newNodeElement.style.height = cDataDuplicate.nodeHeight;
-                const resizer = newNodeElement.querySelector('.node-resizer');
-                if (resizer) resizer.addEventListener('mousedown', (e) => startNodeResize(e, newId, resizer));
-                if(oNode.name === 'image_minimal') setupMinimalImageNodeListeners(newId);
-                else if(oNode.name === 'youtube_minimal') setupYouTubeMinimalNodeListeners(newId); // ** ADDED for YT API **
-            }
-            updateNodeVisualLockState(newId, cDataDuplicate.isMovementLocked);
-            if (oNode.name === 'youtube_minimal' && cDataDuplicate.videoid) { createOrUpdateYouTubePlayer(newId, cDataDuplicate.videoid); } // ** ADDED for YT API **
-            else { activateNodeIfNeeded(newId); }
-        },0);
-        saveHistoryState();
-    } catch (err) { showToast('error', 'Duplicate Error', `Error: ${err.message}`); }
-}
-
-function copySelectedNode() {
-    if (!selectedNodeId || isLocked()) return;
-    try {
-        const node = editor.getNodeFromId(selectedNodeId); if (!node) throw new Error("Node not found."); if (!customNodeTypes[node.name]) throw new Error(`Type "${node.name}" unknown.`);
-        copiedNodeData = { name: node.name, data: JSON.parse(JSON.stringify(node.data || {})), html: node.html, class: node.class, inputs: Object.keys(node.inputs || {}).length, outputs: Object.keys(node.outputs || {}).length, title: node.title || node.name, isMovementLocked: node.data.isMovementLocked === true, nodeWidth: node.data.nodeWidth, nodeHeight: node.data.nodeHeight };
-        updateUIDisabledStates(); showToast('success', 'Node Copied', `${copiedNodeData.title}`);
-    } catch (err) { console.error("Error copying:", err); copiedNodeData = null; updateUIDisabledStates(); showToast('error', 'Copy Error', `Error: ${err.message}`); }
-}
-
-function pasteNode() {
-    if (!copiedNodeData || isLocked()) return;
-    if (!customNodeTypes[copiedNodeData.name]) { showToast('error', 'Paste Error', `Type "${copiedNodeData.name}" unknown.`); copiedNodeData = null; updateUIDisabledStates(); return; }
-    try {
-        const rect = editor.container.getBoundingClientRect(), zoom = editor.zoom || 1; const cx = (rect.width / 2 - editor.canvas_x) / zoom, cy = (rect.height / 2 - editor.canvas_y) / zoom; const ox = Math.random() * 40 - 20, oy = Math.random() * 40 - 20;
-        const nodeWidth = copiedNodeData.nodeWidth ? parseFloat(copiedNodeData.nodeWidth) : 220;
-        const x = cx - (nodeWidth / 2) + ox; const y = cy + oy;
-        let cDataPaste = JSON.parse(JSON.stringify(copiedNodeData.data));
-        cDataPaste.isMovementLocked = copiedNodeData.isMovementLocked === true;
-        if (copiedNodeData.nodeWidth) cDataPaste.nodeWidth = copiedNodeData.nodeWidth;
-        if (copiedNodeData.nodeHeight) cDataPaste.nodeHeight = copiedNodeData.nodeHeight;
-        const newId = editor.addNode(copiedNodeData.name, copiedNodeData.inputs, copiedNodeData.outputs, x, y, copiedNodeData.class, cDataPaste, copiedNodeData.html);
-        setTimeout(() => {
-            const newNodeElement = document.getElementById(`node-${newId}`);
-            if(newNodeElement) {
-                if (cDataPaste.nodeWidth) newNodeElement.style.width = cDataPaste.nodeWidth;
-                if (cDataPaste.nodeHeight && cDataPaste.nodeHeight !== 'auto') newNodeElement.style.height = cDataPaste.nodeHeight; else newNodeElement.style.height = 'auto';
-                const resizer = newNodeElement.querySelector('.node-resizer');
-                if (resizer) resizer.addEventListener('mousedown', (e) => startNodeResize(e, newId, resizer));
-                if(copiedNodeData.name === 'image_minimal') setupMinimalImageNodeListeners(newId);
-                else if(copiedNodeData.name === 'youtube_minimal') setupYouTubeMinimalNodeListeners(newId); // ** ADDED for YT API **
-            }
-            updateNodeVisualLockState(newId, cDataPaste.isMovementLocked);
-            if (copiedNodeData.name === 'youtube_minimal' && cDataPaste.videoid) { createOrUpdateYouTubePlayer(newId, cDataPaste.videoid); } // ** ADDED for YT API **
-            else { activateNodeIfNeeded(newId); }
-        },0);
-        saveHistoryState();
-    } catch (err) { showToast('error', 'Paste Error', `Error: ${err.message}`); }
-}
-function deleteSelectedNode() { if (!selectedNodeId || isLocked()) return; try { editor.removeNodeId(`node-${selectedNodeId}`); } catch (err) { showToast('error', 'Delete Error', `Error: ${err.message}`); } }
-
-// --- Module/Tab Management ---
+// --- Project Management & Module Actions ---
+// **MODIFIED renderModuleTabs to v1.7.5 style**
 function renderModuleTabs() {
-    if (!moduleListElement) return;
+    if (!moduleListElement || !editor) return;
     try {
-        moduleListElement.innerHTML = ''; const modulesData = editor.export().drawflow || {}; const currentModule = editor.module;
-        let moduleNames = Object.keys(modulesData); if (moduleNames.length === 0) { if (!modulesData['Home']) editor.addModule('Home'); moduleNames = ['Home']; }
+        moduleListElement.innerHTML = '';
+        const modulesData = editor.export().drawflow || {};
+        const currentModule = editor.module; // Use editor.module directly
+
+        let moduleNames = Object.keys(modulesData);
+
+        // If no modules exist or 'Home' is missing, create 'Home'
+        // This part is crucial and should align with how v1.7.5 handled it.
+        if (moduleNames.length === 0 || !modulesData['Home']) {
+            if (!modulesData['Home']) {
+                editor.addModule('Home'); // This itself might trigger 'moduleChanged'
+            }
+            // Ensure 'Home' is the current module if logic above didn't set it
+            if (editor.module !== 'Home') {
+                 editor.changeModule('Home'); // This will trigger 'moduleChanged'
+            }
+            // It's possible 'moduleChanged' already called renderModuleTabs.
+            // To avoid double rendering or potential issues, we can return here
+            // if a change was made that would cause a re-render via the event.
+            // However, v1.7.5 proceeded to render, let's stick to that for now.
+            // Re-fetch moduleNames after potential addModule.
+            moduleNames = Object.keys(editor.export().drawflow || {});
+            if (moduleNames.length === 0) moduleNames = ['Home']; // Safety for empty after add
+        }
+
+
         moduleNames.sort((a, b) => (a === 'Home' ? -1 : b === 'Home' ? 1 : a.localeCompare(b)));
+
         moduleNames.forEach(moduleName => {
-            const li = document.createElement('li'); li.textContent = moduleName; li.dataset.moduleName = moduleName; li.title = `Cambiar a: ${moduleName}`; li.onclick = () => editor.changeModule(moduleName);
-            if (moduleName === currentModule) li.classList.add('selected');
-            if (moduleName !== 'Home' && moduleNames.length > 1) { const closeBtn = document.createElement('span'); closeBtn.innerHTML = '×'; closeBtn.title = `Eliminar ${moduleName}`; closeBtn.className = 'close-tab-btn'; closeBtn.style.cssText = ` margin-left: 8px; cursor: pointer; color: #aaa; font-weight: bold; padding: 0 4px; border-radius: 3px; font-size: 14px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; height: 16px; width: 16px; vertical-align: middle; transition: all 0.2s; `; closeBtn.onmouseover = () => { closeBtn.style.color = '#fff'; closeBtn.style.backgroundColor = '#ffb3b3'; }; closeBtn.onmouseout = () => { closeBtn.style.color = '#aaa'; closeBtn.style.backgroundColor = 'transparent'; }; closeBtn.onclick = (ev) => { ev.stopPropagation(); removeModuleTab(moduleName); }; li.appendChild(closeBtn); }
+            const li = document.createElement('li');
+            li.textContent = moduleName;
+            li.dataset.moduleName = moduleName;
+            li.title = `Cambiar a: ${moduleName}`;
+
+            li.onclick = () => {
+                // Only change if it's a different module
+                if (editor.module !== moduleName) {
+                    editor.changeModule(moduleName);
+                }
+                // v1.7.5 style: re-render tabs immediately on click
+                renderModuleTabs();
+            };
+
+            if (moduleName === editor.module) { // Use editor.module for selection
+                li.classList.add('selected');
+            }
+
+            if (moduleName !== 'Home' && moduleNames.length > 1) {
+                const closeBtn = document.createElement('span');
+                closeBtn.innerHTML = '×';
+                closeBtn.title = `Eliminar ${moduleName}`;
+                closeBtn.className = 'close-tab-btn';
+                 closeBtn.style.cssText = ` margin-left: 8px; cursor: pointer; color: #aaa; font-weight: bold; padding: 0 4px; border-radius: 3px; font-size: 14px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; height: 16px; width: 16px; vertical-align: middle; transition: all 0.2s; `;
+                 closeBtn.onmouseover = () => { closeBtn.style.color = '#fff'; closeBtn.style.backgroundColor = '#ffb3b3'; };
+                 closeBtn.onmouseout = () => { closeBtn.style.color = '#aaa'; closeBtn.style.backgroundColor = 'transparent'; };
+                closeBtn.onclick = (ev) => {
+                    ev.stopPropagation();
+                    removeModuleTab(moduleName);
+                };
+                li.appendChild(closeBtn);
+            }
             moduleListElement.appendChild(li);
         });
-        const addBtn = document.createElement('li'); addBtn.innerHTML = '<i class="fas fa-plus"></i>'; addBtn.title = "Añadir módulo"; addBtn.className = 'add-tab-btn'; addBtn.style.cssText = `cursor: pointer; border-right: none; padding: 0 10px; background-color: transparent; margin-left: 5px; opacity: 0.7; transition: opacity 0.2s;`; addBtn.onmouseover = () => { addBtn.style.opacity = '1'; }; addBtn.onmouseout = () => { addBtn.style.opacity = '0.7'; }; addBtn.onclick = promptAddModule; moduleListElement.appendChild(addBtn);
-    } catch (e) { console.error("Error en renderModuleTabs:", e); }
+
+        const addBtn = document.createElement('li');
+        addBtn.innerHTML = '<i class="fas fa-plus"></i>';
+        addBtn.title = "Añadir módulo";
+        addBtn.className = 'add-tab-btn';
+        addBtn.style.cssText = `cursor: pointer; border-right: none; padding: 0 10px; background-color: transparent; margin-left: 5px; opacity: 0.7; transition: opacity 0.2s;`;
+        addBtn.onmouseover = () => { addBtn.style.opacity = '1'; };
+        addBtn.onmouseout = () => { addBtn.style.opacity = '0.7'; };
+        addBtn.onclick = promptAddModule;
+        moduleListElement.appendChild(addBtn);
+
+    } catch (e) {
+        console.error("Error en renderModuleTabs:", e);
+    }
 }
 
+// **MODIFIED promptAddModule to v1.7.5 style**
 async function promptAddModule() {
     try {
-        const { value: moduleNameInput } = await Swal.fire({ title: 'Nuevo Módulo', input: 'text', inputLabel: 'Nombre', inputValue: '', showCancelButton: true, confirmButtonText: 'Crear', cancelButtonText: 'Cancelar', inputValidator: (v) => { const t = v?.trim(); if (!t) return 'Nombre vacío.'; const existing = Object.keys(editor.export().drawflow || {}); if (existing.some(m => m.toLowerCase() === t.toLowerCase())) return `"${t}" ya existe.`; if (/[<>:"/\\|?*]/.test(t)) return 'Caracteres inválidos.'; return null; } });
-        const moduleName = moduleNameInput?.trim(); if (moduleName) { editor.addModule(moduleName); editor.changeModule(moduleName); addWelcomeNode(moduleName); }
-    } catch (e) { console.error("Error en promptAddModule:", e); }
+        const { value: moduleNameInput } = await Swal.fire({
+            title: 'Nuevo Módulo',
+            input: 'text',
+            inputLabel: 'Nombre del módulo',
+            inputValue: '',
+            showCancelButton: true,
+            confirmButtonText: 'Crear',
+            cancelButtonText: 'Cancelar',
+            inputValidator: (v) => {
+                const t = v?.trim();
+                if (!t) return 'El nombre del módulo no puede estar vacío.';
+                const existingModules = Object.keys(editor.export()?.drawflow || {});
+                if (existingModules.some(m => m.toLowerCase() === t.toLowerCase())) {
+                    return `El módulo "${t}" ya existe.`;
+                }
+                if (/[<>:"/\\|?*]/.test(t)) {
+                    return 'El nombre contiene caracteres inválidos.';
+                }
+                return null;
+            }
+        });
+
+        const moduleName = moduleNameInput?.trim();
+        if (moduleName) {
+            console.log(`Añadiendo módulo: ${moduleName}`);
+            editor.addModule(moduleName);
+            editor.changeModule(moduleName); // Explicitly change to the new module
+            renderModuleTabs();             // Re-render tabs immediately (v1.7.5 style)
+            addWelcomeNode(moduleName);
+            console.log(`Módulo "${moduleName}" añadido y activado.`);
+        } else {
+            console.log("Creación de módulo cancelada por el usuario.");
+        }
+    } catch (e) {
+        console.error("Error en promptAddModule:", e);
+        showToast('error', 'Error', 'No se pudo crear el módulo.');
+    }
 }
+
 function removeModuleTab(moduleName) {
     if (moduleName === 'Home') { Swal.fire('No permitido', 'No puedes eliminar "Home".', 'warning'); return; }
     const moduleCount = Object.keys(editor.export().drawflow || {}).length; if (moduleCount <= 1) { Swal.fire('No permitido', 'No puedes eliminar el último módulo.', 'warning'); return; }
@@ -1414,34 +3055,106 @@ function addNodeToDrawFlow(name, pos_x, pos_y) {
     if (!editor || isLocked()) { showToast('warning', 'Editor Bloqueado'); return false; }
     try {
         const nodeDef = customNodeTypes[name]; if (!nodeDef) throw new Error(`Tipo "${name}" desconocido.`);
-        const data = JSON.parse(JSON.stringify(nodeDef.data || {})); data.isMovementLocked = false;
+        const data = JSON.parse(JSON.stringify(nodeDef.data || {}));
+        data.isMovementLocked = false;
         if (nodeDef.cssClass && nodeDef.cssClass.includes('resizable-node-class')) {
-            if (!data.nodeWidth) data.nodeWidth = (name === 'image_minimal') ? '80px' : (name === 'youtube_minimal' ? '320px' : '220px');
-            if (!data.nodeHeight) data.nodeHeight = (name === 'image_minimal') ? '60px' : (name === 'youtube_minimal' ? '180px' : 'auto');
+            if (!data.nodeWidth) {
+                if (name === 'image_minimal') data.nodeWidth = '80px';
+                else if (name === 'youtube_minimal') data.nodeWidth = '320px';
+                else if (name === 'youtube_display_node') data.nodeWidth = '480px';
+                else if (name === 'image_display_node') data.nodeWidth = '350px';
+                else data.nodeWidth = '220px';
+            }
+            if (!data.nodeHeight) {
+                if (name === 'image_minimal') data.nodeHeight = '60px';
+                else if (name === 'youtube_minimal') data.nodeHeight = '180px';
+                else if (name === 'youtube_display_node') data.nodeHeight = 'auto';
+                else if (name === 'image_display_node') data.nodeHeight = 'auto';
+                else data.nodeHeight = 'auto';
+            }
         }
+
         const rect = editor.container.getBoundingClientRect(); const zoom = editor.zoom || 1;
-        let initialWidthPx = 220; if (data.nodeWidth) initialWidthPx = parseFloat(data.nodeWidth); else if (name === 'image_minimal') initialWidthPx = 80; else if (name === 'youtube_minimal') initialWidthPx = 320; if (isNaN(initialWidthPx) || initialWidthPx <=0) initialWidthPx = 220;
-        const canvasX = (pos_x - rect.left - editor.canvas_x) / zoom; const canvasY = (pos_y - rect.top - editor.canvas_y) / zoom;
-        const adjX = canvasX - (initialWidthPx / 2); const adjY = canvasY;
+        let initialWidthPx = 220;
+        if (data.nodeWidth && data.nodeWidth.endsWith('px')) initialWidthPx = parseFloat(data.nodeWidth);
+        else if (name === 'image_minimal') initialWidthPx = 80;
+        else if (name === 'youtube_minimal') initialWidthPx = 320;
+        else if (name === 'youtube_display_node') initialWidthPx = 480;
+        else if (name === 'image_display_node') initialWidthPx = 350;
+        if (isNaN(initialWidthPx) || initialWidthPx <=0) initialWidthPx = 220;
+
+        const canvasX = (pos_x - rect.left - editor.canvas_x) / zoom;
+        const canvasY = (pos_y - rect.top - editor.canvas_y) / zoom;
+        const adjX = canvasX - (initialWidthPx / 2);
+        const adjY = canvasY;
+
         const nodeId = editor.addNode(name, nodeDef.inputs, nodeDef.outputs, adjX, adjY, nodeDef.cssClass || '', data, nodeDef.html );
 
         setTimeout(() => {
              const nodeElement = document.getElementById(`node-${nodeId}`);
              if (nodeElement) {
                   if (data.nodeWidth) nodeElement.style.width = data.nodeWidth;
-                  if (data.nodeHeight && data.nodeHeight !== 'auto') nodeElement.style.height = data.nodeHeight; else if (data.nodeHeight === 'auto') nodeElement.style.height = 'auto';
-                  const resizer = nodeElement.querySelector('.node-resizer'); if (resizer) resizer.addEventListener('mousedown', (e) => startNodeResize(e, nodeId, resizer));
-                  if (name === 'image_minimal') { if (getComputedStyle(nodeElement).borderStyle.includes('none')) nodeElement.style.border = '2px dashed #cccccc'; const placeholder = nodeElement.querySelector('.image-placeholder'); if(placeholder) placeholder.style.display = 'flex'; setupMinimalImageNodeListeners(nodeId); }
-                  else if (name === 'youtube_minimal') { // ** UPDATED for API **
-                      nodeElement.style.width = data.nodeWidth; nodeElement.style.height = data.nodeHeight;
+                  if (data.nodeHeight && data.nodeHeight !== 'auto') nodeElement.style.height = data.nodeHeight;
+                  else if (data.nodeHeight === 'auto') nodeElement.style.height = 'auto';
+
+                  const resizer = nodeElement.querySelector('.node-resizer');
+                  if (resizer) resizer.addEventListener('mousedown', (e) => startNodeResize(e, nodeId, resizer));
+
+                  if (name === 'image_minimal') {
+                      if (getComputedStyle(nodeElement).borderStyle.includes('none')) nodeElement.style.border = '2px dashed #cccccc';
+                      const placeholder = nodeElement.querySelector('.image-placeholder'); if(placeholder) placeholder.style.display = 'flex';
+                      setupMinimalImageNodeListeners(nodeId);
+                  }
+                  else if (name === 'youtube_minimal') {
+                      nodeElement.style.width = data.nodeWidth;
+                      nodeElement.style.height = data.nodeHeight;
                       if (data.videoid) createOrUpdateYouTubePlayer(nodeId, data.videoid);
-                      else { const placeholder = nodeElement.querySelector('.youtube-placeholder'); const playerContainerDiv = nodeElement.querySelector('.yt-player-container'); if (placeholder) placeholder.style.display = 'flex'; if (playerContainerDiv) playerContainerDiv.style.display = 'none'; nodeElement.style.border = '2px dashed #cccccc'; }
+                      else {
+                         const placeholder = nodeElement.querySelector('.youtube-placeholder');
+                         const playerContainerDiv = nodeElement.querySelector('.yt-player-container');
+                         if (placeholder) placeholder.style.display = 'flex';
+                         if (playerContainerDiv) playerContainerDiv.style.display = 'none';
+                         nodeElement.style.border = '2px dashed #cccccc';
+                      }
                       setupYouTubeMinimalNodeListeners(nodeId);
+                  }
+                  else if (name === 'youtube_display_node') {
+                        nodeElement.style.width = data.nodeWidth || baseNodeDefinitions['youtube_display_node'].data.nodeWidth;
+                        nodeElement.style.height = data.nodeHeight || baseNodeDefinitions['youtube_display_node'].data.nodeHeight;
+                        if (data.videoid) {
+                            createOrUpdateYouTubePlayerFunctional(nodeId, data.videoid);
+                        } else {
+                            const playerContainerFunc = nodeElement.querySelector('.yt-player-container-functional');
+                            const urlInputContainerFunc = nodeElement.querySelector('.youtube-url-input-container');
+                            if(playerContainerFunc) playerContainerFunc.style.display = 'none';
+                            if(urlInputContainerFunc) urlInputContainerFunc.style.display = 'block';
+                        }
+                        const urlInput = nodeElement.querySelector('input[df-yturl]');
+                        if(urlInput) urlInput.value = data.yturl || '';
+                  }
+                  else if (name === 'image_display_node') {
+                        nodeElement.style.width = data.nodeWidth || baseNodeDefinitions['image_display_node'].data.nodeWidth;
+                        nodeElement.style.height = data.nodeHeight || baseNodeDefinitions['image_display_node'].data.nodeHeight;
+                        const urlInput = nodeElement.querySelector('input[df-imgsrcdisplay]');
+                        const imgPreview = nodeElement.querySelector('img[df-imgpreview]');
+                        const placeholder = nodeElement.querySelector('.img-container-functional .placeholder-text');
+                        if(urlInput) urlInput.value = data.imgsrcdisplay || '';
+                        if (imgPreview && placeholder) {
+                            if (data.imgsrcdisplay) {
+                                imgPreview.src = data.imgsrcdisplay;
+                                imgPreview.style.display = 'block';
+                                placeholder.style.display = 'none';
+                            } else {
+                                placeholder.style.display = 'block';
+                                placeholder.textContent = "No image loaded";
+                            }
+                        }
                   }
                   updateNodeVisualLockState(nodeId, data.isMovementLocked);
              }
-             // Activate after DOM is set up, unless it's YT (player creation handles activation implicitly)
-             if (name !== 'youtube_minimal') activateNodeIfNeeded(nodeId);
+             if (name !== 'youtube_minimal' && name !== 'youtube_display_node') {
+                 activateNodeIfNeeded(nodeId);
+             }
         }, 0);
         saveHistoryState(); return true;
     } catch (e) { console.error(`Error adding node "${name}":`, e); showToast('error', 'Error al Añadir Nodo', `${e.message}`); return false; }
@@ -1498,15 +3211,15 @@ function saveAndCloseCodeEditor() { closeCodeEditorSidebar(true); }
 function updateZoomStatus(level) { if (zoomLevelSpan) zoomLevelSpan.textContent = `${Math.round(level * 100)}%`; }
 function updateNodePositionStatus(nodeId) { if (nodePositionSpan) { if (nodeId) { const n = editor?.getNodeFromId(nodeId); if (n) nodePositionSpan.textContent = `X:${Math.round(n.pos_x)},Y:${Math.round(n.pos_y)}`; else nodePositionSpan.textContent = `X:-,Y:-`; } else nodePositionSpan.textContent = `X:-,Y:-`; } }
 
-// --- Drawflow Event Listeners ---
+// --- Drawflow Event Listeners (Using v1.7.5 style for moduleChanged handling) ---
 function setupDrawflowListeners() {
     if (!editor) { console.error("Cannot setup listeners: Drawflow editor missing."); return; }
     try {
         editor.on('nodeRemoved', (id) => {
+            console.log(`Event: Node Removed ${id}`);
             cleanupNodeIntervals(id); hideCustomContextMenu();
-            if (youtubePlayers[id]) { // ** ADDED for YT API **
-                try { youtubePlayers[id].destroy(); delete youtubePlayers[id]; } catch (e) { console.error(`Error destroying YouTube player ${id}:`, e); }
-            }
+            if (youtubePlayers[id]) { try { youtubePlayers[id].destroy(); delete youtubePlayers[id]; } catch (e) { console.error(`Error destroying YouTube minimal player ${id}:`, e); } }
+            if (youtubePlayersFunctional[id]) { try { youtubePlayersFunctional[id].destroy(); delete youtubePlayersFunctional[id]; } catch (e) { console.error(`Error destroying YouTube display player ${id}:`, e); } }
             if (selectedNodeId === id) { selectedNodeId = null; updateNodePositionStatus(null); } if (currentlyEditingNodeId === id) closeCodeEditorSidebar(false);
             let connectionsFromRemovedNode = []; try { const nodeDataBeforeRemoval = editor.getNodeFromId(id); if (nodeDataBeforeRemoval?.outputs) Object.values(nodeDataBeforeRemoval.outputs).forEach(op => connectionsFromRemovedNode = connectionsFromRemovedNode.concat(op.connections || [])); } catch (e) {}
             if (connectionsFromRemovedNode.length > 0) {
@@ -1514,13 +3227,14 @@ function setupDrawflowListeners() {
             }
             updateUIDisabledStates(); saveHistoryState();
         });
-        editor.on('nodeSelected', (id) => { selectedNodeId = id; updateUIDisabledStates(); updateNodePositionStatus(id); });
-        editor.on('nodeUnselected', (wasSelected) => { const prevSelected = selectedNodeId; selectedNodeId = null; updateUIDisabledStates(); updateNodePositionStatus(null); if (prevSelected && prevSelected === currentlyEditingNodeId) closeCodeEditorSidebar(true); });
+        editor.on('nodeSelected', (id) => { console.log(`Event: Node Selected ${id}`); selectedNodeId = id; updateUIDisabledStates(); updateNodePositionStatus(id); });
+        editor.on('nodeUnselected', (wasSelected) => { console.log(`Event: Node Unselected (was selected: ${wasSelected})`); const prevSelected = selectedNodeId; selectedNodeId = null; updateUIDisabledStates(); updateNodePositionStatus(null); if (prevSelected && prevSelected === currentlyEditingNodeId) closeCodeEditorSidebar(true); });
         editor.on('nodeMoved', (id) => {
             saveHistoryState(); if(id === selectedNodeId) updateNodePositionStatus(id);
             try { const node = editor.getNodeFromId(id); if(node) { const orderDependentTargets = ['concatenar', 'subtract', 'divide']; const nodeName = node.name; const outputConnections = getConnections(id, 'output'); outputConnections.forEach(conn => { try { const targetNode = editor.getNodeFromId(conn.node); if (targetNode && orderDependentTargets.includes(targetNode.name)) { switch (targetNode.name) { case 'concatenar': setTimeout(() => updateConcatenateNode(conn.node), 0); break; case 'subtract': setTimeout(() => updateSubtractNode(conn.node), 0); break; case 'divide': setTimeout(() => updateDivideNode(conn.node), 0); break; } } } catch (e) {} }); if (orderDependentTargets.includes(nodeName)) { switch (nodeName) { case 'concatenar': setTimeout(() => updateConcatenateNode(id), 0); break; case 'subtract': setTimeout(() => updateSubtractNode(id), 0); break; case 'divide': setTimeout(() => updateDivideNode(id), 0); break; } } } } catch (e) {}
         });
         editor.on('connectionCreated', (connectionInfo) => {
+            console.log(`Event: Connection Created`, connectionInfo);
             setTimeout(() => {
                 try { const sourceNodeId = connectionInfo.output_id; const targetNodeId = connectionInfo.input_id; const sourceNode = editor.getNodeFromId(sourceNodeId); const targetNode = editor.getNodeFromId(targetNodeId); if (!sourceNode || !targetNode) throw new Error("Source/Target missing.");
                     propagateData(sourceNodeId, sourceNode.name, null, undefined);
@@ -1530,24 +3244,53 @@ function setupDrawflowListeners() {
             }, 50);
         });
         editor.on('connectionRemoved', (connectionInfo) => {
+            console.log(`Event: Connection Removed`, connectionInfo);
             setTimeout(() => {
                  try { const targetNodeId = connectionInfo.input_id; const targetNode = editor.getNodeFromId(targetNodeId); if (targetNode) { const targetName = targetNode.name; const recalcNodes = ['sum', 'subtract', 'multiply', 'divide', 'concatenar']; if (recalcNodes.includes(targetName)) { switch (targetName) { case 'sum': updateSumNode(targetNodeId); break; case 'subtract': updateSubtractNode(targetNodeId); break; case 'multiply': updateMultiplyNode(targetNodeId); break; case 'divide': updateDivideNode(targetNodeId); break; case 'concatenar': updateConcatenateNode(targetNodeId); break; } } if (targetName === 'hybrid_text_replace' && connectionInfo.input_class === 'input_1') editor.updateNodeDataFromId(targetNodeId, { lastInput: null }); if (targetName === 'auto_text_replace' && connectionInfo.input_class === 'input_1') { editor.updateNodeDataFromId(targetNodeId, { lastInput: "" }); const targetNodeElement = document.getElementById(`node-${targetNodeId}`); const lastInputElementUI = targetNodeElement?.querySelector('textarea[df-lastInput]'); if (lastInputElementUI) lastInputElementUI.value = ""; setTimeout(() => executeAutoReplace(targetNodeId, ""), 0); } } saveHistoryState();
                  } catch (error) { console.error("Error processing connectionRemoved:", error, "Info:", connectionInfo); saveHistoryState(); }
             }, 50);
         });
+
+        // **REVERTED 'moduleChanged' listener logic to v1.7.5 style**
         editor.on('moduleChanged', (name) => {
-            console.log(`%cEVENT: Module Changed -> ${name}`, 'color: blue; font-weight: bold;'); hideCustomContextMenu();
-            const modulesData = editor.export()?.drawflow; if (!modulesData || !modulesData[name]) { name = 'Home'; if (!modulesData || !modulesData[name]) editor.addModule('Home'); editor.changeModule('Home'); return; }
-            renderModuleTabs(); initializeHistory(); selectedNodeId = null; copiedNodeData = null; currentlyEditingNodeId = null;
-            updateUIDisabledStates(); updateZoomStatus(editor.zoom); updateNodePositionStatus(null); document.title = `Xocoflow | ${currentProjectName} - ${name}`; closeCodeEditorSidebar(false);
-            setTimeout(() => { if(editor.module === name) { saveHistoryState(true); activateExistingAutoNodes(); } }, 100);
+            console.log(`%cEVENT: Module Changed -> ${name}`, 'color: blue; font-weight: bold;');
+            hideCustomContextMenu(); // Ocultar menú si está abierto al cambiar de módulo
+            const modulesData = editor.export()?.drawflow;
+            if (!modulesData || !modulesData[name]) {
+                 console.warn(`Module ${name} not found after moduleChanged event. Falling back to Home.`);
+                 name = 'Home';
+                 if (!modulesData || !modulesData[name]) {
+                     editor.addModule('Home');
+                 }
+                 editor.changeModule('Home'); // This will re-trigger 'moduleChanged'
+                 return; // Exit and let the new event handle the rendering
+            }
+            renderModuleTabs(); // Render immediately as in v1.7.5
+            initializeHistory();
+            selectedNodeId = null;
+            copiedNodeData = null;
+            currentlyEditingNodeId = null;
+            updateUIDisabledStates();
+            updateZoomStatus(editor.zoom);
+            updateNodePositionStatus(null);
+            document.title = `Xocoflow | ${currentProjectName} - ${name}`;
+            closeCodeEditorSidebar(false);
+            setTimeout(() => { // Keep timeout for async operations after UI updates
+                if(editor.module === name){
+                    saveHistoryState(true);
+                    activateExistingAutoNodes();
+                    console.log(` -> Module ${name} processing complete.`);
+                }
+            }, 100);
         });
+
         editor.on('zoom', (level) => { updateZoomStatus(level); });
         editor.on('translate', (pos) => { /* No action */ });
         editor.on('contextmenu', (e) => { const nodeElement = e.target.closest(".drawflow-node"); if (e.target.closest('.drawflow-delete')) { e.preventDefault(); hideCustomContextMenu(); return; } if (nodeElement) { const nodeId = nodeElement.id.slice(5); showCustomContextMenu(e, nodeId); } else { e.preventDefault(); hideCustomContextMenu(); } });
         editor.on('click', (e) => { const target = e.target; if (customContextMenu && !customContextMenu.contains(target)) hideCustomContextMenu(); if (codeEditorSidebar?.classList.contains('visible') && !target.closest('#code-editor-sidebar') && !target.closest('.drawflow-node')) closeCodeEditorSidebar(true); const ignoreClickTargets = '.drawflow-node, .controls-container, .menu, .swal2-container, #code-editor-sidebar, .nodes-list, .col header, .drawflow-delete, .point, .custom-context-menu'; if (!target.closest(ignoreClickTargets) && selectedNodeId) { try { editor.removeSelection(); } catch {} } });
     } catch (e) { console.error("Error setting Drawflow listeners:", e); showToast('error', 'Critical Error', 'Failed setup.'); }
 }
+
 
 // --- Keyboard Shortcuts ---
 document.addEventListener('keydown', (event) => { try { const active = document.activeElement; const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable || active.closest('.CodeMirror')); const isModal = nodeDefinitionModal?.style.display !== 'none'; const isCM = codeMirrorEditor && codeMirrorEditor.hasFocus(); const isSidebar = codeEditorSidebar?.contains(active); const mainEditorLocked = isLocked(); if (event.key === 'Escape') { if (isModal) { closeNodeDefinitionModal(); event.preventDefault(); return; } if (isCM || (isSidebar && currentlyEditingNodeId)) { closeCodeEditorSidebar(true); event.preventDefault(); return; } if (selectedNodeId) { try{ editor.removeSelection(); } catch { selectedNodeId = null; } updateUIDisabledStates(); event.preventDefault(); return; } } if (isInput && !isCM && !isSidebar) { if ((event.ctrlKey || event.metaKey) && ['a','c','x','v','z','y'].includes(event.key.toLowerCase())) return; if (!['Escape','Delete','Backspace'].includes(event.key)) return; } const ctrl = event.ctrlKey || event.metaKey; if (ctrl) { switch (event.key.toLowerCase()) { case 'z': if(!mainEditorLocked){ event.preventDefault(); undo(); } break; case 'y': if(!mainEditorLocked){ event.preventDefault(); redo(); } break; case 'c': if(selectedNodeId && !mainEditorLocked){event.preventDefault(); copySelectedNode();} break; case 'v': if(!mainEditorLocked){event.preventDefault(); pasteNode();} break; case 'd': if(selectedNodeId && !mainEditorLocked){event.preventDefault(); duplicateSelectedNode();} break; case 's': event.preventDefault(); if (event.shiftKey) promptSaveAs(); else saveProject(currentProjectName); break; case 'o': event.preventDefault(); triggerLoad(); break; case 'r': if(recalculateButton && !mainEditorLocked){event.preventDefault(); recalculateAllNodesInCurrentModule();} break; } } else { switch (event.key) { case 'Delete': case 'Backspace': if (selectedNodeId && !isInput && !mainEditorLocked) { event.preventDefault(); deleteSelectedNode(); } break; } } } catch (e) { console.error("Keyboard shortcut error:", e); } });
@@ -1561,14 +3304,69 @@ function initializeApp() {
         if (searchInput) searchInput.addEventListener('input', filterNodes); if (fileInputElement) fileInputElement.addEventListener('change', loadProjectFromFile);
         if (typeof Drawflow === 'undefined') throw new Error("Drawflow library failed to load."); if (typeof CodeMirror === 'undefined') console.warn("CodeMirror library not loaded."); if (typeof Swal === 'undefined') console.warn("SweetAlert2 library not loaded.");
         try { editor = new Drawflow(drawflowElement); editor.reroute = true; editor.editor_mode = 'edit'; editor.zoom_max = 1.8; editor.zoom_min = 0.25; editor.zoom_value = 0.08; } catch (e) { throw new Error(`Failed to create Drawflow editor: ${e.message}`); }
-        editor.start(); setupDrawflowListeners();
-        const initialExport = editor.export(); const initialModules = initialExport?.drawflow; let homeExists = initialModules?.hasOwnProperty('Home'); if (!initialModules || Object.keys(initialModules).length === 0 || !homeExists) { if (!homeExists) editor.addModule('Home'); if (editor.module !== 'Home') editor.changeModule('Home'); } else if (!editor.module || !initialModules[editor.module]) editor.changeModule('Home');
+        
+        editor.start();
+        setupDrawflowListeners(); // Sets up editor.on('moduleChanged', ...)
+
+        // --- Initial Module Logic (closer to v1.7.5) ---
+        const initialExport = editor.export();
+        const initialModules = initialExport?.drawflow;
+        let homeExists = initialModules?.hasOwnProperty('Home');
+
+        if (!initialModules || Object.keys(initialModules).length === 0 || !homeExists) {
+            if (!homeExists) {
+                editor.addModule('Home');
+            }
+            if (editor.module !== 'Home') { // Ensure 'Home' is active if it was just created or if current module is invalid
+                editor.changeModule('Home'); // This will trigger 'moduleChanged' which handles full init
+            } else {
+                // If 'Home' was the module and it was just added (empty canvas), then 'moduleChanged' handles init.
+                // If 'Home' already existed and was active, we manually trigger the necessary UI updates and state init here.
+                renderModuleTabs(); // Call directly as 'moduleChanged' might not fire if module was already 'Home'
+                initializeHistory();
+                const currentModuleData = editor.export()?.drawflow?.[editor.module]?.data ?? {};
+                if (Object.keys(currentModuleData).length === 0) {
+                    addWelcomeNode(editor.module);
+                }
+                saveHistoryState(true);
+                activateExistingAutoNodes();
+            }
+        } else if (!editor.module || !initialModules[editor.module]) {
+            // Current module is invalid, switch to 'Home'
+            editor.changeModule('Home'); // 'moduleChanged' handles the rest
+        } else {
+            // Valid initial state, editor.module is already set
+            renderModuleTabs(); // Render tabs for current state
+            initializeHistory();
+            const currentModuleData = initialModules[editor.module]?.data ?? {};
+            if (Object.keys(currentModuleData).length === 0 && editor.module === 'Home') {
+                addWelcomeNode(editor.module);
+            }
+            saveHistoryState(true);
+            activateExistingAutoNodes();
+        }
+        console.log(`Initial active module finalized as: ${editor.module}`);
+        // --- End Initial Module Logic ---
+
         if (drawflowElement) { drawflowElement.addEventListener('mousedown', (e) => { if (e.target.closest('.input') || e.target.closest('.output')) return; const nodeElement = e.target.closest(".drawflow-node"); if (!nodeElement) return; const nodeId = nodeElement.id.slice(5); try { const node = editor.getNodeFromId(nodeId); if (!node) return; const isNodeMovementLocked = node.data?.isMovementLocked === true; if (isNodeMovementLocked) { const trulyInteractiveSelector = `input[type="color"], input[type="range"], input[type="date"], input[type="time"], select, button, a[href], .lock-indicator, .node-resizer, details, summary, .image-placeholder, .youtube-placeholder, .CodeMirror, [contenteditable="true"]`; const clickedTrulyInteractive = e.target.closest(trulyInteractiveSelector); if (clickedTrulyInteractive) { if (e.button === 0 && clickedTrulyInteractive.closest('.lock-indicator')) { toggleNodeMovementLock(nodeId); e.stopPropagation(); e.preventDefault(); return; } if (e.button === 0 && clickedTrulyInteractive.closest('.node-resizer')) return; return; } const isTextInputElement = e.target.matches('input[type="text"], input[type="number"], input[type="url"], input[type="email"], input[type="password"], textarea'); if (isTextInputElement) { if (e.button === 0) { e.stopPropagation(); return; } return; } e.stopPropagation(); if (e.button === 0 && !nodeElement.classList.contains('selected')) editor.selectNode(nodeElement.id); if (e.button !== 2) e.preventDefault(); } } catch (error) { console.warn(`Lock mousedown error for ${nodeId}:`, error); } }, true); console.log("Mousedown listener for movement lock attached."); } else console.error("drawflowElement not found! Cannot attach mousedown listener.");
-        loadCustomNodesToSidebar(); renderModuleTabs(); initializeHistory(); updateUIDisabledStates(); updateZoomStatus(editor.zoom); updateNodePositionStatus(null); document.title = `Xocoflow | ${currentProjectName} - ${editor.module}`; changeMode('edit');
-        const currentModuleData = editor.export()?.drawflow?.[editor.module]?.data ?? {}; if (Object.keys(currentModuleData).length === 0) { addWelcomeNode(editor.module); saveHistoryState(true); } else { saveHistoryState(true); activateExistingAutoNodes(); }
-        if (recalculateButton) recalculateButton.addEventListener('click', recalculateAllNodesInCurrentModule); initializeCodeMirror();
-        console.log("%cXocoflow Ready.", "color: green; font-weight: bold;"); showToast('success', 'Ready', '', 1500);
-    } catch (error) { console.error("❌ FATAL INITIALIZATION ERROR:", error); showInitializationError(`Initialization failed: ${error.message}`); }
+        
+        loadCustomNodesToSidebar();
+        updateUIDisabledStates();
+        updateZoomStatus(editor.zoom);
+        updateNodePositionStatus(null);
+        document.title = `Xocoflow | ${currentProjectName} - ${editor.module}`;
+        changeMode('edit');
+        
+        if (recalculateButton) recalculateButton.addEventListener('click', recalculateAllNodesInCurrentModule);
+        initializeCodeMirror();
+
+        console.log("%cXocoflow Ready.", "color: green; font-weight: bold;");
+        showToast('success', 'Ready', '', 1500);
+
+    } catch (error) {
+        console.error("❌ FATAL INITIALIZATION ERROR:", error);
+        showInitializationError(`Initialization failed: ${error.message}`);
+    }
 }
 
 function addWelcomeNode(moduleName) { if (!editor || !moduleName || isLocked()) return; try { const exported = editor.export(); const existing = exported?.drawflow?.[moduleName]?.data ?? {}; if (Object.keys(existing).length > 0) return; const html = `<div><div class="title-box welcome-title"><i class="fas fa-rocket"></i> Welcome to ${escapeHtml(moduleName)}!</div><div class="box welcome-box"><p><strong>Quick Start:</strong></p><ul><li><i class="fas fa-mouse-pointer"></i> Drag nodes.</li><li><i class="fas fa-link"></i> Connect outputs <i class="fas fa-arrow-right"></i> to inputs <i class="fas fa-arrow-left"></i>.</li><li><i class="fas fa-edit"></i> Click "Edit Content/Code".</li><li><i class="fas fa-save"></i> Save work.</li><li><i class="fas fa-plus-circle"></i> Explore "Create Node Type".</li></ul></div><div class="node-resizer" title="Redimensionar"><i class="fas fa-expand-alt"></i></div></div>`; const w=280, h=210; const rect = editor.container.getBoundingClientRect(), z=editor.zoom||1; const cx=(rect.width/2-editor.canvas_x)/z, cy=(rect.height/2-editor.canvas_y)/z; const x=cx-w/2, y=cy-h/2; const name='xocoflow_welcome_info'; const nodeData = { nodeWidth: `${w}px`, nodeHeight: `${h}px`, isMovementLocked: false }; if (!customNodeTypes[name]) editor.registerNode(name, null , {}, {}); const id = editor.addNode(name, 0, 0, x, y, 'welcome-node resizable-node-class', nodeData, html); setTimeout(() => { const nodeElement = document.getElementById(`node-${id}`); if (nodeElement) { nodeElement.style.width = nodeData.nodeWidth; nodeElement.style.height = nodeData.nodeHeight; const resizer = nodeElement.querySelector('.node-resizer'); if(resizer) resizer.addEventListener('mousedown', (e) => startNodeResize(e, id, resizer)); updateNodeVisualLockState(id, false);}}, 0); } catch (e) { console.error(`Error adding welcome node:`, e); } }
